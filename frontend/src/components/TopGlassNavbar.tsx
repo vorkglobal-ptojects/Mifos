@@ -113,7 +113,6 @@ const tellerNavItems = [
   { name: 'Customer', href: '/clients', icon: Users },
   { name: 'Pawning', href: '/loans', icon: Wallet },
   { name: 'Interest', href: '/finance/interest', icon: Percent },
-  { name: 'Stock Management', href: '/operations/eod?tab=stock', icon: Package },
   { name: 'Daily ledger', href: '/accounting/ledger?tab=entry', icon: FileSpreadsheet },
   { name: 'Profile', href: '/profile', icon: User },
 ];

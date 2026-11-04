@@ -249,6 +249,40 @@ async function testUserAccount(user, branch) {
     }
   }
 
+  // 10. Test Stock List Access Permission (CRITICAL REQUIREMENT: Tellers cannot retrieve stock list)
+  const stockListRes = await request({
+    hostname: 'localhost',
+    port: 3000,
+    path: `/api/stock?branch=${branch}`,
+    method: 'GET',
+    headers: authHeaders
+  });
+
+  const stockOldRes = await request({
+    hostname: 'localhost',
+    port: 3000,
+    path: `/api/stock/old`,
+    method: 'GET',
+    headers: authHeaders
+  });
+
+  if (result.role === 'TELLER') {
+    if (stockListRes.status === 403 && stockOldRes.status === 403) {
+      result.checks.stockListBlockedForTeller = true;
+    } else {
+      result.checks.stockListBlockedForTeller = false;
+      result.errors.push(`SECURITY VIOLATION: Teller was allowed to fetch stock list! (stock: ${stockListRes.status}, old: ${stockOldRes.status})`);
+    }
+  } else {
+    // Admin, Manager, Auditor should still be able to fetch stock list
+    if (stockListRes.status === 200) {
+      result.checks.stockListAllowedForElevatedRole = true;
+    } else {
+      result.checks.stockListAllowedForElevatedRole = false;
+      result.errors.push(`FAILED: ${result.role} could not fetch stock list (HTTP ${stockListRes.status})`);
+    }
+  }
+
   return result;
 }
 

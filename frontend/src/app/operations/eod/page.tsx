@@ -1094,6 +1094,9 @@ function EndOfDayContent() {
       try {
         const u = JSON.parse(userStr);
         setCurrentUser(u);
+        if (u.role === 'TELLER' && activeTab === 'stock') {
+          setActiveTab('reconciliation');
+        }
         if (u.role !== 'ADMIN') {
           const uBranch = normalizeBranchId(u.branchId || '');
           setSelectedBranch(uBranch && uBranch !== 'HQ' ? uBranch : 'ALL');
@@ -1172,6 +1175,11 @@ function EndOfDayContent() {
 
   // Fetch Stock items
   const loadStockData = async () => {
+    if (currentUser?.role === 'TELLER') {
+      setStockItems([]);
+      setLoadingStock(false);
+      return;
+    }
     setLoadingStock(true);
     try {
       // Determine the active branch filter
@@ -2556,15 +2564,17 @@ function EndOfDayContent() {
         >
           Daily Reconciliation
         </button>
-        <button 
-          onClick={() => setActiveTab('stock')}
-          className={cn(
-            "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer",
-            activeTab === 'stock' ? "bg-white text-slate-900 shadow-md font-bold" : "text-slate-500 hover:text-slate-800"
-          )}
-        >
-          Pawn Stock Management
-        </button>
+        {currentUser?.role !== 'TELLER' && (
+          <button 
+            onClick={() => setActiveTab('stock')}
+            className={cn(
+              "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer",
+              activeTab === 'stock' ? "bg-white text-slate-900 shadow-md font-bold" : "text-slate-500 hover:text-slate-800"
+            )}
+          >
+            Pawn Stock Management
+          </button>
+        )}
         <button 
           onClick={() => setActiveTab('matrix')}
           className={cn(
@@ -2719,7 +2729,7 @@ function EndOfDayContent() {
       {/* ==========================================
           STOCK MANAGEMENT TAB VIEW
           ========================================== */}
-      {activeTab === 'stock' && (
+      {activeTab === 'stock' && currentUser?.role !== 'TELLER' && (
         <div className="space-y-6 animate-in fade-in-50 duration-300">
           
           {/* Inventory Stat Cards */}
