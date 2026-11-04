@@ -1578,6 +1578,29 @@ function EndOfDayContent() {
       const isEdit = isEditingActive && selectedActiveItem;
       const headers = getAuthHeaders({ 'x-branch-id': targetBranch });
 
+      // Maker-Checker: Tellers cannot directly modify stock. Submit approval ticket!
+      if (currentUser?.role === 'TELLER' && isEdit) {
+        closeAddModal();
+        setStockChangeModal({
+          isOpen: true,
+          entityType: 'STOCK',
+          actionType: 'UPDATE',
+          entityId: selectedActiveItem.id || selectedActiveItem.bill_no,
+          referenceNo: finalBillNo,
+          branchId: normalizeBranchId(targetBranch),
+          currentData: selectedActiveItem,
+          initialProposedData: {
+            bill_no: finalBillNo,
+            price: newItem.price,
+            weight: newItem.weight,
+            date: newItem.date,
+            item_type: newItem.item_type,
+            branch_id: newItem.branch_id
+          }
+        });
+        return;
+      }
+
       const payload = isEdit ? {
         id: selectedActiveItem.id,
         bill_no: newItem.bill_no,
@@ -1834,6 +1857,26 @@ function EndOfDayContent() {
       } else if (!finalNotes) {
         finalNotes = interestStr;
       }
+    }
+
+    // Maker-Checker: Tellers cannot directly modify withdrawal records. Submit approval ticket!
+    if (currentUser?.role === 'TELLER' && isEditingWithdrawal) {
+      setShowWithdrawModal(false);
+      setStockChangeModal({
+        isOpen: true,
+        entityType: 'STOCK',
+        actionType: 'UPDATE',
+        entityId: selectedItemForWithdrawal.id || selectedItemForWithdrawal.bill_no,
+        referenceNo: stripBranchPrefix(selectedItemForWithdrawal.bill_no),
+        branchId: normalizeBranchId(selectedItemForWithdrawal.branch_id || selectedBranch || 'HQ'),
+        currentData: selectedItemForWithdrawal,
+        initialProposedData: {
+          withdrawal_date: withdrawalDate,
+          withdrawal_reason: withdrawalReason,
+          withdrawal_notes: finalNotes
+        }
+      });
+      return;
     }
 
     try {
@@ -4905,6 +4948,22 @@ function EndOfDayContent() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* MAKER-CHECKER CHANGE REQUEST MODAL FOR TELLERS */}
+      <ChangeRequestModal
+        isOpen={stockChangeModal.isOpen}
+        onClose={() => setStockChangeModal(prev => ({ ...prev, isOpen: false }))}
+        entityType={stockChangeModal.entityType}
+        actionType={stockChangeModal.actionType}
+        entityId={stockChangeModal.entityId}
+        referenceNo={stockChangeModal.referenceNo}
+        branchId={stockChangeModal.branchId}
+        currentData={stockChangeModal.currentData}
+        initialProposedData={stockChangeModal.initialProposedData}
+        onSubmitted={() => {
+          loadStockData();
+        }}
+      />
 
     </div>
   );

@@ -208,6 +208,13 @@ export async function PUT(request: Request) {
       withdrawal_notes
     } = body;
 
+    // Maker-Checker: Tellers cannot directly modify stock (must use change_requests)
+    if (session && session.role === 'TELLER') {
+      return NextResponse.json({ 
+        error: 'Direct stock modification is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin approval.' 
+      }, { status: 403 });
+    }
+
     if (!id) {
       return NextResponse.json({ error: 'Stock item ID is required for update' }, { status: 400 });
     }
