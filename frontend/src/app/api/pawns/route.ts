@@ -437,8 +437,22 @@ export async function POST(request: Request) {
 
     const finalInterestRate = parseFloat(interestRate) || 3.50;
     const finalPeriodMonths = parseInt(periodMonths, 10) || 3;
-    const pawnDate = (date && String(date).trim()) ? String(date).trim() : getSriLankaDate();
-    const pawnCreatedAt = date ? `${pawnDate}T12:00:00.000Z` : new Date().toISOString();
+    const todaySriLanka = getSriLankaDate();
+    const pawnDate = (date && String(date).trim()) ? String(date).trim() : todaySriLanka;
+
+    // Determine accurate creation timestamp (prevent artificial 12:00:00Z / 5:30 PM)
+    let pawnCreatedAt: string;
+    if (date && String(date).includes('T')) {
+      pawnCreatedAt = new Date(date).toISOString();
+    } else if (pawnDate === todaySriLanka) {
+      pawnCreatedAt = new Date().toISOString();
+    } else if (date) {
+      const now = new Date();
+      const timePart = now.toISOString().split('T')[1];
+      pawnCreatedAt = `${pawnDate}T${timePart}`;
+    } else {
+      pawnCreatedAt = new Date().toISOString();
+    }
 
     // Determine initial pawn status (High-ValuePawns > Rs. 100,000 require Manager Approval)
     const initialStatus = finalDisbursed > HIGH_VALUE_APPROVAL_THRESHOLD ? 'PENDING_APPROVAL' : 'ACTIVE';
