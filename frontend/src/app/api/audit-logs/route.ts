@@ -66,7 +66,8 @@ export async function GET(request: Request) {
 
     const financialActions = logs.filter(l => 
       l.action?.includes('PAWN') || 
-      l.action?.includes('REDEEM') || 
+      l.action?.includes('REDEEM') ||
+      l.action?.includes('WITHDRAW') || 
       l.action?.includes('LEDGER') ||
       l.action?.includes('INTEREST') ||
       l.action?.includes('CAPITAL')

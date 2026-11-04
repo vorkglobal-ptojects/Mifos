@@ -193,6 +193,9 @@ export default function AuditLogsPage() {
     if (act.includes('DELETE') || act.includes('REMOVE') || act.includes('REVOKE')) {
       return { label: act, bg: 'bg-rose-500/10 text-rose-600 border-rose-200 ring-rose-500/20' };
     }
+    if (act.includes('WITHDRAW')) {
+      return { label: act, bg: 'bg-purple-500/10 text-purple-700 border-purple-200 ring-purple-500/20' };
+    }
     if (act.includes('RESTORE') || act.includes('RECOVER')) {
       return { label: act, bg: 'bg-emerald-500/10 text-emerald-600 border-emerald-200 ring-emerald-500/20' };
     }
@@ -368,6 +371,7 @@ export default function AuditLogsPage() {
                 <SelectItem value="ALL" className="font-bold text-[11px] uppercase tracking-widest">All Action Types</SelectItem>
                 <SelectItem value="ORIGINATE" className="font-bold text-[11px] uppercase tracking-widest">Pawn Loans (Originate)</SelectItem>
                 <SelectItem value="REDEEM" className="font-bold text-[11px] uppercase tracking-widest">Pawn Redemptions</SelectItem>
+                <SelectItem value="WITHDRAW" className="font-bold text-[11px] uppercase tracking-widest">Stock Withdrawals</SelectItem>
                 <SelectItem value="RESTORE" className="font-bold text-[11px] uppercase tracking-widest">Stock Restores</SelectItem>
                 <SelectItem value="DELETE" className="font-bold text-[11px] uppercase tracking-widest">Stock / User Deletions</SelectItem>
                 <SelectItem value="LEDGER" className="font-bold text-[11px] uppercase tracking-widest">Ledger & Matrix Updates</SelectItem>

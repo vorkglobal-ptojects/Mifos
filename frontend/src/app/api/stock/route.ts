@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { getBranchSearchTerms, normalizeBranchId, stripBranchPrefix, extractNumericBillNo, isSameNumericBill } from '@/lib/branch-mapping';
+import { recordAuditLog } from '@/lib/audit-logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -213,7 +214,7 @@ export async function PUT(request: Request) {
 
     const { data: currentStockItem, error: fetchErr } = await adminSupabase
       .from('stock_items')
-      .select('id, bill_no, branch_id, price')
+      .select('id, bill_no, branch_id, price, weight')
       .eq('id', id)
       .maybeSingle();
 
@@ -342,6 +343,51 @@ export async function PUT(request: Request) {
       }
     } catch (syncErr) {
       console.warn('[Pawn status sync warning during stock update]:', syncErr);
+    }
+
+    // Record Security Audit Log for Stock operations
+    try {
+      const targetBill = data.bill_no || currentStockItem?.bill_no || id;
+      const targetBranch = data.branch_id || currentStockItem?.branch_id || session?.branchId || 'HQ';
+
+      if (status === 'Withdrawn') {
+        await recordAuditLog(session, {
+          action: 'WITHDRAW_STOCK',
+          resource: `stock_items:${targetBill}`,
+          branchId: targetBranch,
+          role: session?.role || 'TELLER',
+          details: {
+            stock_id: id,
+            bill_no: targetBill,
+            branch_id: targetBranch,
+            reason: withdrawal_reason || data.withdrawal_reason || 'Stock Withdrawal',
+            date: withdrawal_date || data.withdrawal_date,
+            notes: withdrawal_notes || data.withdrawal_notes || '',
+            price: data.price || currentStockItem?.price || 0,
+            weight: data.weight || currentStockItem?.weight || 0,
+            status: 'SUCCESS'
+          },
+          request
+        });
+      } else if (status === 'Active' && currentStockItem) {
+        await recordAuditLog(session, {
+          action: 'STOCK_RESTORE_TO_SAFE',
+          resource: `stock_items:${targetBill}`,
+          branchId: targetBranch,
+          role: session?.role || 'TELLER',
+          details: {
+            stock_id: id,
+            bill_no: targetBill,
+            branch_id: targetBranch,
+            restored_to: 'Active',
+            price: data.price || currentStockItem?.price || 0,
+            status: 'SUCCESS'
+          },
+          request
+        });
+      }
+    } catch (auditErr) {
+      console.warn('[Stock audit log warning]:', auditErr);
     }
 
     return NextResponse.json({
