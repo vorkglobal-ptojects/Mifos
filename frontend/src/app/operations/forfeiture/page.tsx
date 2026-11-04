@@ -11,17 +11,10 @@ import {
   AlertTriangle, ShieldAlert, Send, RefreshCcw, Search, Download, 
   Phone, User, Calendar, Clock, DollarSign, CheckCircle2, 
   X, Check, AlertCircle, FileSpreadsheet, Smartphone, Gavel,
-  Printer, Layers, Tag, Percent, RotateCcw, MessageSquare, Building2
+  Printer, Layers, Tag, Percent, RotateCcw, MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { CANONICAL_BRANCHES } from '@/lib/branch-mapping';
-
-const getBranchDisplayName = (bCode: string) => {
-  const code = (bCode || 'HQ').toUpperCase();
-  const found = CANONICAL_BRANCHES.find(b => b.id === code);
-  if (found) return `${found.name} (${found.id})`;
-  return `${code} Branch`;
-};
 
 export default function ForfeitureManagementPage() {
   const router = useRouter();
@@ -143,6 +136,33 @@ export default function ForfeitureManagementPage() {
     }
     return result;
   }, [items, phoneOnly]);
+
+  // Group items by Branch for A4 Portrait print pages
+  const branchGroups = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    displayedItems.forEach(item => {
+      const b = (item.branch_id || 'UNKNOWN').toUpperCase();
+      if (!groups[b]) groups[b] = [];
+      groups[b].push(item);
+    });
+    const sortedKeys = Object.keys(groups).sort();
+    return sortedKeys.map(bKey => {
+      const bItems = groups[bKey];
+      return {
+        branchId: bKey,
+        items: bItems,
+        totalPrincipal: bItems.reduce((acc, it) => acc + (it.principal || 0), 0),
+        totalDueInterest: bItems.reduce((acc, it) => acc + (it.outstanding_interest || 0), 0),
+        totalInterestPaid: bItems.reduce((acc, it) => acc + (it.total_interest_paid || 0), 0),
+        criticalCount: bItems.filter(it => it.days_overdue > 30).length,
+      };
+    });
+  }, [displayedItems]);
+
+  const getBranchDisplayName = (code: string) => {
+    const b = CANONICAL_BRANCHES.find(c => c.id === code);
+    return b ? `${b.name} (${code})` : code;
+  };
 
   // Select / Deselect Logic
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -421,29 +441,18 @@ Please settle immediately to avoid collateral forfeiture/auction.
       .replace(/\{interest_paid\}/gi, parseFloat(firstItem.total_interest_paid || 0).toLocaleString());
   }, [items, selectedIds, displayedItems, bulkCustomTemplate]);
 
-  // Group displayed items by branch for A4 Portrait multi-page report
-  const branchGroupedItems = useMemo(() => {
-    const groups: Record<string, any[]> = {};
-    displayedItems.forEach(item => {
-      const b = (item.branch_id || 'HQ').toUpperCase();
-      if (!groups[b]) groups[b] = [];
-      groups[b].push(item);
-    });
-    return Object.keys(groups).sort().map(branchCode => ({
-      branchCode,
-      branchName: getBranchDisplayName(branchCode),
-      items: groups[branchCode],
-      totalPrincipal: groups[branchCode].reduce((acc: number, it: any) => acc + (it.principal || 0), 0),
-      totalDueInterest: groups[branchCode].reduce((acc: number, it: any) => acc + (it.outstanding_interest || 0), 0),
-      criticalCount: groups[branchCode].filter((it: any) => it.days_overdue > 30).length
-    }));
-  }, [displayedItems]);
-
   return (
     <>
-      {/* PRINT-ONLY STYLESHEET */}
+      {/* PRINT-ONLY STYLESHEET (Configured for A4 Portrait & Branch Page Division) */}
       <style jsx global>{`
         @media print {
+          html, body {
+            background: white !important;
+            color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
+          }
           body * {
             visibility: hidden;
           }
@@ -456,144 +465,172 @@ Please settle immediately to avoid collateral forfeiture/auction.
             top: 0;
             width: 100%;
             display: block !important;
-            padding: 0;
-            margin: 0;
+            padding: 0 !important;
+            margin: 0 !important;
             background: white !important;
             color: black !important;
           }
           .no-print {
             display: none !important;
           }
-          .branch-page-section {
-            page-break-before: always;
-            break-before: page;
-            padding-bottom: 24px;
-          }
-          .branch-page-section:first-child {
-            page-break-before: avoid;
-            break-before: avoid;
-          }
           @page {
             size: A4 portrait;
             margin: 8mm 6mm 10mm 6mm;
           }
+          .branch-page-section {
+            page-break-after: always;
+            break-after: page;
+            clear: both;
+            display: block;
+            width: 100%;
+            padding-bottom: 20px;
+          }
+          .branch-page-section:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+          .table-header-repeat {
+            display: table-header-group;
+          }
+          tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
         }
       `}</style>
 
-      {/* PRINT AREA (Hidden in UI, Visible during window.print()) */}
+      {/* PRINT AREA (Hidden in UI, Visible during window.print() in A4 Portrait grouped by Branch) */}
       <div id="print-area" className="hidden">
-        {branchGroupedItems.length === 0 ? (
-          <div className="p-8 text-center text-sm font-bold text-slate-600">
-            No Forfeited Stock (FS) items found for the selected criteria.
+        {branchGroups.length === 0 ? (
+          <div className="p-8 text-center text-sm font-bold text-slate-700">
+            No overdue items match the selected filter criteria.
           </div>
         ) : (
-          branchGroupedItems.map((group, gIdx) => (
-            <div key={group.branchCode} className="branch-page-section">
-              {/* Header for this Branch Page */}
+          branchGroups.map((group, gIdx) => (
+            <div key={group.branchId} className="branch-page-section p-2 mb-4">
+              {/* Branch Sheet Header */}
               <div className="border-b-2 border-slate-900 pb-2 mb-2">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h1 className="text-xl font-black tracking-tight text-slate-900">RUPASINGHE PAWNING (PVT) LTD</h1>
+                    <h1 className="text-xl font-black tracking-tight text-slate-900 leading-tight">
+                      RUPASINGHE PAWNING (PVT) LTD
+                    </h1>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                        Forfeited Stock (FS Items) Report
+                      <span className="text-xs font-black uppercase bg-slate-900 text-white px-2 py-0.5 rounded tracking-wider">
+                        BRANCH: {getBranchDisplayName(group.branchId)}
                       </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-slate-900 text-white">
-                        {group.branchName}
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                        Forfeited Stock (FS Items) Report
                       </span>
                     </div>
                   </div>
-                  <div className="text-right text-[9px] text-slate-500">
-                    <p>Printed: {new Date().toLocaleString('en-GB')}</p>
-                    <p>Tag: <strong className="text-slate-900">{filterBillTag}</strong> | Duration: <strong className="text-slate-900">{filterPeriod === 'ALL' ? 'All' : `${filterPeriod}M`}</strong></p>
-                    <p className="font-bold text-slate-700">Branch Page {gIdx + 1} of {branchGroupedItems.length}</p>
+                  <div className="text-right text-[10px] text-slate-500 leading-tight">
+                    <p>Printed: <strong>{new Date().toLocaleString('en-GB')}</strong></p>
+                    <p>Duration: <strong>{filterPeriod === 'ALL' ? 'All Durations' : `${filterPeriod}M Elapsed`}</strong> | Tag: <strong>{filterBillTag}</strong></p>
+                    <p>Branch Section: <strong>{gIdx + 1} of {branchGroups.length}</strong></p>
                   </div>
                 </div>
 
-                {/* Branch Summary Bar */}
-                <div className="grid grid-cols-4 gap-2 mt-2 pt-1.5 border-t border-slate-200 text-[9px]">
-                  <div>Branch Overdue Items: <strong className="text-slate-900 font-bold">{group.items.length}</strong></div>
-                  <div>Principal at Risk: <strong className="text-slate-900 font-bold">Rs. {group.totalPrincipal.toLocaleString()}</strong></div>
-                  <div>Unpaid Due Interest: <strong className="text-slate-900 font-bold">Rs. {group.totalDueInterest.toLocaleString()}</strong></div>
-                  <div>Critical Overdue (&gt;30d): <strong className="text-slate-900 font-bold">{group.criticalCount}</strong></div>
+                {/* Summary Strip for this Branch */}
+                <div className="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-slate-200 text-[10px]">
+                  <div className="bg-slate-50 p-1.5 rounded border border-slate-200">
+                    Branch Overdue Items: <strong className="text-slate-900 font-bold">{group.items.length}</strong>
+                  </div>
+                  <div className="bg-slate-50 p-1.5 rounded border border-slate-200">
+                    Principal at Risk: <strong className="text-slate-900 font-bold">Rs. {group.totalPrincipal.toLocaleString()}</strong>
+                  </div>
+                  <div className="bg-slate-50 p-1.5 rounded border border-slate-200">
+                    Unpaid Due Interest: <strong className="text-rose-700 font-bold">Rs. {group.totalDueInterest.toLocaleString()}</strong>
+                  </div>
+                  <div className="bg-slate-50 p-1.5 rounded border border-slate-200">
+                    Critical (&gt;30d): <strong className="text-slate-900 font-bold">{group.criticalCount}</strong>
+                  </div>
                 </div>
               </div>
 
-              {/* Branch Items Table (A4 Portrait Optimized) */}
-              <table className="w-full text-[8.5px] border-collapse border border-slate-300">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-900 text-left border-b border-slate-300 font-bold">
-                    <th className="p-1 border border-slate-300 w-6 text-center">#</th>
-                    <th className="p-1 border border-slate-300 w-16">Bill No</th>
-                    <th className="p-1 border border-slate-300">Customer Details</th>
-                    <th className="p-1 border border-slate-300 w-24">Item &amp; Weight</th>
-                    <th className="p-1 border border-slate-300 w-16">Date</th>
-                    <th className="p-1 border border-slate-300 w-12 text-center">Elapsed</th>
+              {/* Table formatted specifically for A4 Portrait */}
+              <table className="w-full text-[9px] border-collapse border border-slate-300">
+                <thead className="table-header-repeat">
+                  <tr className="bg-slate-100 text-slate-800 text-left border-b border-slate-300 font-bold">
+                    <th className="p-1 border border-slate-300 text-center w-6">#</th>
+                    <th className="p-1 border border-slate-300 w-20">Bill No</th>
+                    <th className="p-1 border border-slate-300">Customer &amp; Contact</th>
+                    <th className="p-1 border border-slate-300 w-24">Item / Wt.</th>
+                    <th className="p-1 border border-slate-300 w-16">Pawn Date</th>
+                    <th className="p-1 border border-slate-300 text-center w-12">Elapsed</th>
                     <th className="p-1 border border-slate-300 w-16">FS Due</th>
-                    <th className="p-1 border border-slate-300 w-12 text-center">Overdue</th>
-                    <th className="p-1 border border-slate-300 w-18 text-right">Principal</th>
-                    <th className="p-1 border border-slate-300 w-16 text-right">Int. Paid</th>
-                    <th className="p-1 border border-slate-300 w-20 text-right">Due Interest</th>
+                    <th className="p-1 border border-slate-300 text-center w-12">Overdue</th>
+                    <th className="p-1 border border-slate-300 text-right w-20">Principal (Rs.)</th>
+                    <th className="p-1 border border-slate-300 text-right w-20">Due Int. (Rs.)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {group.items.map((it: any, idx: number) => (
+                  {group.items.map((it, idx) => (
                     <tr key={it.id} className="border-b border-slate-200">
-                      <td className="p-1 border border-slate-300 text-center text-slate-500">{idx + 1}</td>
-                      <td className="p-1 border border-slate-300 font-black text-slate-900 whitespace-nowrap">{it.bill_no}</td>
+                      <td className="p-1 border border-slate-300 text-center font-mono">{idx + 1}</td>
+                      <td className="p-1 border border-slate-300 font-black whitespace-nowrap">
+                        {it.bill_no}
+                        {it.bill_tag && (
+                          <span className="ml-1 text-[8px] font-bold px-1 rounded bg-slate-100 border border-slate-300">
+                            {it.bill_tag}
+                          </span>
+                        )}
+                      </td>
                       <td className="p-1 border border-slate-300">
-                        <div className="font-bold text-slate-900 leading-tight">{it.customer_name}</div>
-                        <div className="text-[7.5px] text-slate-600 font-mono">
+                        <div className="font-bold text-slate-900 truncate max-w-[150px]">{it.customer_name}</div>
+                        <div className="text-[8px] text-slate-600 font-mono">
                           {it.customer_phone || 'No Phone'}{it.customer_nic ? ` • ${it.customer_nic}` : ''}
                         </div>
                       </td>
                       <td className="p-1 border border-slate-300">
-                        <div className="font-semibold text-slate-800 leading-tight">{it.item_type || 'Gold'}</div>
-                        <div className="text-[7.5px] text-slate-500">{it.weight_grams}g</div>
+                        <span className="font-medium text-slate-800">{it.item_type || 'Gold'}</span>
+                        <span className="text-[8px] text-slate-500 ml-1">({it.weight_grams}g)</span>
                       </td>
-                      <td className="p-1 border border-slate-300 whitespace-nowrap">{it.origination_date}</td>
-                      <td className="p-1 border border-slate-300 text-center font-bold text-purple-800 whitespace-nowrap">
+                      <td className="p-1 border border-slate-300 whitespace-nowrap text-slate-700">{it.origination_date}</td>
+                      <td className="p-1 border border-slate-300 text-center font-bold text-indigo-900 whitespace-nowrap">
                         {it.elapsed_months ?? 0}M
                       </td>
-                      <td className="p-1 border border-slate-300 whitespace-nowrap">{it.effective_expiry_date}</td>
+                      <td className="p-1 border border-slate-300 whitespace-nowrap text-slate-700">{it.effective_expiry_date}</td>
                       <td className="p-1 border border-slate-300 text-center font-bold text-rose-700 whitespace-nowrap">
                         {it.days_overdue} d
                       </td>
-                      <td className="p-1 border border-slate-300 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                      <td className="p-1 border border-slate-300 text-right font-mono font-bold whitespace-nowrap">
                         {it.principal?.toLocaleString()}
                       </td>
-                      <td className="p-1 border border-slate-300 text-right font-mono text-emerald-700 whitespace-nowrap">
-                        {it.total_interest_paid?.toLocaleString()}
-                      </td>
-                      <td className="p-1 border border-slate-300 text-right font-mono font-black text-rose-900 whitespace-nowrap">
+                      <td className="p-1 border border-slate-300 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                         {it.outstanding_interest?.toLocaleString()}
                       </td>
                     </tr>
                   ))}
-                </tbody>
-                <tfoot>
-                  <tr className="bg-slate-50 font-bold border-t-2 border-slate-300 text-[9px]">
-                    <td colSpan={8} className="p-1 border border-slate-300 text-right uppercase">
-                      {group.branchCode} Total:
+                  {/* Branch Total Summary Row */}
+                  <tr className="bg-slate-50 border-t-2 border-slate-400 font-black text-[9px]">
+                    <td colSpan={8} className="p-1.5 border border-slate-300 text-right uppercase tracking-wider">
+                      Branch Total ({getBranchDisplayName(group.branchId)} - {group.items.length} Items):
                     </td>
-                    <td className="p-1 border border-slate-300 text-right font-mono text-slate-900">
+                    <td className="p-1.5 border border-slate-300 text-right font-mono text-slate-900">
                       Rs. {group.totalPrincipal.toLocaleString()}
                     </td>
-                    <td className="p-1 border border-slate-300 text-right font-mono text-emerald-700">
-                      Rs. {group.items.reduce((acc: number, it: any) => acc + (it.total_interest_paid || 0), 0).toLocaleString()}
-                    </td>
-                    <td className="p-1 border border-slate-300 text-right font-mono text-rose-900">
+                    <td className="p-1.5 border border-slate-300 text-right font-mono text-rose-700">
                       Rs. {group.totalDueInterest.toLocaleString()}
                     </td>
                   </tr>
-                </tfoot>
+                </tbody>
               </table>
 
-              {/* Branch Page Signatures */}
-              <div className="mt-4 flex justify-between text-[8.5px] text-slate-500 pt-3 border-t border-slate-300">
-                <div>Branch Manager ({group.branchCode}): ___________________</div>
-                <div>Audited By: ___________________</div>
-                <div>Authorized By (Director): ___________________</div>
+              {/* Branch Signatures */}
+              <div className="mt-8 pt-4 border-t border-slate-300 text-[10px] text-slate-600 flex justify-between items-end">
+                <div>
+                  <p className="font-semibold text-slate-700">Prepared By: ___________________________</p>
+                  <p className="text-[8px] text-slate-400 mt-0.5">Branch Staff / Cashier</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-700">Branch Manager: ___________________________</p>
+                  <p className="text-[8px] text-slate-400 mt-0.5">Verified &amp; Customer Notified</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-700">Director / Audit: ___________________________</p>
+                  <p className="text-[8px] text-slate-400 mt-0.5">Approved For Forfeiture</p>
+                </div>
               </div>
             </div>
           ))
