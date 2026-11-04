@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ItemEvaluationModal } from "@/components/ItemEvaluationModal"
 import { CustomerSelectionModal } from "@/components/CustomerSelectionModal"
+import ChangeRequestModal from "@/components/ChangeRequestModal"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
@@ -48,6 +49,28 @@ export default function PawnesPage() {
   // KYC Photo Upload Step (after inline registration)
   const [showKycStep, setShowKycStep]             = useState(false);
   const [newClientId, setNewClientId]             = useState<string>('');
+
+  // Maker-Checker Change Request Modal State
+  const [changeRequestTarget, setChangeRequestTarget] = useState<{
+    isOpen: boolean;
+    actionType: 'UPDATE' | 'DELETE';
+    pawn: any;
+    proposedData?: Record<string, any>;
+  }>({
+    isOpen: false,
+    actionType: 'DELETE',
+    pawn: null,
+    proposedData: {}
+  });
+
+  const openChangeRequest = (pawn: any, actionType: 'UPDATE' | 'DELETE', proposedData?: Record<string, any>) => {
+    setChangeRequestTarget({
+      isOpen: true,
+      actionType,
+      pawn,
+      proposedData
+    });
+  };
   const [kycActiveTab, setKycActiveTab]           = useState<'front'|'back'|'sign'>('front');
   const [kycFront, setKycFront]                   = useState<string|null>(null);
   const [kycBack, setKycBack]                     = useState<string|null>(null);
@@ -1039,6 +1062,22 @@ export default function PawnesPage() {
   const handleSave = async () => {
     if (!clientId || !amount) {
       toast.error('Missing required fields', { description: 'Please select a Customer and enter Disbursed Amount.' });
+      return;
+    }
+
+    // Intercept Teller edit mutations to route through Change Request system
+    if (editingPawn && userRole === 'TELLER') {
+      const cleanBill = billNo.trim();
+      const finalBillNo = cleanBill ? (billPrefix ? `${billPrefix} ${cleanBill}` : cleanBill) : editingPawn.bill_no;
+      openChangeRequest(editingPawn, 'UPDATE', {
+        disbursed_amount: amount,
+        appraised_value: appraisal,
+        weight_grams: weightGrams,
+        weight_mg: weightMg,
+        description: `${finalBillNo} | ${description}`.trim(),
+        period_months: periodMonths
+      });
+      setIsOpen(false);
       return;
     }
     setIsSaving(true);
@@ -2824,7 +2863,7 @@ export default function PawnesPage() {
                   </TableCell>
                   <TableCell className="px-2 py-2 text-right whitespace-nowrap">
                     <div className="flex items-center gap-1 justify-end">
-                      {pawn.status === 'PENDING_APPROVAL' && (
+                      {pawn.status === 'PENDING_APPROVAL' && userRole !== 'TELLER' && (
                         <Button
                           variant="default"
                           size="sm"
@@ -2864,13 +2903,27 @@ export default function PawnesPage() {
                               <Send className="w-3.5 h-3.5 text-amber-600" /> Send SMS Reminder
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem onClick={() => openEdit(pawn)} className="gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer">
-                            <Pencil className="w-3.5 h-3.5 text-slate-500" /> Edit Pawn Record
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator className="my-1 bg-slate-100" />
-                          <DropdownMenuItem onClick={() => handleDelete(pawn)} className="gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer">
-                            <Trash2 className="w-3.5 h-3.5 text-rose-500" /> Delete Ticket
-                          </DropdownMenuItem>
+                          {userRole === 'TELLER' ? (
+                            <>
+                              <DropdownMenuItem onClick={() => openEdit(pawn)} className="gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer">
+                                <Pencil className="w-3.5 h-3.5 text-amber-500" /> Request Edit Ticket
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="my-1 bg-slate-100" />
+                              <DropdownMenuItem onClick={() => openChangeRequest(pawn, 'DELETE')} className="gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer">
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" /> Request Delete Ticket
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
+                            <>
+                              <DropdownMenuItem onClick={() => openEdit(pawn)} className="gap-2 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer">
+                                <Pencil className="w-3.5 h-3.5 text-slate-500" /> Edit Pawn Record
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="my-1 bg-slate-100" />
+                              <DropdownMenuItem onClick={() => handleDelete(pawn)} className="gap-2 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer">
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" /> Delete Ticket
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -3302,6 +3355,21 @@ export default function PawnesPage() {
           </div>
         </DialogContent>
       </Dialog>
+    {/* Maker-Checker Change Request Modal */}
+    <ChangeRequestModal
+      isOpen={changeRequestTarget.isOpen}
+      onClose={() => setChangeRequestTarget(prev => ({ ...prev, isOpen: false }))}
+      entityType="PAWN"
+      actionType={changeRequestTarget.actionType}
+      entityId={changeRequestTarget.pawn?.id || ''}
+      referenceNo={changeRequestTarget.pawn?.bill_no || changeRequestTarget.pawn?.pawn_ticket_no || changeRequestTarget.pawn?.id?.substring(0, 8) || 'PAWN'}
+      branchId={changeRequestTarget.pawn?.branch_id || branchId || 'HQ'}
+      currentData={changeRequestTarget.pawn || {}}
+      initialProposedData={changeRequestTarget.proposedData}
+      onSubmitted={() => {
+        loadPawns();
+      }}
+    />
     </div>
   );
 }

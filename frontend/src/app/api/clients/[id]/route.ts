@@ -120,6 +120,12 @@ export async function DELETE(request: Request, context: any) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    if (session && session.role === 'TELLER') {
+      return NextResponse.json({ 
+        error: 'Direct customer deletion is strictly prohibited for Tellers. Please submit a Change Request Ticket.' 
+      }, { status: 403 });
+    }
+
     const { id } = await context.params;
     const { error } = await adminSupabase
       .from('clients')

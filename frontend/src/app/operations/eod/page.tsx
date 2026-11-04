@@ -57,6 +57,7 @@ import { TsplAdapter } from "@/lib/bluetooth/TsplAdapter";
 import { EscPosAdapter } from "@/lib/bluetooth/EscPosAdapter";
 import { normalizeBranchId, getBranchSearchTerms, stripBranchPrefix, CANONICAL_BRANCHES, extractNumericBillNo, isSameNumericBill } from "@/lib/branch-mapping";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import ChangeRequestModal from "@/components/ChangeRequestModal";
 
 // Stock item abbreviations
 const ITEM_TYPES = [
@@ -497,6 +498,26 @@ function EndOfDayContent() {
   const [selectedItemForWithdrawal, setSelectedItemForWithdrawal] = useState<any | null>(null);
   const [selectedActiveItem, setSelectedActiveItem] = useState<any | null>(null);
 
+  // Maker-Checker Change Request Modal State
+  const [stockChangeModal, setStockChangeModal] = useState<{
+    isOpen: boolean;
+    entityType: 'STOCK' | 'INTEREST';
+    actionType: 'UPDATE' | 'DELETE' | 'RESTORE' | 'VOID_INTEREST';
+    entityId: string;
+    referenceNo: string;
+    branchId: string;
+    currentData: Record<string, any>;
+    initialProposedData?: Record<string, any>;
+  }>({
+    isOpen: false,
+    entityType: 'STOCK',
+    actionType: 'DELETE',
+    entityId: '',
+    referenceNo: '',
+    branchId: '',
+    currentData: {}
+  });
+
   // Restore Modal State
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedItemForRestore, setSelectedItemForRestore] = useState<any | null>(null);
@@ -724,6 +745,18 @@ function EndOfDayContent() {
   };
 
   const handleDeleteInterest = async (id: string) => {
+    if (currentUser?.role === 'TELLER') {
+      setStockChangeModal({
+        isOpen: true,
+        entityType: 'INTEREST',
+        actionType: 'VOID_INTEREST',
+        entityId: String(id),
+        referenceNo: `INT-${id}`,
+        branchId: selectedBranch || 'HQ',
+        currentData: { id }
+      });
+      return;
+    }
     try {
       await fetch(`/api/stock/interest?id=${id}`, { method: 'DELETE' });
     } catch (e) {}
@@ -1851,6 +1884,24 @@ function EndOfDayContent() {
   // Handle Restore Stock Submission
   const handleRestoreStock = async () => {
     if (!selectedItemForRestore) return;
+    if (currentUser?.role === 'TELLER') {
+      setStockChangeModal({
+        isOpen: true,
+        entityType: 'STOCK',
+        actionType: 'RESTORE',
+        entityId: selectedItemForRestore.id || selectedItemForRestore.item_id || selectedItemForRestore.bill_no,
+        referenceNo: stripBranchPrefix(selectedItemForRestore.bill_no),
+        branchId: selectedItemForRestore.branch_id || selectedBranch || 'HQ',
+        currentData: selectedItemForRestore,
+        initialProposedData: {
+          restore_date: restoreDate,
+          interest_amount: restoreInterest,
+          notes: restoreNotes
+        }
+      });
+      setShowRestoreModal(false);
+      return;
+    }
     if (!restoreDate) {
       toast.error("Please select a restoration date.");
       return;
@@ -1917,6 +1968,18 @@ function EndOfDayContent() {
   // Handle Delete Stock Item Permanently
   const handleDeleteStock = async (item: any) => {
     const cleanDisplayBill = stripBranchPrefix(item.bill_no);
+    if (currentUser?.role === 'TELLER') {
+      setStockChangeModal({
+        isOpen: true,
+        entityType: 'STOCK',
+        actionType: 'DELETE',
+        entityId: item.id || item.item_id || item.bill_no,
+        referenceNo: cleanDisplayBill,
+        branchId: item.branch_id || selectedBranch || 'HQ',
+        currentData: item
+      });
+      return;
+    }
     if (!window.confirm(`Are you sure you want to permanently delete Bill Number "${cleanDisplayBill}" from stock inventory? This action cannot be undone.`)) {
       return;
     }

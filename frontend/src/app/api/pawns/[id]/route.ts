@@ -150,8 +150,22 @@ export async function PATCH(request: Request, context: any) {
       return NextResponse.json({ error: 'Pawn ticket not found' }, { status: 404 });
     }
 
-    if (session && session.role === 'TELLER' && normalizeBranchId(existingPawn.branch_id) !== normalizeBranchId(session.branchId)) {
-      return NextResponse.json({ error: 'Forbidden. Tellers cannot modify pawns belonging to another branch.' }, { status: 403 });
+    if (session && session.role === 'TELLER') {
+      if (normalizeBranchId(existingPawn.branch_id) !== normalizeBranchId(session.branchId)) {
+        return NextResponse.json({ error: 'Forbidden. Tellers cannot modify pawns belonging to another branch.' }, { status: 403 });
+      }
+      const isAttemptingFinancialChange = 
+        (appraisedValue !== undefined && parseFloat(appraisedValue) !== existingPawn.appraised_value) ||
+        (disbursedAmount !== undefined && parseFloat(disbursedAmount) !== existingPawn.disbursed_amount) ||
+        (billNo !== undefined && stripBranchPrefix(billNo.trim()) !== stripBranchPrefix(existingPawn.bill_no)) ||
+        (weight !== undefined && parseFloat(weight) > 0) ||
+        (weightGrams !== undefined && parseFloat(weightGrams) !== existingPawn.weight_grams);
+
+      if (isAttemptingFinancialChange) {
+        return NextResponse.json({
+          error: 'Direct modifications to pawn loan amounts, gold weights, or bill numbers are prohibited for Tellers. Please submit a Change Request Ticket for Manager approval.'
+        }, { status: 403 });
+      }
     }
 
     // Resolve valid Client UUID
@@ -364,14 +378,16 @@ export async function DELETE(request: Request, context: any) {
     const session = await getAuthenticatedUser(request);
     const { id } = await context.params;
 
+    if (session && session.role === 'TELLER') {
+      return NextResponse.json({ 
+        error: 'Direct pawn deletion is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin review.' 
+      }, { status: 403 });
+    }
+
     // Fetch pawn details first to verify branch authorization and description / bill_no
     const { data: pawn, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('id', id).single();
     if (fetchErr || !pawn) {
       return NextResponse.json({ error: 'Pawn ticket not found' }, { status: 404 });
-    }
-
-    if (session && session.role === 'TELLER' && normalizeBranchId(pawn.branch_id) !== normalizeBranchId(session.branchId)) {
-      return NextResponse.json({ error: 'Forbidden. Tellers cannot delete pawns belonging to another branch.' }, { status: 403 });
     }
 
     const { error } = await adminSupabase.from('pawns').delete().eq('id', id);

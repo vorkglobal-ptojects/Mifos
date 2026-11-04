@@ -1,5 +1,6 @@
 'use client';
 import { getAuthHeaders } from '@/lib/getAuthHeaders';
+import ChangeRequestModal from '@/components/ChangeRequestModal';
 import { normalizeBranchId } from '@/lib/branch-mapping';
 import { toast } from 'sonner';
 
@@ -48,6 +49,9 @@ const BRANCHES = [
 
 export default function DailyLedgerEntryPage() {
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [hasExistingLedger, setHasExistingLedger] = useState<boolean>(false);
+  const [existingLedgerData, setExistingLedgerData] = useState<any>(null);
+  const [ledgerCorrectionModal, setLedgerCorrectionModal] = useState<boolean>(false);
   const [isHqUser, setIsHqUser] = useState(false);
 
   // Form State
@@ -132,6 +136,8 @@ export default function DailyLedgerEntryPage() {
 
         if (data.ledger) {
           const l = data.ledger;
+          setHasExistingLedger(true);
+          setExistingLedgerData(l);
           setCpBalance(l.cp_balance || '');
           setOpeningBalance(l.opening_balance || '');
           setTransferIn(l.transfer_in || '');
@@ -149,6 +155,8 @@ export default function DailyLedgerEntryPage() {
           setTransactions(data.transactions || []);
           setExpenses(data.expenses || []);
         } else {
+          setHasExistingLedger(false);
+          setExistingLedgerData(null);
           // Reset form for fresh date
           setCpBalance('');
           // Auto-fill opening balance from previous day closing if available!
@@ -268,6 +276,11 @@ export default function DailyLedgerEntryPage() {
 
   // Save Handler
   const handleSaveLedger = async () => {
+    // If an existing ledger is already saved and user is TELLER, redirect to Maker-Checker ticket
+    if (hasExistingLedger && currentUser?.role === 'TELLER') {
+      setLedgerCorrectionModal(true);
+      return;
+    }
     setSaving(true);
     setFeedback(null);
 
@@ -753,6 +766,30 @@ export default function DailyLedgerEntryPage() {
         )}
       </div>
 
+      {/* Maker-Checker Ledger Correction Modal */}
+      <ChangeRequestModal
+        isOpen={ledgerCorrectionModal}
+        onClose={() => setLedgerCorrectionModal(false)}
+        entityType="DAILY_LEDGER"
+        actionType="LEDGER_ADJUST"
+        entityId={existingLedgerData?.id || `${normalizeBranchId(selectedBranch || 'HQ')}_${ledgerDate}`}
+        referenceNo={`${normalizeBranchId(selectedBranch || 'HQ')} (${ledgerDate})`}
+        branchId={normalizeBranchId(selectedBranch || 'HQ')}
+        currentData={existingLedgerData || {}}
+        initialProposedData={{
+          closing_balance: userClosingBalance !== '' ? Number(userClosingBalance) : calculatedClosing,
+          expenses_total: expensesTotal,
+          opening_balance: openingBalance,
+          transfer_in: transferIn,
+          transfer_out: transferOut,
+          loan_issued_total: loanIssuedTotal,
+          redemption_total: redemptionTotal,
+          interest_rec_total: interestRecTotal
+        }}
+        onSubmitted={() => {
+          fetchLedgerData();
+        }}
+      />
     </div>
   );
 }

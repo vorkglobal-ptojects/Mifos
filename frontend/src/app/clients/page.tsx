@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import ChangeRequestModal from "@/components/ChangeRequestModal"
 import { supabase } from "@/lib/supabase"
 import {
   DropdownMenu,
@@ -85,6 +86,13 @@ export default function ClientsPage() {
   const [userId, setUserId] = useState('');
   const [userRole, setUserRole] = useState('');
   const [editingClient, setEditingClient] = useState<any>(null);
+  const [clientDeleteModal, setClientDeleteModal] = useState<{
+    isOpen: boolean;
+    client: any;
+  }>({
+    isOpen: false,
+    client: null
+  });
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
   const [isBranchFilterOpen, setIsBranchFilterOpen] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
@@ -641,6 +649,10 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
   };
 
   const handleDelete = async (client: any) => {
+    if (userRole === 'TELLER') {
+      setClientDeleteModal({ isOpen: true, client });
+      return;
+    }
     if (!confirm(`Are you sure you want to remove ${client.first_name || client.firstName}?`)) return;
 
     const toastId = toast.loading("Deleting customer...");
@@ -767,6 +779,11 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
   };
 
   const handleDeleteCustomer = async (id: string) => {
+    if (userRole === 'TELLER') {
+      const targetCust = clients.find((c: any) => c.id === id);
+      setClientDeleteModal({ isOpen: true, client: targetCust || { id } });
+      return;
+    }
     if (!confirm("Are you sure you want to delete this customer profile?")) return;
     try {
       if (isUsingSupabase) {

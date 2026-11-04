@@ -17,6 +17,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 });
     }
 
+    // Direct restore prohibited for TELLER
+    if (session && session.role === 'TELLER') {
+      return NextResponse.json({ 
+        error: 'Direct stock restore to safe is prohibited for Tellers. Please submit a Change Request Ticket for Manager approval.' 
+      }, { status: 403 });
+    }
+
     // 1. Fetch item from stock_items
     const { data: item, error: fetchErr } = await adminSupabase
       .from('stock_items')
@@ -26,11 +33,6 @@ export async function POST(req: Request) {
 
     if (fetchErr || !item) {
       return NextResponse.json({ error: 'Stock item not found' }, { status: 404 });
-    }
-
-    // Branch authorization check for TELLER
-    if (session && session.role === 'TELLER' && item.branch_id && item.branch_id !== session.branchId) {
-      return NextResponse.json({ error: 'Forbidden. You can only restore items belonging to your assigned branch.' }, { status: 403 });
     }
 
     // 2. Format history notes

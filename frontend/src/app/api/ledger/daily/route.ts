@@ -135,6 +135,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'branch_id and ledger_date are required' }, { status: 400 });
     }
 
+    // Protection: Tellers cannot overwrite submitted daily ledgers or edit past dates without Manager Ticket
+    if (session && session.role === 'TELLER') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data: existingLedger } = await adminSupabase
+        .from('daily_ledgers')
+        .select('id, status, created_by')
+        .eq('branch_id', canonicalBranchId)
+        .eq('ledger_date', ledger_date)
+        .maybeSingle();
+
+      if (existingLedger && (ledger_date < todayStr || existingLedger.status === 'APPROVED' || existingLedger.status === 'LOCKED')) {
+        return NextResponse.json({
+          error: `Daily Ledger for ${ledger_date} has already been submitted and locked. Tellers cannot overwrite locked ledgers directly. Please submit a Ledger Correction Ticket for Manager approval.`
+        }, { status: 403 });
+      }
+    }
+
 
     // --- CASH MATH ---
     const calcOpeningCash = Number(opening_balance) || 0;

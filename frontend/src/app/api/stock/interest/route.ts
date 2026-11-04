@@ -273,6 +273,12 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Missing required param: id' }, { status: 400 });
     }
 
+    if (session && session.role === 'TELLER') {
+      return NextResponse.json({ 
+        error: 'Direct deletion of interest payment records is prohibited for Tellers. Please request Manager/Admin authorization.' 
+      }, { status: 403 });
+    }
+
     if (adminSupabase) {
       try {
         await adminSupabase

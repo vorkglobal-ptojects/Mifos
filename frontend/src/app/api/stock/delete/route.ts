@@ -27,14 +27,10 @@ export async function POST(req: Request) {
     const { data: existingItems } = await query;
     const existingItem = existingItems && existingItems.length > 0 ? existingItems[0] : null;
 
-    if (session && session.role === 'TELLER' && existingItem && existingItem.branch_id) {
-      const itemBranch = String(existingItem.branch_id).trim().toUpperCase();
-      const userBranch = String(session.branchId).trim().toUpperCase();
-      if (itemBranch !== 'ALL' && itemBranch !== userBranch) {
-        return NextResponse.json({ 
-          error: `Forbidden. Tellers at branch (${userBranch}) cannot delete stock items belonging to branch (${itemBranch}).` 
-        }, { status: 403 });
-      }
+    if (session && session.role === 'TELLER') {
+      return NextResponse.json({ 
+        error: 'Direct stock deletion is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin approval.' 
+      }, { status: 403 });
     }
 
     // 2. Perform deletion from stock_items by ID first, then by bill_no fallback
