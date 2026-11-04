@@ -457,7 +457,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
             <div className="text-right text-xs text-slate-500">
               <p>Generated: {new Date().toLocaleString('en-GB')}</p>
               <p>Branch Filter: <strong className="text-slate-900">{filterBranch}</strong></p>
-              <p>Period: <strong className="text-slate-900">{filterPeriod === 'ALL' ? 'All Periods' : `${filterPeriod}M`}</strong> | Tag: <strong className="text-slate-900">{filterBillTag}</strong></p>
+              <p>Duration: <strong className="text-slate-900">{filterPeriod === 'ALL' ? 'All Durations' : `${filterPeriod}M Elapsed`}</strong> | Tag: <strong className="text-slate-900">{filterBillTag}</strong></p>
             </div>
           </div>
 
@@ -480,8 +480,8 @@ Please settle immediately to avoid collateral forfeiture/auction.
               <th className="p-1.5 border border-slate-300">NIC</th>
               <th className="p-1.5 border border-slate-300">Item / Weight</th>
               <th className="p-1.5 border border-slate-300">Date</th>
-              <th className="p-1.5 border border-slate-300">Period</th>
-              <th className="p-1.5 border border-slate-300">Expiry Date</th>
+              <th className="p-1.5 border border-slate-300">Elapsed</th>
+              <th className="p-1.5 border border-slate-300">FS Due Date</th>
               <th className="p-1.5 border border-slate-300">Overdue</th>
               <th className="p-1.5 border border-slate-300 text-right">Principal (LKR)</th>
               <th className="p-1.5 border border-slate-300 text-right">Interest Paid</th>
@@ -499,7 +499,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
                 <td className="p-1.5 border border-slate-300">{it.customer_nic || '-'}</td>
                 <td className="p-1.5 border border-slate-300">{it.item_type} ({it.weight_grams}g)</td>
                 <td className="p-1.5 border border-slate-300">{it.origination_date}</td>
-                <td className="p-1.5 border border-slate-300">{it.period_months}M</td>
+                <td className="p-1.5 border border-slate-300 font-bold">{it.elapsed_months ?? 0}M</td>
                 <td className="p-1.5 border border-slate-300">{it.effective_expiry_date}</td>
                 <td className="p-1.5 border border-slate-300 font-bold text-rose-700">{it.days_overdue} d</td>
                 <td className="p-1.5 border border-slate-300 text-right">{it.principal?.toLocaleString()}</td>
@@ -727,33 +727,36 @@ Please settle immediately to avoid collateral forfeiture/auction.
               </SelectContent>
             </Select>
 
-            {/* 2. Period (Months) Filter */}
+            {/* 2. Elapsed Duration (Months from Start Date) Filter */}
             <Select value={filterPeriod} onValueChange={(val) => setFilterPeriod(val || 'ALL')}>
-              <SelectTrigger className="h-10 w-32 rounded-2xl bg-white border-slate-200 text-xs font-bold">
-                <SelectValue placeholder="Period" />
+              <SelectTrigger className="h-10 w-44 rounded-2xl bg-white border-slate-200 text-xs font-bold">
+                <SelectValue placeholder="Elapsed Duration" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All Periods</SelectItem>
-                <SelectItem value="1">1 Month (1M)</SelectItem>
-                <SelectItem value="2">2 Months (2M)</SelectItem>
-                <SelectItem value="3">3 Months (3M)</SelectItem>
-                <SelectItem value="6">6 Months (6M)</SelectItem>
-                <SelectItem value="12">12 Months (12M)</SelectItem>
+                <SelectItem value="ALL">All Durations (All FS)</SelectItem>
+                <SelectItem value="1">1 Month Elapsed</SelectItem>
+                <SelectItem value="2">2 Months Elapsed</SelectItem>
+                <SelectItem value="3">3 Months (1R FS Threshold)</SelectItem>
+                <SelectItem value="5">5 Months (3R/3M FS Threshold)</SelectItem>
+                <SelectItem value="6">6 Months Elapsed</SelectItem>
+                <SelectItem value="12">12 Months Elapsed</SelectItem>
+                <SelectItem value="13">13+ Months (12R/A FS Threshold)</SelectItem>
               </SelectContent>
             </Select>
 
-            {/* 3. Bill Tag Filter (1R to 12R) */}
+            {/* 3. Bill Tag Filter (1R, 3R, 3M, 12R, A) */}
             <Select value={filterBillTag} onValueChange={(val) => setFilterBillTag(val || 'ALL')}>
-              <SelectTrigger className="h-10 w-28 rounded-2xl bg-white border-slate-200 text-xs font-bold">
+              <SelectTrigger className="h-10 w-36 rounded-2xl bg-white border-slate-200 text-xs font-bold">
                 <SelectValue placeholder="Tag" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Tags</SelectItem>
-                <SelectItem value="1R">1R Tickets</SelectItem>
-                <SelectItem value="2R">2R Tickets</SelectItem>
-                <SelectItem value="3R">3R Tickets</SelectItem>
-                <SelectItem value="6R">6R Tickets</SelectItem>
-                <SelectItem value="12R">12R Tickets</SelectItem>
+                <SelectItem value="1R">1R Tickets (3M FS)</SelectItem>
+                <SelectItem value="3R">3R Tickets (5M FS)</SelectItem>
+                <SelectItem value="3M">3M Tickets (5M FS)</SelectItem>
+                <SelectItem value="12R">12R Tickets (13M FS)</SelectItem>
+                <SelectItem value="A">A Tickets (13M FS)</SelectItem>
+                <SelectItem value="6R">6R Tickets (Legacy)</SelectItem>
                 <SelectItem value="OTHER">Other / Non-R</SelectItem>
               </SelectContent>
             </Select>
@@ -927,9 +930,14 @@ Please settle immediately to avoid collateral forfeiture/auction.
                               <span className="font-semibold text-slate-700">
                                 {item.origination_date}
                               </span>
-                              <span className="text-[11px] font-bold text-amber-700">
-                                {item.period_months}M Contract ({item.interest_rate}%)
-                              </span>
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                  {item.elapsed_months ?? 0}M Elapsed
+                                </span>
+                                <span className="text-[10px] font-medium text-slate-400">
+                                  ({item.fs_threshold_months ?? 3}M Rule)
+                                </span>
+                              </div>
                             </div>
                           </TableCell>
 
@@ -940,16 +948,23 @@ Please settle immediately to avoid collateral forfeiture/auction.
                                 {item.effective_expiry_date}
                               </span>
                               <div className="mt-1">
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                                  isCritical 
-                                    ? 'bg-rose-500/15 text-rose-700 border-rose-300' 
-                                    : isMedium 
-                                      ? 'bg-amber-500/15 text-amber-800 border-amber-300' 
-                                      : 'bg-yellow-500/15 text-yellow-800 border-yellow-300'
-                                }`}>
-                                  <AlertTriangle className="w-3 h-3" />
-                                  {item.days_overdue} Days Overdue
-                                </span>
+                                {item.is_fs_eligible ? (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                    isCritical 
+                                      ? 'bg-rose-500/15 text-rose-700 border-rose-300' 
+                                      : isMedium 
+                                        ? 'bg-amber-500/15 text-amber-800 border-amber-300' 
+                                        : 'bg-yellow-500/15 text-yellow-800 border-yellow-300'
+                                  }`}>
+                                    <AlertTriangle className="w-3 h-3" />
+                                    FS Overdue ({item.days_overdue}d)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border bg-sky-50 text-sky-700 border-sky-200">
+                                    <Clock className="w-3 h-3" />
+                                    In Grace ({Math.max(0, (item.fs_threshold_months || 3) - (item.elapsed_months || 0))}m left)
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </TableCell>

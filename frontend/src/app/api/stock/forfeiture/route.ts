@@ -17,9 +17,25 @@ function extractPeriodMonths(billNo?: string, itemType?: string, defaultPeriod =
   return defaultPeriod;
 }
 
+function getFsThresholdMonths(billNo?: string): number {
+  if (!billNo) return 3;
+  const upper = billNo.toUpperCase().trim();
+  if (upper.startsWith('1R')) return 3;           // 1R FS at 3 months
+  if (upper.startsWith('3R') || upper.startsWith('3M')) return 5; // 3R / 3M FS at 5 months
+  if (upper.startsWith('12R') || upper.startsWith('A')) return 13; // 12R & A FS at 13 months
+  if (upper.startsWith('6R')) return 8;           // 6R (legacy fallback)
+  return 3;
+}
+
 function extractBillTag(billNo?: string): string {
   if (!billNo) return 'OTHER';
   const upper = billNo.toUpperCase().trim();
+  if (upper.startsWith('1R')) return '1R';
+  if (upper.startsWith('3R')) return '3R';
+  if (upper.startsWith('3M')) return '3M';
+  if (upper.startsWith('12R')) return '12R';
+  if (upper.startsWith('A')) return 'A';
+  if (upper.startsWith('6R')) return '6R';
   const match = upper.match(/(\d+R)/);
   if (match) return match[1];
   return 'OTHER';
@@ -189,19 +205,26 @@ export async function GET(request: Request) {
 
       // Determine period, tag, and rates
       const periodMonths = linkedPawn?.period_months || extractPeriodMonths(item.bill_no, item.item_type, 3);
+      const fsThresholdMonths = getFsThresholdMonths(item.bill_no);
       const billTag = extractBillTag(item.bill_no);
       const interestRate = parseFloat(linkedPawn?.interest_rate) || 3.50;
       const principal = parseFloat(linkedPawn?.disbursed_amount) || parseFloat(item.price) || 0;
       const weight = parseFloat(item.weight) || 0;
 
-      // Determine origination date
+      // Determine origination date (Pawn Start Date)
       const origDateStr = linkedPawn?.created_at || item.date || item.created_at;
       const origDate = new Date(origDateStr);
       if (isNaN(origDate.getTime())) continue;
 
-      // Initial Maturity Date = origDate + periodMonths
-      const maturityDate = new Date(origDate);
-      maturityDate.setMonth(maturityDate.getMonth() + periodMonths);
+      // Elapsed duration from Pawn Start Date
+      const diffTime = now.getTime() - origDate.getTime();
+      const elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+      const elapsedMonths = Math.max(0, Math.floor(elapsedDays / 30.4375));
+
+      // Business FS Rules:
+      // 1R -> 3 months, 3R/3M -> 5 months, 12R & A -> 13 months, 6R -> 8 months
+      const baseFsDate = new Date(origDate);
+      baseFsDate.setMonth(baseFsDate.getMonth() + fsThresholdMonths);
 
       // Check interest records
       const intList = interestsByBillMap[billKey] || interestsByBillMap[rawBillKey] || [];
@@ -230,109 +253,128 @@ export async function GET(request: Request) {
         }
       });
 
-      // Effective Expiry Date = maturityDate + coveredMonths
-      const effectiveExpiry = new Date(maturityDate);
-      effectiveExpiry.setMonth(effectiveExpiry.getMonth() + coveredMonths);
+      // Effective FS Date = baseFsDate + coveredMonths
+      // If customer paid interest for N months, FS date moves forward by N months
+      const effectiveFsDate = new Date(baseFsDate);
+      effectiveFsDate.setMonth(effectiveFsDate.getMonth() + coveredMonths);
 
-      // Check if overdue for forfeiture (Effective Expiry Date < Today)
-      if (effectiveExpiry < now) {
-        const diffMs = now.getTime() - effectiveExpiry.getTime();
-        const daysOverdue = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const hasPaidInterest = totalInterestPaid > 0 || coveredMonths > 0;
+      const isFsEligible = effectiveFsDate <= now;
 
-        // Calculate total elapsed months and outstanding interest
-        const totalElapsedMonths = Math.max(1, Math.ceil((now.getTime() - origDate.getTime()) / (1000 * 60 * 60 * 24 * 30.4375)));
-        const unpaidMonths = Math.max(1, totalElapsedMonths - coveredMonths);
-        const monthlyInterest = principal * (interestRate / 100);
-        const outstandingInterest = Math.round(unpaidMonths * monthlyInterest);
+      // Days Overdue beyond effective FS threshold
+      const daysOverdue = isFsEligible
+        ? Math.floor((now.getTime() - effectiveFsDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 0;
 
-        // Resolve Customer Information
-        let customerName = 'Valued Customer';
-        let customerPhone = '';
-        let customerNic = '';
-        let customerAddress = '';
+      // Calculate total elapsed months and outstanding interest
+      const unpaidMonths = Math.max(1, Math.max(0, elapsedMonths - coveredMonths));
+      const monthlyInterest = principal * (interestRate / 100);
+      const outstandingInterest = Math.round(unpaidMonths * monthlyInterest);
 
-        if (linkedPawn?.client_id && clientsMap[linkedPawn.client_id]) {
-          const c = clientsMap[linkedPawn.client_id];
-          customerName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Valued Customer';
-          customerPhone = cleanPhoneDisplay(c.phone);
-          customerNic = c.national_id || '';
-          customerAddress = c.address || '';
-        } else if (numBill && scByNumericBillMap[numBill]) {
-          const sc = scByNumericBillMap[numBill];
-          customerName = sc.name || 'Valued Customer';
-          customerPhone = cleanPhoneDisplay(sc.tp);
-          customerNic = sc.nic || '';
-          customerAddress = sc.address || '';
-        }
+      // Resolve Customer Information
+      let customerName = 'Valued Customer';
+      let customerPhone = '';
+      let customerNic = '';
+      let customerAddress = '';
 
-        // SMS status check
-        const recentSms = customerPhone ? recentSmsByPhoneMap[customerPhone] : null;
-
-        const fsRecord = {
-          id: item.id,
-          pawn_id: linkedPawn?.id || null,
-          bill_no: item.bill_no,
-          bill_tag: billTag,
-          branch_id: branch,
-          item_type: item.item_type,
-          weight_grams: weight,
-          principal: principal,
-          interest_rate: interestRate,
-          period_months: periodMonths,
-          origination_date: origDate.toISOString().split('T')[0],
-          initial_maturity_date: maturityDate.toISOString().split('T')[0],
-          effective_expiry_date: effectiveExpiry.toISOString().split('T')[0],
-          days_overdue: daysOverdue,
-          covered_months: coveredMonths,
-          total_interest_paid: totalInterestPaid,
-          last_interest_date: lastInterestDate,
-          last_interest_amount: lastInterestAmount,
-          outstanding_interest: outstandingInterest,
-          has_paid_interest: totalInterestPaid > 0 || coveredMonths > 0,
-          customer_name: customerName,
-          customer_phone: customerPhone,
-          customer_nic: customerNic,
-          customer_address: customerAddress,
-          has_phone: isValidPhone(customerPhone),
-          last_sms_sent_at: recentSms?.created_at || null,
-          last_sms_status: recentSms?.status || null
-        };
-
-        // Filter 1: Severity
-        if (severityParam === '1-14' && (daysOverdue < 1 || daysOverdue > 14)) continue;
-        if (severityParam === '15-30' && (daysOverdue < 15 || daysOverdue > 30)) continue;
-        if ((severityParam === '30+' || severityParam === '30 ' || severityParam === '30%2B') && daysOverdue <= 30) continue;
-
-        // Filter 2: Period (Months)
-        if (periodParam !== 'ALL') {
-          const reqP = parseInt(periodParam, 10);
-          if (fsRecord.period_months !== reqP) continue;
-        }
-
-        // Filter 3: Bill Tag (1R, 2R, 3R, 6R, 12R, OTHER)
-        if (billTagParam !== 'ALL') {
-          if (billTagParam === 'OTHER') {
-            if (['1R', '2R', '3R', '6R', '12R'].includes(billTag)) continue;
-          } else if (billTag !== billTagParam) {
-            continue;
-          }
-        }
-
-        // Filter 4: Interest Payment Status
-        if (interestStatusParam === 'PAID') {
-          if (!fsRecord.has_paid_interest) continue;
-        } else if (interestStatusParam === 'UNPAID') {
-          if (fsRecord.has_paid_interest) continue;
-        }
-
-        // Filter 5: Search Query
-        if (searchParam) {
-          const targetStr = `${fsRecord.bill_no} ${fsRecord.customer_name} ${fsRecord.customer_phone} ${fsRecord.customer_nic} ${fsRecord.branch_id} ${fsRecord.item_type}`.toLowerCase();
-          if (!targetStr.includes(searchParam)) continue;
-        }
-
-        fsItems.push(fsRecord);
+      if (linkedPawn?.client_id && clientsMap[linkedPawn.client_id]) {
+        const c = clientsMap[linkedPawn.client_id];
+        customerName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Valued Customer';
+        customerPhone = cleanPhoneDisplay(c.phone);
+        customerNic = c.national_id || '';
+        customerAddress = c.address || '';
+      } else if (numBill && scByNumericBillMap[numBill]) {
+        const sc = scByNumericBillMap[numBill];
+        customerName = sc.name || 'Valued Customer';
+        customerPhone = cleanPhoneDisplay(sc.tp);
+        customerNic = sc.nic || '';
+        customerAddress = sc.address || '';
       }
+
+      // SMS status check
+      const recentSms = customerPhone ? recentSmsByPhoneMap[customerPhone] : null;
+
+      const fsRecord = {
+        id: item.id,
+        pawn_id: linkedPawn?.id || null,
+        bill_no: item.bill_no,
+        bill_tag: billTag,
+        branch_id: branch,
+        item_type: item.item_type,
+        weight_grams: weight,
+        principal: principal,
+        interest_rate: interestRate,
+        period_months: periodMonths,
+        fs_threshold_months: fsThresholdMonths,
+        elapsed_months: elapsedMonths,
+        elapsed_days: elapsedDays,
+        origination_date: origDate.toISOString().split('T')[0],
+        initial_maturity_date: baseFsDate.toISOString().split('T')[0],
+        effective_expiry_date: effectiveFsDate.toISOString().split('T')[0],
+        is_fs_eligible: isFsEligible,
+        days_overdue: daysOverdue,
+        covered_months: coveredMonths,
+        total_interest_paid: totalInterestPaid,
+        last_interest_date: lastInterestDate,
+        last_interest_amount: lastInterestAmount,
+        outstanding_interest: outstandingInterest,
+        has_paid_interest: hasPaidInterest,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_nic: customerNic,
+        customer_address: customerAddress,
+        has_phone: isValidPhone(customerPhone),
+        last_sms_sent_at: recentSms?.created_at || null,
+        last_sms_status: recentSms?.status || null
+      };
+
+      // Default view when periodParam === 'ALL' and severityParam === 'ALL' shows all items eligible for FS
+      if (periodParam === 'ALL' && severityParam === 'ALL') {
+        if (!isFsEligible) continue;
+      }
+
+      // Filter 1: Severity
+      if (severityParam === '1-14') {
+        if (!isFsEligible || daysOverdue < 1 || daysOverdue > 14) continue;
+      } else if (severityParam === '15-30') {
+        if (!isFsEligible || daysOverdue < 15 || daysOverdue > 30) continue;
+      } else if (severityParam === '30+' || severityParam === '30 ' || severityParam === '30%2B') {
+        if (!isFsEligible || daysOverdue <= 30) continue;
+      }
+
+      // Filter 2: Period / Elapsed Months from Start Date
+      if (periodParam !== 'ALL') {
+        if (periodParam === '13' || periodParam === '13+') {
+          if (elapsedMonths < 13) continue;
+        } else {
+          const reqM = parseInt(periodParam, 10);
+          if (!isNaN(reqM) && elapsedMonths !== reqM) continue;
+        }
+      }
+
+      // Filter 3: Bill Tag (1R, 3R, 3M, 12R, A, 6R, OTHER)
+      if (billTagParam !== 'ALL') {
+        if (billTagParam === 'OTHER') {
+          if (['1R', '3R', '3M', '12R', 'A', '6R'].includes(billTag)) continue;
+        } else if (billTag !== billTagParam) {
+          continue;
+        }
+      }
+
+      // Filter 4: Interest Payment Status (PAID >= 1 mo vs UNPAID / Zero Paid)
+      if (interestStatusParam === 'PAID') {
+        if (!fsRecord.has_paid_interest) continue;
+      } else if (interestStatusParam === 'UNPAID') {
+        if (fsRecord.has_paid_interest) continue;
+      }
+
+      // Filter 5: Search Query
+      if (searchParam) {
+        const targetStr = `${fsRecord.bill_no} ${fsRecord.customer_name} ${fsRecord.customer_phone} ${fsRecord.customer_nic} ${fsRecord.branch_id} ${fsRecord.item_type}`.toLowerCase();
+        if (!targetStr.includes(searchParam)) continue;
+      }
+
+      fsItems.push(fsRecord);
     }
 
     // Sort by days_overdue descending (highest urgency first)
