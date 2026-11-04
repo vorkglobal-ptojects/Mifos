@@ -32,6 +32,7 @@ import {
   Building2,
   Smartphone,
   Package,
+  AlertTriangle,
   Percent,
   Receipt,
   Banknote
@@ -65,6 +66,7 @@ const navGroups = [
     icon: Package,
     items: [
       { name: 'Pawn Stock', href: '/operations/eod?tab=stock', icon: Package },
+      { name: 'FS Items (Forfeiture)', href: '/operations/forfeiture', icon: AlertTriangle, adminOnly: true },
     ]
   },
   {

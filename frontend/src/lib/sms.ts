@@ -118,14 +118,11 @@ export async function sendFreeSms(params: SendSmsParams) {
     // 2. Insert into sms_logs
     try {
       await adminSupabase.from('sms_logs').insert([{
-        phone: cleanPhone,
-        message,
-        ticket_no: ticketNo || '',
-        amount: amount || 0,
-        type,
+        recipient_phone: cleanPhone,
+        message_text: message,
+        branch_id: branchId || null,
         status: smsSuccess ? 'SENT' : 'QUEUED',
-        dispatch_notice: dispatchNotice,
-        branch_id: branchId,
+        gateway_response: dispatchNotice,
         created_at: new Date().toISOString()
       }]);
     } catch (insertErr) {
@@ -212,4 +209,28 @@ Please visit our branch for interest payment or renewal.
 ඔබගේ උකස් පොලිය ගෙවීමට පැමිණෙන්න.
 அடகு வட்டி செலுத்த வரவும்.
 Thank you!`;
+}
+
+
+export function buildForfeitureWarningSms(params: {
+  customerName: string;
+  ticketNo: string;
+  principal: number;
+  interestDue: number;
+  expiryDate: string;
+  branchName?: string;
+  branchPhone?: string;
+}): string {
+  const { customerName, ticketNo, principal, interestDue, expiryDate, branchPhone } = params;
+  const nameDisplay = (customerName && customerName !== '.' && customerName !== 'Valued Customer') 
+    ? customerName 
+    : 'Valued Customer';
+  const phoneText = branchPhone ? ` Tel: ${branchPhone}` : '';
+
+  return `RUPASINGHE PAWNING (PVT) LTD
+Dear ${nameDisplay},
+URGENT: Pawn Ticket #${ticketNo} (Principal: Rs. ${principal.toLocaleString()}) expired on ${expiryDate}.
+Unpaid Interest: Rs. ${interestDue.toLocaleString()}.
+Please settle immediately to prevent item forfeiture/auction.
+කරුණාකර භාණ්ඩ සින්න වීම වැළැක්වීමට වහාම ශාඛාව අමතන්න.${phoneText}`;
 }

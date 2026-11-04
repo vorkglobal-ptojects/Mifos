@@ -27,6 +27,7 @@ import {
   PlaySquare,
   Eye,
   Package,
+  AlertTriangle,
   Landmark,
   Percent
 } from 'lucide-react';
@@ -67,6 +68,7 @@ const navGroups = [
     label: "Stock Management",
     items: [
       { name: 'Pawn Stock', href: '/operations/eod?tab=stock', icon: Package },
+      { name: 'FS Items (Forfeiture)', href: '/operations/forfeiture', icon: AlertTriangle, adminOnly: true },
     ]
   },
   {
