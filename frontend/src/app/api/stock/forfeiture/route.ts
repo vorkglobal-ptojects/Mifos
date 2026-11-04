@@ -12,9 +12,17 @@ function extractPeriodMonths(billNo?: string, itemType?: string, defaultPeriod =
   const match = upper.match(/(\d+)R/);
   if (match) {
     const p = parseInt(match[1], 10);
-    if ([1, 3, 6, 12].includes(p)) return p;
+    if ([1, 2, 3, 6, 12].includes(p)) return p;
   }
   return defaultPeriod;
+}
+
+function extractBillTag(billNo?: string): string {
+  if (!billNo) return 'OTHER';
+  const upper = billNo.toUpperCase().trim();
+  const match = upper.match(/(\d+R)/);
+  if (match) return match[1];
+  return 'OTHER';
 }
 
 function isValidPhone(p?: string | null): boolean {
@@ -51,6 +59,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const branchParam = searchParams.get('branch') || 'ALL';
     const severityParam = searchParams.get('severity') || 'ALL';
+    const periodParam = searchParams.get('period') || 'ALL';
+    const billTagParam = (searchParams.get('billTag') || 'ALL').toUpperCase();
+    const interestStatusParam = (searchParams.get('interestStatus') || 'ALL').toUpperCase();
     const searchParam = (searchParams.get('search') || '').trim().toLowerCase();
 
     // 1. Paginated fetch of all active stock items
@@ -176,8 +187,9 @@ export async function GET(request: Request) {
       // Find linked pawn
       const linkedPawn = pawnsByBillMap[billKey] || pawnsByBillMap[rawBillKey] || null;
 
-      // Determine period and rates
+      // Determine period, tag, and rates
       const periodMonths = linkedPawn?.period_months || extractPeriodMonths(item.bill_no, item.item_type, 3);
+      const billTag = extractBillTag(item.bill_no);
       const interestRate = parseFloat(linkedPawn?.interest_rate) || 3.50;
       const principal = parseFloat(linkedPawn?.disbursed_amount) || parseFloat(item.price) || 0;
       const weight = parseFloat(item.weight) || 0;
@@ -260,6 +272,7 @@ export async function GET(request: Request) {
           id: item.id,
           pawn_id: linkedPawn?.id || null,
           bill_no: item.bill_no,
+          bill_tag: billTag,
           branch_id: branch,
           item_type: item.item_type,
           weight_grams: weight,
@@ -275,6 +288,7 @@ export async function GET(request: Request) {
           last_interest_date: lastInterestDate,
           last_interest_amount: lastInterestAmount,
           outstanding_interest: outstandingInterest,
+          has_paid_interest: totalInterestPaid > 0 || coveredMonths > 0,
           customer_name: customerName,
           customer_phone: customerPhone,
           customer_nic: customerNic,
@@ -284,14 +298,36 @@ export async function GET(request: Request) {
           last_sms_status: recentSms?.status || null
         };
 
-        // Filter by Severity
+        // Filter 1: Severity
         if (severityParam === '1-14' && (daysOverdue < 1 || daysOverdue > 14)) continue;
         if (severityParam === '15-30' && (daysOverdue < 15 || daysOverdue > 30)) continue;
         if ((severityParam === '30+' || severityParam === '30 ' || severityParam === '30%2B') && daysOverdue <= 30) continue;
 
-        // Filter by Search Query
+        // Filter 2: Period (Months)
+        if (periodParam !== 'ALL') {
+          const reqP = parseInt(periodParam, 10);
+          if (fsRecord.period_months !== reqP) continue;
+        }
+
+        // Filter 3: Bill Tag (1R, 2R, 3R, 6R, 12R, OTHER)
+        if (billTagParam !== 'ALL') {
+          if (billTagParam === 'OTHER') {
+            if (['1R', '2R', '3R', '6R', '12R'].includes(billTag)) continue;
+          } else if (billTag !== billTagParam) {
+            continue;
+          }
+        }
+
+        // Filter 4: Interest Payment Status
+        if (interestStatusParam === 'PAID') {
+          if (!fsRecord.has_paid_interest) continue;
+        } else if (interestStatusParam === 'UNPAID') {
+          if (fsRecord.has_paid_interest) continue;
+        }
+
+        // Filter 5: Search Query
         if (searchParam) {
-          const targetStr = `${fsRecord.bill_no} ${fsRecord.customer_name} ${fsRecord.customer_phone} ${fsRecord.customer_nic} ${fsRecord.branch_id}`.toLowerCase();
+          const targetStr = `${fsRecord.bill_no} ${fsRecord.customer_name} ${fsRecord.customer_phone} ${fsRecord.customer_nic} ${fsRecord.branch_id} ${fsRecord.item_type}`.toLowerCase();
           if (!targetStr.includes(searchParam)) continue;
         }
 
@@ -307,6 +343,7 @@ export async function GET(request: Request) {
     const totalInterestDue = fsItems.reduce((acc, it) => acc + (it.outstanding_interest || 0), 0);
     const criticalOverdueCount = fsItems.filter(it => it.days_overdue > 30).length;
     const withPhoneCount = fsItems.filter(it => it.has_phone).length;
+    const hasPaidInterestCount = fsItems.filter(it => it.has_paid_interest).length;
 
     return NextResponse.json({
       success: true,
@@ -316,7 +353,9 @@ export async function GET(request: Request) {
         total_principal_at_risk: totalPrincipalAtRisk,
         total_interest_due: totalInterestDue,
         critical_overdue_count: criticalOverdueCount,
-        with_phone_count: withPhoneCount
+        with_phone_count: withPhoneCount,
+        has_paid_interest_count: hasPaidInterestCount,
+        zero_interest_count: fsItems.length - hasPaidInterestCount
       },
       items: fsItems
     });
@@ -345,20 +384,31 @@ export async function POST(request: Request) {
 
     // Action 1: Single SMS Warning
     if (action === 'SEND_SMS') {
-      const { itemId, billNo, customerName, phone, principal, interestDue, expiryDate, branchId } = body;
+      const { 
+        itemId, billNo, customerName, phone, principal, interestDue, 
+        expiryDate, branchId, customMessage, originationDate, periodMonths, 
+        interestPaid, coveredMonths, lastInterestDate 
+      } = body;
 
       if (!phone || !isValidPhone(phone)) {
         return NextResponse.json({ error: 'A valid customer mobile phone number is required to send SMS.' }, { status: 400 });
       }
 
-      const message = buildForfeitureWarningSms({
-        customerName: customerName || 'Valued Customer',
-        ticketNo: billNo || 'N/A',
-        principal: parseFloat(principal) || 0,
-        interestDue: parseFloat(interestDue) || 0,
-        expiryDate: expiryDate || 'N/A',
-        branchName: branchId || 'Rupasinghe Pawning'
-      });
+      const message = (customMessage && typeof customMessage === 'string' && customMessage.trim() !== '')
+        ? customMessage.trim()
+        : buildForfeitureWarningSms({
+            customerName: customerName || 'Valued Customer',
+            ticketNo: billNo || 'N/A',
+            principal: parseFloat(principal) || 0,
+            interestDue: parseFloat(interestDue) || 0,
+            expiryDate: expiryDate || 'N/A',
+            branchName: branchId || 'Rupasinghe Pawning',
+            originationDate,
+            periodMonths: parseInt(periodMonths, 10) || 3,
+            interestPaid: parseFloat(interestPaid) || 0,
+            coveredMonths: parseInt(coveredMonths, 10) || 0,
+            lastInterestDate
+          });
 
       const smsRes = await sendFreeSms({
         phone,
@@ -380,7 +430,8 @@ export async function POST(request: Request) {
           principal,
           interestDue,
           smsStatus: smsRes.status,
-          notice: smsRes.notice
+          notice: smsRes.notice,
+          isCustom: Boolean(customMessage)
         }
       });
 
@@ -393,7 +444,7 @@ export async function POST(request: Request) {
 
     // Action 2: Bulk SMS Warning
     if (action === 'BULK_SEND_SMS') {
-      const { items } = body;
+      const { items, customTemplate } = body;
       if (!Array.isArray(items) || items.length === 0) {
         return NextResponse.json({ error: 'No items selected for SMS dispatch.' }, { status: 400 });
       }
@@ -410,14 +461,32 @@ export async function POST(request: Request) {
         }
 
         try {
-          const message = buildForfeitureWarningSms({
-            customerName: it.customerName || 'Valued Customer',
-            ticketNo: it.billNo || 'N/A',
-            principal: parseFloat(it.principal) || 0,
-            interestDue: parseFloat(it.interestDue) || 0,
-            expiryDate: it.expiryDate || 'N/A',
-            branchName: it.branchId || 'Rupasinghe Pawning'
-          });
+          let message = '';
+          if (customTemplate && typeof customTemplate === 'string' && customTemplate.trim() !== '') {
+            message = customTemplate
+              .replace(/\{customer_name\}/gi, it.customerName || 'Valued Customer')
+              .replace(/\{bill_no\}/gi, it.billNo || 'N/A')
+              .replace(/\{branch\}/gi, it.branchId || 'Branch')
+              .replace(/\{principal\}/gi, parseFloat(it.principal || 0).toLocaleString())
+              .replace(/\{interest_due\}/gi, parseFloat(it.interestDue || 0).toLocaleString())
+              .replace(/\{expiry_date\}/gi, it.expiryDate || 'N/A')
+              .replace(/\{origination_date\}/gi, it.originationDate || 'N/A')
+              .replace(/\{interest_paid\}/gi, parseFloat(it.interestPaid || 0).toLocaleString());
+          } else {
+            message = buildForfeitureWarningSms({
+              customerName: it.customerName || 'Valued Customer',
+              ticketNo: it.billNo || 'N/A',
+              principal: parseFloat(it.principal) || 0,
+              interestDue: parseFloat(it.interestDue) || 0,
+              expiryDate: it.expiryDate || 'N/A',
+              branchName: it.branchId || 'Rupasinghe Pawning',
+              originationDate: it.originationDate,
+              periodMonths: parseInt(it.periodMonths, 10) || 3,
+              interestPaid: parseFloat(it.interestPaid) || 0,
+              coveredMonths: parseInt(it.coveredMonths, 10) || 0,
+              lastInterestDate: it.lastInterestDate
+            });
+          }
 
           const smsRes = await sendFreeSms({
             phone: it.phone,
@@ -448,7 +517,8 @@ export async function POST(request: Request) {
           totalSelected: items.length,
           sentCount,
           failedCount,
-          skippedNoPhone
+          skippedNoPhone,
+          hasCustomTemplate: Boolean(customTemplate)
         }
       });
 

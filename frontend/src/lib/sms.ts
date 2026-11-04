@@ -220,17 +220,32 @@ export function buildForfeitureWarningSms(params: {
   expiryDate: string;
   branchName?: string;
   branchPhone?: string;
+  originationDate?: string;
+  periodMonths?: number;
+  interestPaid?: number;
+  coveredMonths?: number;
+  lastInterestDate?: string | null;
 }): string {
-  const { customerName, ticketNo, principal, interestDue, expiryDate, branchPhone } = params;
+  const { 
+    customerName, ticketNo, principal, interestDue, expiryDate, 
+    branchName, branchPhone, originationDate, periodMonths, 
+    interestPaid = 0, coveredMonths = 0, lastInterestDate 
+  } = params;
+
   const nameDisplay = (customerName && customerName !== '.' && customerName !== 'Valued Customer') 
     ? customerName 
     : 'Valued Customer';
   const phoneText = branchPhone ? ` Tel: ${branchPhone}` : '';
+  const dateInfo = originationDate ? ` (Date: ${originationDate}, ${periodMonths || 3}M)` : '';
+  const paidInfo = interestPaid > 0 
+    ? `\nInterest Paid: Rs. ${interestPaid.toLocaleString()} (${coveredMonths} mo. covered${lastInterestDate ? `, last: ${lastInterestDate}` : ''})` 
+    : '\nInterest Paid: Rs. 0 (None)';
 
   return `RUPASINGHE PAWNING (PVT) LTD
 Dear ${nameDisplay},
-URGENT: Pawn Ticket #${ticketNo} (Principal: Rs. ${principal.toLocaleString()}) expired on ${expiryDate}.
-Unpaid Interest: Rs. ${interestDue.toLocaleString()}.
-Please settle immediately to prevent item forfeiture/auction.
+URGENT: Pawn Ticket #${ticketNo}${branchName ? ` [${branchName}]` : ''}${dateInfo}
+Principal: Rs. ${principal.toLocaleString()} | Expired: ${expiryDate}${paidInfo}
+Due Overdue Interest: Rs. ${interestDue.toLocaleString()}
+Please settle immediately to avoid collateral forfeiture/auction.
 කරුණාකර භාණ්ඩ සින්න වීම වැළැක්වීමට වහාම ශාඛාව අමතන්න.${phoneText}`;
 }

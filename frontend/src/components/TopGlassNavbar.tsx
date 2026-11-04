@@ -160,11 +160,14 @@ export default function TopGlassNavbar() {
       'dilupathamari9@gmail.com': 'Dilupa',
       'sanjay.rupasinghe@gmail.com': 'Sanjay',
       'nishanthikuru@gmail.com': 'Nishanthi',
-      'admin@rupasinghe.com': 'Admin'
+      'admin@gmail.com': 'Admin',
+      'admin@rupasinghe.com': 'Admin',
+      'dilkiisanka3@gmail.com': 'Dilki'
     };
 
     const email = (u.email || '').toLowerCase().trim();
     if (email && emailMap[email]) return emailMap[email];
+    if (u.role === 'ADMIN' || (email && email.startsWith('admin'))) return 'Admin';
 
     if (u.first_name && typeof u.first_name === 'string') {
       const cleanFirst = u.first_name.replace(/[0-9]+/g, '').trim();

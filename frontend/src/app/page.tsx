@@ -105,11 +105,13 @@ export default function Home() {
       'sanjay.rupasinghe@gmail.com': 'Sanjay',
       'manager@gmail.com': 'Manager',
       'admin@gmail.com': 'Admin',
-      'admin@rupasinghe.com': 'Admin'
+      'admin@rupasinghe.com': 'Admin',
+      'dilkiisanka3@gmail.com': 'Dilki'
     };
 
     const email = (u.email || '').toLowerCase().trim();
     if (email && emailMap[email]) return emailMap[email];
+    if (u.role === 'ADMIN' || (email && email.startsWith('admin'))) return 'Admin';
 
     // Check first_name directly
     if (u.first_name && typeof u.first_name === 'string') {

@@ -228,7 +228,8 @@ export default function LoginPage() {
       }
       localStorage.setItem('user_branch', effectiveBranch);
       localStorage.setItem('user_role', userRole);
-      localStorage.setItem('user_name', authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || 'User');
+      const cleanDisplayName = userRole === 'ADMIN' ? 'Admin' : (authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || 'User');
+      localStorage.setItem('user_name', cleanDisplayName);
       localStorage.setItem('user', JSON.stringify({
         email: authUser.email,
         id: authUser.id,
