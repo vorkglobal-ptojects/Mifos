@@ -17,13 +17,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Role Security Enforcement: Strictly prohibit TELLER from viewing or retrieving the stock list
-    if (session && session.role === 'TELLER') {
-      return NextResponse.json({ 
-        error: 'Access Denied: Tellers are strictly prohibited from viewing or retrieving the stock list.' 
-      }, { status: 403 });
-    }
-
     const { searchParams } = new URL(request.url);
     const branchParam = searchParams.get('branch');
     const searchParam = searchParams.get('search');

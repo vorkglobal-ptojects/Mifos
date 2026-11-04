@@ -11,12 +11,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (session && session.role === 'TELLER') {
-      return NextResponse.json({ 
-        error: 'Access Denied: Tellers are strictly prohibited from viewing or retrieving the stock list.' 
-      }, { status: 403 });
-    }
-
     const { searchParams } = new URL(req.url);
     const type = searchParams.get('type') || 'items';
     const page = parseInt(searchParams.get('page') || '0', 10);
