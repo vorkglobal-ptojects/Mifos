@@ -72,8 +72,32 @@ export async function GET(request: Request) {
     const pawnIds = (data || []).map((p: any) => p.id).filter(Boolean);
     const billStatuses = Array.from(new Set((data || []).map((p: any) => p.bill_no ? `BILL:${p.bill_no.trim()}` : null).filter(Boolean))) as string[];
 
-    // Execute all subqueries in PARALLEL with Promise.all and lightweight column selections
-    // This avoids downloading megabytes of base64 images per client/eval on every list call
+    // Helper to safely execute .in() queries in chunks to avoid HTTP 16KB header/URL limits
+    const chunkedInQuery = async (
+      table: string,
+      column: string,
+      values: string[],
+      selectClause: string,
+      applyFilter?: (q: any) => any
+    ) => {
+      if (!values || values.length === 0) return { data: [], error: null };
+      const CHUNK_SIZE = 80;
+      let aggregatedData: any[] = [];
+      for (let i = 0; i < values.length; i += CHUNK_SIZE) {
+        const chunk = values.slice(i, i + CHUNK_SIZE);
+        let q = adminSupabase.from(table).select(selectClause).in(column, chunk);
+        if (applyFilter) q = applyFilter(q);
+        const { data: resData, error: resErr } = await q;
+        if (resErr) {
+          console.error(`Chunked query error on ${table}.${column}:`, resErr);
+          return { data: aggregatedData, error: resErr };
+        }
+        if (resData) aggregatedData = aggregatedData.concat(resData);
+      }
+      return { data: aggregatedData, error: null };
+    };
+
+    // Execute all subqueries in PARALLEL with chunking to protect against HTTP header overflow
     const [
       clientRowsRes,
       nicClientsRes,
@@ -85,39 +109,25 @@ export async function GET(request: Request) {
       packetLogsRes
     ] = await Promise.all([
       // 1a. Fast client basic fields (no heavy base64 strings)
-      clientIds.length > 0
-        ? adminSupabase.from('clients').select('id, first_name, last_name, national_id, phone, address').in('id', clientIds)
-        : Promise.resolve({ data: [] }),
+      chunkedInQuery('clients', 'id', clientIds, 'id, first_name, last_name, national_id, phone, address'),
 
       // 1b. Fast presence check for NIC image (returns only id)
-      clientIds.length > 0
-        ? adminSupabase.from('clients').select('id').in('id', clientIds).not('nic_image', 'is', null)
-        : Promise.resolve({ data: [] }),
+      chunkedInQuery('clients', 'id', clientIds, 'id', q => q.not('nic_image', 'is', null)),
 
       // 1c. Fast presence check for Signature (returns only id)
-      clientIds.length > 0
-        ? adminSupabase.from('clients').select('id').in('id', clientIds).not('signature_image', 'is', null)
-        : Promise.resolve({ data: [] }),
+      chunkedInQuery('clients', 'id', clientIds, 'id', q => q.not('signature_image', 'is', null)),
 
       // 2. Fetch pawn items for current pawns
-      pawnIds.length > 0
-        ? adminSupabase.from('pawn_items').select('*').in('pawn_id', pawnIds)
-        : Promise.resolve({ data: [] }),
+      chunkedInQuery('pawn_items', 'pawn_id', pawnIds, '*'),
 
       // 3a. Egress optimization: Fetch scale evaluation numbers without multi-megabyte base64 photos
-      billStatuses.length > 0
-        ? adminSupabase.from('rejected_evaluations').select('status, air_weight, water_weight, created_at').in('status', billStatuses)
-        : Promise.resolve({ data: [] }),
+      chunkedInQuery('rejected_evaluations', 'status', billStatuses, 'status, air_weight, water_weight, created_at'),
 
       // 3b. Fast presence check for Air Weight photo (returns only status)
-      billStatuses.length > 0
-        ? adminSupabase.from('rejected_evaluations').select('status').in('status', billStatuses).not('air_weight_photo_url', 'is', null)
-        : Promise.resolve({ data: [] }),
+      chunkedInQuery('rejected_evaluations', 'status', billStatuses, 'status', q => q.not('air_weight_photo_url', 'is', null)),
 
       // 3c. Fast presence check for Water Weight photo (returns only status)
-      billStatuses.length > 0
-        ? adminSupabase.from('rejected_evaluations').select('status').in('status', billStatuses).not('water_weight_photo_url', 'is', null)
-        : Promise.resolve({ data: [] }),
+      chunkedInQuery('rejected_evaluations', 'status', billStatuses, 'status', q => q.not('water_weight_photo_url', 'is', null)),
 
       // 4. Fetch packet sticker QR logs (scoped to active branches)
       (() => {
