@@ -589,9 +589,9 @@ export async function POST(request: Request) {
         .from('stock_items')
         .update({
           status: 'Withdrawn',
-          withdrawn_reason: 'F/S',
-          withdrawn_at: nowIso,
-          notes: finalNotes
+          withdrawal_reason: 'F/S',
+          withdrawal_date: nowIso.split('T')[0],
+          withdrawal_notes: finalNotes
         });
 
       if (itemId) stockQuery = stockQuery.eq('id', itemId);

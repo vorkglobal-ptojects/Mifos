@@ -2054,25 +2054,7 @@ function EndOfDayContent() {
       }
     }
 
-    // Maker-Checker: Tellers cannot directly modify withdrawal records. Submit approval ticket!
-    if (currentUser?.role === 'TELLER' && isEditingWithdrawal) {
-      setShowWithdrawModal(false);
-      setStockChangeModal({
-        isOpen: true,
-        entityType: 'STOCK',
-        actionType: 'UPDATE',
-        entityId: selectedItemForWithdrawal.id || selectedItemForWithdrawal.bill_no,
-        referenceNo: stripBranchPrefix(selectedItemForWithdrawal.bill_no),
-        branchId: normalizeBranchId(selectedItemForWithdrawal.branch_id || selectedBranch || 'HQ'),
-        currentData: selectedItemForWithdrawal,
-        initialProposedData: {
-          withdrawal_date: withdrawalDate,
-          withdrawal_reason: withdrawalReason,
-          withdrawal_notes: finalNotes
-        }
-      });
-      return;
-    }
+    // Tellers have direct permission for stock withdrawals
 
     try {
       const headers = getAuthHeaders();

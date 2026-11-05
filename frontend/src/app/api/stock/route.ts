@@ -209,25 +209,45 @@ export async function PUT(request: Request) {
       withdrawal_notes
     } = body;
 
-    // Maker-Checker: Tellers cannot directly modify stock (must use change_requests)
-    if (session && session.role === 'TELLER') {
-      return NextResponse.json({ 
-        error: 'Direct stock modification is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin approval.' 
-      }, { status: 403 });
-    }
-
     if (!id) {
       return NextResponse.json({ error: 'Stock item ID is required for update' }, { status: 400 });
     }
 
     const { data: currentStockItem, error: fetchErr } = await adminSupabase
       .from('stock_items')
-      .select('id, bill_no, branch_id, price, weight')
+      .select('id, bill_no, branch_id, price, weight, status')
       .eq('id', id)
       .maybeSingle();
 
     if (fetchErr || !currentStockItem) {
       return NextResponse.json({ error: 'Stock item not found' }, { status: 404 });
+    }
+
+    // Tellers are permitted to perform Stock Withdrawals (status === 'Withdrawn' without modifying core active stock fields)
+    const isWithdrawalOperation =
+      status === 'Withdrawn' &&
+      bill_no === undefined &&
+      price === undefined &&
+      weight === undefined &&
+      date === undefined &&
+      item_type === undefined;
+
+    // Maker-Checker: Tellers cannot directly modify core stock details (must use change_requests), EXCEPT for withdrawals
+    if (session && session.role === 'TELLER') {
+      if (!isWithdrawalOperation) {
+        return NextResponse.json({ 
+          error: 'Direct stock modification is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin approval.' 
+        }, { status: 403 });
+      }
+      if (session.branchId && currentStockItem.branch_id) {
+        const userBranch = normalizeBranchId(session.branchId);
+        const itemBranch = normalizeBranchId(currentStockItem.branch_id);
+        if (userBranch && itemBranch && userBranch !== 'ALL' && userBranch !== 'HQ' && userBranch !== itemBranch) {
+          return NextResponse.json({
+            error: `Forbidden. Tellers at branch (${userBranch}) cannot withdraw stock items belonging to branch (${itemBranch}).`
+          }, { status: 403 });
+        }
+      }
     }
 
     if (bill_no !== undefined && bill_no) {
