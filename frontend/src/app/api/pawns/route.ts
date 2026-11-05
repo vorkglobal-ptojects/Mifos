@@ -457,8 +457,9 @@ export async function POST(request: Request) {
     // Determine initial pawn status (High-ValuePawns > Rs. 100,000 require Manager Approval)
     const initialStatus = finalDisbursed > HIGH_VALUE_APPROVAL_THRESHOLD ? 'PENDING_APPROVAL' : 'ACTIVE';
 
-    if (!billNo || !String(billNo).trim()) {
-      return NextResponse.json({ error: "Bill / Ticket Number is required" }, { status: 400 });
+    const rawBillInput = stripBranchPrefix(String(billNo || '')).trim();
+    if (!rawBillInput || /^REC-/i.test(rawBillInput) || /^TEMP-/i.test(rawBillInput) || /^[0-9A-F]{8}$/i.test(rawBillInput)) {
+      return NextResponse.json({ error: "Valid Book Bill / Ticket Number is required (e.g. 1R 23001, 3R 15400, 12R 37611)" }, { status: 400 });
     }
 
     // Validate numeric bill uniqueness within the same branch only
@@ -559,7 +560,7 @@ export async function POST(request: Request) {
         cleanBillNo = stripBranchPrefix(descMatch[1].trim());
       }
     }
-    const baseBill = (cleanBillNo || stripBranchPrefix(scopedBillNo || '') || pawnId.substring(0, 8).toUpperCase()).trim();
+    const baseBill = (cleanBillNo || stripBranchPrefix(scopedBillNo || '')).trim();
 
     if (Array.isArray(items) && items.length > 0) {
       const pawnItemsPayload = items.map((item: any) => {
