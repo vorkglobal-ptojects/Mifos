@@ -3691,7 +3691,7 @@ function PawnDetailsModal({
     }
   };
 
-  // Standard Web / Desktop Print Handler for Pawn Bill
+  // 1. Standard Web / Desktop Print Handler for Pawn Bill (A4 / Laser / Desktop Office Printer)
   const handleStandardPrint = () => {
     const printWindow = window.open('', '_blank', 'width=750,height=900');
     if (!printWindow) {
@@ -3704,15 +3704,38 @@ function PawnDetailsModal({
       return;
     }
 
-    // Clone element and replace any input values with static text for clean printing
+    // Clone element and replace any input & textarea values with live user-entered values for clean printing
     const clone = receiptElement.cloneNode(true) as HTMLElement;
-    clone.querySelectorAll('input').forEach((input) => {
-      const span = document.createElement('span');
-      span.textContent = input.value;
-      span.className = input.className;
-      span.style.borderBottom = '1px solid #000';
-      span.style.padding = '0 4px';
-      input.parentNode?.replaceChild(span, input);
+    const origInputs = receiptElement.querySelectorAll('input');
+    const cloneInputs = clone.querySelectorAll('input');
+    origInputs.forEach((origInput, idx) => {
+      const clonedInput = cloneInputs[idx];
+      if (clonedInput) {
+        const span = document.createElement('span');
+        span.textContent = origInput.value;
+        span.className = origInput.className;
+        span.style.borderBottom = '1px solid #000';
+        span.style.padding = '0 4px';
+        span.style.fontWeight = 'bold';
+        clonedInput.parentNode?.replaceChild(span, clonedInput);
+      }
+    });
+
+    const origTextareas = receiptElement.querySelectorAll('textarea');
+    const cloneTextareas = clone.querySelectorAll('textarea');
+    origTextareas.forEach((origTextarea, idx) => {
+      const clonedTextarea = cloneTextareas[idx];
+      if (clonedTextarea) {
+        const div = document.createElement('div');
+        div.textContent = origTextarea.value;
+        div.style.padding = '6px';
+        div.style.border = '1px solid #94a3b8';
+        div.style.borderRadius = '8px';
+        div.style.fontWeight = 'bold';
+        div.style.whiteSpace = 'pre-wrap';
+        div.style.background = '#f8fafc';
+        clonedTextarea.parentNode?.replaceChild(div, clonedTextarea);
+      }
     });
 
     printWindow.document.write(`
@@ -3726,13 +3749,145 @@ function PawnDetailsModal({
             @page { size: auto; margin: 8mm; }
             body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background: white !important; margin: 0; padding: 0; }
           }
-          body { font-family: 'Times New Roman', Times, serif; font-size: 12px; margin: 0 auto; max-width: 650px; padding: 15px; background: white; color: #000; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Times New Roman", Times, serif; font-size: 12px; margin: 0 auto; max-width: 680px; padding: 15px; background: white; color: #000; line-height: 1.45; }
           .center { text-align: center; }
           .bold { font-weight: bold; }
+          /* Standalone Print CSS for guaranteed layout rendering without external Tailwind dependencies */
+          .flex { display: flex !important; }
+          .items-center { align-items: center !important; }
+          .items-end { align-items: flex-end !important; }
+          .justify-between { justify-content: space-between !important; }
+          .justify-center { justify-content: center !important; }
+          .justify-end { justify-content: flex-end !important; }
+          .flex-wrap { flex-wrap: wrap !important; }
+          .flex-col { flex-direction: column !important; }
+          .gap-1 { gap: 4px !important; }
+          .gap-2 { gap: 8px !important; }
+          .gap-3 { gap: 12px !important; }
+          .gap-4 { gap: 16px !important; }
+          .grid { display: grid !important; }
+          .grid-cols-2 { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .grid-cols-12 { display: grid !important; grid-template-columns: repeat(12, minmax(0, 1fr)) !important; }
+          .col-span-7 { grid-column: span 7 / span 7 !important; }
+          .col-span-5 { grid-column: span 5 / span 5 !important; }
+          .text-center { text-align: center !important; }
+          .text-right { text-align: right !important; }
+          .font-bold { font-weight: bold !important; }
+          .font-black { font-weight: 900 !important; }
+          .uppercase { text-transform: uppercase !important; }
+          .border-b-2 { border-bottom: 2px solid #000 !important; }
+          .border-t-2 { border-top: 2px solid #000 !important; }
+          .border-2 { border: 2px solid #000 !important; }
+          .border-dashed { border-style: dashed !important; }
+          .border-slate-900 { border-color: #0f172a !important; }
+          .border-slate-800 { border-color: #1e293b !important; }
+          .border-slate-300 { border-color: #cbd5e1 !important; }
+          .border-slate-400 { border-color: #94a3b8 !important; }
+          .bg-slate-50 { background-color: #f8fafc !important; }
+          .bg-slate-100 { background-color: #f1f5f9 !important; }
+          .w-24 { width: 96px !important; }
+          .h-24 { height: 96px !important; }
+          .w-28 { width: 112px !important; }
+          .w-32 { width: 128px !important; }
+          .w-44 { width: 176px !important; }
+          .w-16 { width: 64px !important; }
+          .w-full { width: 100% !important; }
+          .rounded-xl { border-radius: 12px !important; }
+          .rounded-2xl { border-radius: 16px !important; }
+          .p-2 { padding: 8px !important; }
+          .p-3 { padding: 12px !important; }
+          .p-6 { padding: 24px !important; }
+          .mb-1 { margin-bottom: 4px !important; }
+          .mb-2 { margin-bottom: 8px !important; }
+          .mb-3 { margin-bottom: 12px !important; }
+          .mb-4 { margin-bottom: 16px !important; }
+          .pt-1 { padding-top: 4px !important; }
+          .pt-2 { padding-top: 8px !important; }
+          .pt-3 { padding-top: 12px !important; }
+          .pb-3 { padding-bottom: 12px !important; }
         </style>
       </head>
       <body>
         ${clone.outerHTML}
+        <script>
+          setTimeout(() => { window.print(); window.close(); }, 500);
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  // 2. 80mm Web / USB POS Thermal Receipt Print Handler
+  const handleThermal80mmPrint = () => {
+    const printWindow = window.open('', '_blank', 'width=450,height=800');
+    if (!printWindow) {
+      toast.error('Popup blocked. Please allow popups to print.');
+      return;
+    }
+    const fmt = (n: number) => Number(n || 0).toLocaleString();
+    const amt = parseFloat(billAmount || '0');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Pawn Bill 80mm - ${billNo}</title>
+        <style>
+          @media print {
+            @page { size: 80mm auto; margin: 0; }
+            body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background: white !important; margin: 0; padding: 8px; }
+          }
+          body { font-family: 'Courier New', monospace; font-size: 12px; width: 300px; margin: 0 auto; padding: 12px; background: white; color: #000; line-height: 1.4; }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          .bold { font-weight: bold; }
+          .sep { border-top: 1px dashed #000; margin: 6px 0; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+          .box { border: 2px solid #000; text-align: center; padding: 6px; margin: 8px 0; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 14px; letter-spacing: 1px;">RUPASINGHE TRUST</div>
+        <div class="center bold" style="font-size: 12px;">INVESTMENTS LTD.</div>
+        <div class="center" style="font-size: 9px;">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
+        <div class="center" style="font-size: 10px; margin-top: 2px;">${billBranchAddress || 'Head Office, Dehiwala.'}</div>
+        <div class="center" style="font-size: 10px;">Tel: 011 7006588</div>
+        <div class="sep"></div>
+        <div class="center bold" style="font-size: 13px;">** PAWN BILL **</div>
+        <div class="sep"></div>
+        <div class="row"><span>R No: <strong>${billNo}</strong></span><span>Date: <strong>${billDate}</strong></span></div>
+        <div class="row"><span>Months: <strong>${billMonths}</strong></span></div>
+        <div class="sep"></div>
+        <div>I the undersigned: <strong>${billName}</strong></div>
+        <div>of: ${billAddress}</div>
+        <div class="row"><span>NIC: <strong>${billNic}</strong></span><span>Ph: ${billPhone}</span></div>
+        <div style="font-size: 10px; margin-top: 4px;">being the lawful owner of the articles mentioned below has sold out right for:</div>
+        <div class="box">
+          <div style="font-size: 10px;">ADVANCE AMOUNT</div>
+          <div style="font-size: 18px; letter-spacing: 1px;">Rs. ${fmt(amt)}</div>
+        </div>
+        <div class="sep"></div>
+        <div class="bold" style="font-size: 11px;">ARTICLES DESCRIPTION:</div>
+        <div style="margin-bottom: 4px;">${billDesc}</div>
+        <div class="row"><span>Appraised: Rs. ${billAppraised}</span><span>Wt: ${billWeight}</span></div>
+        <div class="sep"></div>
+        <div style="font-size: 9px; line-height: 1.3;">
+          I hold responsible and liable for any claims that may arise on the sale of the articles. Articles must be redeemed or renewed before the Last Date.
+        </div>
+        <div class="sep"></div>
+        <div class="row"><span>Last Date: <strong>${billLastDate}</strong></span></div>
+        <div>Name: ${billName}</div>
+        <div style="margin-top: 25px; display: flex; justify-content: space-between; font-size: 10px;" class="center">
+          <div><div style="border-bottom: 1px solid #000; width: 120px; margin-bottom: 3px;"></div>Authorized Signature</div>
+          <div style="border: 1px dashed #666; width: 60px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #666;">STAMP</div>
+        </div>
+        <div style="border-top: 2px dashed #000; margin: 16px 0 10px 0; text-align: center; font-size: 9px;">✂ CUT HERE / කපා වෙන්කරන්න</div>
+        <div class="row bold" style="font-size: 12px;">
+          <span>R No: ${billNo}</span>
+          <span>.................. Signature</span>
+        </div>
         <script>
           setTimeout(() => { window.print(); window.close(); }, 500);
         </script>
@@ -3767,19 +3922,30 @@ function PawnDetailsModal({
               <Button
                 onClick={handleStandardPrint}
                 type="button"
-                className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold text-xs uppercase tracking-wider px-4 py-2 rounded-xl flex items-center gap-1.5"
+                className="bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white font-bold text-xs uppercase tracking-wider px-3.5 py-2 rounded-xl flex items-center gap-1.5"
+                title="Print full bill agreement on standard A4 / Letter desktop or office printer"
               >
                 <Printer className="w-4 h-4" />
-                Web Print
+                A4 / Desktop Print
+              </Button>
+              <Button
+                onClick={handleThermal80mmPrint}
+                type="button"
+                className="bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white font-bold text-xs uppercase tracking-wider px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-md"
+                title="Print 80mm thermal receipt roll via USB / Network POS printer"
+              >
+                <Printer className="w-4 h-4" />
+                80mm POS Print
               </Button>
               <Button
                 onClick={handleBluetoothPrint}
                 disabled={isBluetoothPrinting}
                 type="button"
-                className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-widest px-4 py-2 rounded-xl flex items-center gap-2 shadow-lg"
+                className="bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-widest px-3.5 py-2 rounded-xl flex items-center gap-2 shadow-lg"
+                title="Print wirelessly via Bluetooth to 80mm portable POS thermal printer"
               >
                 <Bluetooth className="w-4 h-4" />
-                {isBluetoothPrinting ? 'PRINTING...' : 'BLUETOOTH PRINT (80mm)'}
+                {isBluetoothPrinting ? 'PRINTING...' : 'BLUETOOTH (80mm)'}
               </Button>
             </div>
           </div>
@@ -3947,7 +4113,7 @@ function PawnDetailsModal({
                     onChange={(e) => setBillWeight(e.target.value)}
                     className="w-20 border-b-2 border-blue-600 bg-blue-50/80 text-slate-900 font-mono font-bold text-center px-1 py-0.5 rounded outline-none text-xs"
                   />
-                  <span>g</span>
+                  <span className="shrink-0">{String(billWeight || '').toLowerCase().includes('g') ? '' : 'g'}</span>
                 </div>
               </div>
             </div>

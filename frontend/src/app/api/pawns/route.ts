@@ -628,7 +628,7 @@ export async function POST(request: Request) {
         created_at: pawnCreatedAt
       };
 
-      let { error: stockErr } = await adminSupabase
+      const { error: stockErr } = await adminSupabase
         .from('stock_items')
         .upsert([singleStockPayload], { onConflict: 'branch_id, bill_no' });
 
@@ -703,7 +703,7 @@ export async function POST(request: Request) {
         created_at: pawnCreatedAt
       };
 
-      let { error: singleStockErr } = await adminSupabase.from('stock_items').upsert([singleStockPayload], { onConflict: 'branch_id, bill_no' });
+      const { error: singleStockErr } = await adminSupabase.from('stock_items').upsert([singleStockPayload], { onConflict: 'branch_id, bill_no' });
       if (singleStockErr) {
         console.warn("Could not insert matching vault stock item, retrying with fallback:", singleStockErr.message);
         const { data: existingStock } = await adminSupabase

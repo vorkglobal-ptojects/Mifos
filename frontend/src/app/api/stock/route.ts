@@ -17,19 +17,14 @@ export async function GET(request: Request) {
       }
     }
 
-    // Role Security Enforcement: Strictly prohibit TELLER from viewing or retrieving the stock list
-    if (session && session.role === 'TELLER') {
-      return NextResponse.json({ 
-        error: 'Access Denied: Tellers are strictly prohibited from viewing or retrieving the stock list.' 
-      }, { status: 403 });
-    }
 
     const { searchParams } = new URL(request.url);
     const branchParam = searchParams.get('branch');
     const searchParam = searchParams.get('search');
     const statusParam = searchParams.get('status');
 
-    const activeBranch = branchParam || 'ALL';
+    const headerBranch = request.headers.get('x-branch-id') || request.headers.get('X-Branch-Id');
+    const activeBranch = branchParam || headerBranch || session?.branchId || 'ALL';
 
     // Paginated fetch to bypass PostgREST's 1000-row default limit
     let allItems: any[] = [];
@@ -214,6 +209,13 @@ export async function PUT(request: Request) {
       withdrawal_reason,
       withdrawal_notes
     } = body;
+
+    // Maker-Checker: Tellers cannot directly modify stock (must use change_requests)
+    if (session && session.role === 'TELLER') {
+      return NextResponse.json({ 
+        error: 'Direct stock modification is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin approval.' 
+      }, { status: 403 });
+    }
 
     if (!id) {
       return NextResponse.json({ error: 'Stock item ID is required for update' }, { status: 400 });

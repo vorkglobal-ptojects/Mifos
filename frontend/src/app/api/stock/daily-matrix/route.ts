@@ -15,7 +15,7 @@ export async function GET(req: Request) {
 
     const isHead = !session?.branchId || normalizeBranchId(session.branchId) === 'HQ' || session.branchId.toUpperCase() === 'HEAD OFFICE';
     let effectiveBranch = branchParam;
-    if (session && !isHead && session.role !== 'ADMIN') {
+    if (session && !isHead && session.role !== 'ADMIN' && session.role !== 'AUDITOR') {
       effectiveBranch = session.branchId;
     }
 

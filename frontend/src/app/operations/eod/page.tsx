@@ -316,14 +316,8 @@ function EndOfDayContent() {
         : '';
       const formattedWeight = `${Math.round(parseFloat(item.weight || 0) * 1000)} mg`;
 
-      // Look up customer info for QR payload & ticket
-      const customer = (stockCustomers || []).find((c: any) => {
-        if (!c.bill_numbers) return false;
-        return c.bill_numbers.split(/[, ]+/).some((b: string) => b.trim().toUpperCase() === billNoStr.toUpperCase());
-      }) || (oldStockCustomers || []).find((c: any) => {
-        if (!c.bill_numbers) return false;
-        return c.bill_numbers.split(/[, ]+/).some((b: string) => b.trim().toUpperCase() === billNoStr.toUpperCase());
-      });
+      // Look up customer info for QR payload & ticket (uses robust normalized lookup across branches)
+      const customer = getCustomerForBill(item.bill_no, item.branch_id || item.branch);
 
       // Rich QR Code Payload containing Label No, Pawning & Customer details
       const qrDetails: string[] = [
@@ -1187,8 +1181,9 @@ function EndOfDayContent() {
 
       // 1. Primary: Server-side API endpoint (secure, bypasses client RLS drops, supports fast branch indexing)
       try {
-        const headers = getAuthHeaders();
-        const apiBranch = (activeBranch && activeBranch !== 'HQ') ? activeBranch : (currentUser?.role === 'ADMIN' ? 'ALL' : (currentUser?.branchId && currentUser.branchId !== 'HQ' ? currentUser.branchId : 'ALL'));
+        const effectiveBranch = activeBranch && activeBranch !== 'ALL' ? activeBranch : '';
+        const headers = getAuthHeaders(effectiveBranch ? { 'x-branch-id': effectiveBranch } : undefined);
+        const apiBranch = activeBranch || (currentUser?.role === 'ADMIN' ? 'ALL' : (currentUser?.branchId || 'ALL'));
         const queryParams = new URLSearchParams({
           branch: apiBranch,
           search: searchQuery.trim(),
@@ -1213,7 +1208,7 @@ function EndOfDayContent() {
 
         while (hasMore) {
           let query = supabase.from('stock_items').select('*');
-          if (activeBranch && activeBranch !== 'ALL' && activeBranch !== 'HQ') {
+          if (activeBranch && activeBranch !== 'ALL') {
             const branchTerms = getBranchSearchTerms(activeBranch);
             query = query.in('branch_id', branchTerms);
           }
@@ -1256,7 +1251,7 @@ function EndOfDayContent() {
             activeBranch = currentUser.role === 'ADMIN' ? 'ALL' : (currentUser.branchId || 'ALL');
           }
           const branchTerms = getBranchSearchTerms(activeBranch);
-          let filtered = activeBranch && activeBranch !== 'ALL' && activeBranch !== 'HQ'
+          let filtered = activeBranch && activeBranch !== 'ALL'
             ? allItems.filter((item: any) => branchTerms.includes(item.branch_id) || normalizeBranchId(item.branch_id) === normalizeBranchId(activeBranch))
             : allItems;
           if (searchQuery.trim()) {
