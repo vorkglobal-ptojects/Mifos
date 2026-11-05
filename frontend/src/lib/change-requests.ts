@@ -73,7 +73,8 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       const billToMatch = current_data.bill_no || ticket.reference_no;
       if (billToMatch) {
         const stockUpdate: Record<string, any> = {};
-        if (pawnUpdate.appraised_value !== undefined) stockUpdate.price = pawnUpdate.appraised_value;
+        if (pawnUpdate.disbursed_amount !== undefined) stockUpdate.price = pawnUpdate.disbursed_amount;
+        else if (pawnUpdate.appraised_value !== undefined) stockUpdate.price = pawnUpdate.appraised_value;
         if (pawnUpdate.bill_no !== undefined) stockUpdate.bill_no = stripBranchPrefix(pawnUpdate.bill_no);
         if (pawnUpdate.weight_grams !== undefined) stockUpdate.weight = pawnUpdate.weight_grams;
 

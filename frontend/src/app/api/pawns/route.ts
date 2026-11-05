@@ -301,7 +301,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { clientId, clientName, customerName, phone: clientPhone, address: clientAddress, description, appraisedValue, disbursedAmount, branchId, createdByUserId, billNo, weight, weightGrams, weightMg, interestRate, periodMonths, itemType, items, date, airWeightPhoto, waterWeightPhoto, waterWeight, specificGravity, estimatedKarat } = body;
+    const { clientId, clientName, customerName, phone: clientPhone, address: clientAddress, description, appraisedValue, trueValue, disbursedAmount, branchId, createdByUserId, billNo, weight, weightGrams, weightMg, interestRate, periodMonths, itemType, items, date, airWeightPhoto, waterWeightPhoto, waterWeight, specificGravity, estimatedKarat } = body;
 
     if (!clientId || !disbursedAmount || !billNo || String(billNo).trim() === '') {
       return NextResponse.json({ error: 'Missing required fields: Customer, Disbursed Amount, and Bill Number (billNo)' }, { status: 400 });
@@ -421,7 +421,7 @@ export async function POST(request: Request) {
 
     const pawnId = crypto.randomUUID();
     const finalDisbursed = parseFloat(disbursedAmount) || 0;
-    const finalAppraised = parseFloat(appraisedValue) || finalDisbursed;
+    const finalAppraised = parseFloat(trueValue) || parseFloat(appraisedValue) || finalDisbursed;
     let finalWeightGrams = parseFloat(weightGrams) || parseFloat(weight) || 0;
     let finalWeightMg = parseFloat(weightMg) || 0;
 
@@ -622,7 +622,7 @@ export async function POST(request: Request) {
         branch_id: targetBranchId,
         item_type: combinedItemType || 'CH',
         weight: totalWeightGrams,
-        price: finalAppraised,
+        price: finalDisbursed || finalAppraised,
         status: 'Active',
         date: pawnDate,
         created_at: pawnCreatedAt
@@ -697,7 +697,7 @@ export async function POST(request: Request) {
         branch_id: targetBranchId,
         item_type: defaultCode,
         weight: finalWeightGrams,
-        price: finalAppraised,
+        price: finalDisbursed || finalAppraised,
         status: 'Active',
         date: pawnDate,
         created_at: pawnCreatedAt

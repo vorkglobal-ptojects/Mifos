@@ -304,7 +304,7 @@ export async function PATCH(request: Request, context: any) {
     if (oldBillNo) {
       const stockUpdate: any = {};
       if (appraisedValue !== undefined || disbursedAmount !== undefined) {
-        stockUpdate.price = parseFloat(appraisedValue) || parseFloat(disbursedAmount) || 0;
+        stockUpdate.price = parseFloat(disbursedAmount) || parseFloat(appraisedValue) || 0;
       }
       if (totWeight > 0) stockUpdate.weight = totWeight;
       if (itemType) stockUpdate.item_type = itemType;
@@ -331,7 +331,7 @@ export async function PATCH(request: Request, context: any) {
             branch_id: existingPawn.branch_id,
             item_type: stockUpdate.item_type || 'CH',
             weight: stockUpdate.weight || totWeight || 0,
-            price: stockUpdate.price || parseFloat(appraisedValue) || parseFloat(disbursedAmount) || 0,
+            price: stockUpdate.price || parseFloat(disbursedAmount) || parseFloat(appraisedValue) || 0,
             status: 'Active',
             date: new Date().toISOString().split('T')[0]
           }]);

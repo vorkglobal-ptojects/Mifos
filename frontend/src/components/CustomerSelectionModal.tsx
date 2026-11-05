@@ -586,8 +586,8 @@ export function CustomerSelectionModal({
                     {evaluationSummary.estimatedKarat ? (
                       <span className="text-amber-700 ml-1">({evaluationSummary.estimatedKarat})</span>
                     ) : null}
-                    {evaluationSummary.trueValue ? (
-                      <span className="font-mono font-black ml-1.5 text-amber-950">• Rs. {evaluationSummary.trueValue.toLocaleString()}</span>
+                    {(evaluationSummary.askingAmount || evaluationSummary.trueValue) ? (
+                      <span className="font-mono font-black ml-1.5 text-amber-950">• Rs. {(evaluationSummary.askingAmount || evaluationSummary.trueValue || 0).toLocaleString()}</span>
                     ) : null}
                   </div>
                 </div>

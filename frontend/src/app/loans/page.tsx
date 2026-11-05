@@ -1054,7 +1054,7 @@ export default function PawnesPage() {
     setGoldWeight(wNum > 0 ? String(wNum) : '');
     setPeriodMonths(String(pawn.period_months || '3'));
 
-    setAppraisal(String(pawn.appraised_value || ''));
+    setAppraisal(String(pawn.disbursed_amount || pawn.appraised_value || ''));
     setAmount(String(pawn.disbursed_amount || ''));
     setIsOpen(true);
   };
@@ -1071,7 +1071,7 @@ export default function PawnesPage() {
       const finalBillNo = cleanBill ? (billPrefix ? `${billPrefix} ${cleanBill}` : cleanBill) : editingPawn.bill_no;
       openChangeRequest(editingPawn, 'UPDATE', {
         disbursed_amount: amount,
-        appraised_value: appraisal,
+        appraised_value: editingPawn.appraised_value || appraisal || amount,
         weight_grams: weightGrams,
         weight_mg: weightMg,
         description: `${finalBillNo} | ${description}`.trim(),
@@ -1150,7 +1150,8 @@ export default function PawnesPage() {
           phone: clientPhone,
           address: clientAddress,
           description: fullDescription,
-          appraisedValue: appraisal,
+          appraisedValue: evaluationData?.trueValue || editingPawn?.appraised_value || appraisal || amount,
+          trueValue: evaluationData?.trueValue || editingPawn?.appraised_value || appraisal || amount,
           disbursedAmount: amount,
           branchId,
           createdByUserId: userId,
@@ -1594,9 +1595,9 @@ export default function PawnesPage() {
             setBranchId(filterBranch);
           }
           loadClients();
-          // Set initial form values based on evaluation
-          const appraisedStr = (data.trueValue || '').toString();
-          const amountStr = (data.askingAmount || '').toString();
+          // Set initial form values based on evaluation (display Customer Asking amount in Pawning UI; True Value stays in evaluationData for DB storage)
+          const amountStr = (data.askingAmount || data.trueValue || '').toString();
+          const appraisedStr = amountStr;
           
           const rawAw = Number(data.airWeight) || 0;
           // Scale often outputs Grams (e.g. 4.02g). If rawAw < 50, it is grams! Convert to mg.
@@ -2442,11 +2443,11 @@ export default function PawnesPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="grid gap-1">
                     <Label className="font-black text-[10px] uppercase tracking-widest text-slate-500">Appraised Value (Rs.)</Label>
-                    <Input value={appraisal} onChange={e => setAppraisal(e.target.value)} type="number" placeholder="100000" className="h-11 bg-white rounded-xl text-xs font-bold" />
+                    <Input value={amount || appraisal} onChange={e => { setAmount(e.target.value); setAppraisal(e.target.value); }} type="number" placeholder="85000" className="h-11 bg-white rounded-xl text-xs font-bold" />
                   </div>
                   <div className="grid gap-1">
                     <Label className="font-black text-[10px] uppercase tracking-widest text-slate-500">Disbursed Amount (Rs.)</Label>
-                    <Input value={amount} onChange={e => setAmount(e.target.value)} type="number" placeholder="85000" className="h-11 bg-blue-50 border-blue-300 rounded-xl text-xs font-black text-blue-900" />
+                    <Input value={amount} onChange={e => { setAmount(e.target.value); setAppraisal(e.target.value); }} type="number" placeholder="85000" className="h-11 bg-blue-50 border-blue-300 rounded-xl text-xs font-black text-blue-900" />
                   </div>
                 </div>
 
@@ -2794,7 +2795,7 @@ export default function PawnesPage() {
                     {getCleanDescription(pawn)}
                   </TableCell>
                   <TableCell className="px-2 py-2 font-bold text-amber-700 text-xs text-right whitespace-nowrap">
-                    Rs. {(pawn.appraised_value || 0).toLocaleString()}
+                    Rs. {(pawn.disbursed_amount || pawn.appraised_value || 0).toLocaleString()}
                   </TableCell>
                   <TableCell className="px-2 py-2 font-black text-blue-700 text-xs text-right whitespace-nowrap">
                     Rs. {(pawn.disbursed_amount || 0).toLocaleString()}
@@ -3545,7 +3546,7 @@ function PawnDetailsModal({
       setBillPhone(cDetails.phone);
       setBillAmount(String(pawn.disbursed_amount || 0));
       setBillDesc(getCleanDescription(pawn));
-      setBillAppraised(String(pawn.appraised_value || 0));
+      setBillAppraised(String(pawn.disbursed_amount || pawn.appraised_value || 0));
       setBillWeight(formattedWeightStr || String(computedWeight));
       setBillLastDate(formattedLastDate);
     }
@@ -3597,7 +3598,7 @@ function PawnDetailsModal({
       setBillPhone(cDetails.phone);
       setBillAmount(String(pawn.disbursed_amount || 0));
       setBillDesc(getCleanDescription(pawn));
-      setBillAppraised(String(pawn.appraised_value || 0));
+      setBillAppraised(String(pawn.disbursed_amount || pawn.appraised_value || 0));
       setBillWeight(formattedWeightStr || String(pawn.weight || ''));
       setBillLastDate(formattedLastDate);
     }
@@ -4269,7 +4270,7 @@ function RedemptionReceiptModal({
       setPhone(resolvedData.cPhone || '');
       setCustomerAddress(resolvedData.cAddress || '');
       setDescription(getCleanDescription(resolvedData.pawn) || 'Gold Collateral');
-      setAppraisedValuation(String(resolvedData.pawn?.appraised_value || 0));
+      setAppraisedValuation(String(resolvedData.pawn?.disbursed_amount || resolvedData.pawn?.appraised_value || 0));
       setWeight(resolvedData.weightStr || '0.00');
       setPrincipal(String(resolvedData.principal || 0));
       setDays(String(resolvedData.days || 0));
@@ -4299,7 +4300,7 @@ function RedemptionReceiptModal({
       setPhone(resolvedData.cPhone || '');
       setCustomerAddress(resolvedData.cAddress || '');
       setDescription(getCleanDescription(resolvedData.pawn) || 'Gold Collateral');
-      setAppraisedValuation(String(resolvedData.pawn?.appraised_value || 0));
+      setAppraisedValuation(String(resolvedData.pawn?.disbursed_amount || resolvedData.pawn?.appraised_value || 0));
       setWeight(resolvedData.weightStr || '0.00');
       setPrincipal(String(resolvedData.principal || 0));
       setDays(String(resolvedData.days || 0));
