@@ -17,7 +17,6 @@ export async function GET(request: Request) {
       }
     }
 
-
     const { searchParams } = new URL(request.url);
     const branchParam = searchParams.get('branch');
     const searchParam = searchParams.get('search');
@@ -409,3 +408,4 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: err.message || 'Failed to update stock item' }, { status: 500 });
   }
 }
+
