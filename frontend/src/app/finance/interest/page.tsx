@@ -32,6 +32,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { WebBluetoothTransport } from '@/lib/bluetooth/WebBluetoothTransport';
 import { EscPosAdapter } from '@/lib/bluetooth/EscPosAdapter';
+import { getAuthHeaders } from '@/lib/getAuthHeaders';
 
 interface ClientItem {
   id: string;
@@ -43,10 +44,12 @@ interface ClientItem {
   nic?: string;
   phone?: string;
   mobile?: string;
+  tp?: string;
   address?: string;
   address_line1?: string;
   branch_id?: string;
   branchId?: string;
+  bills?: string;
 }
 
 interface PawnItem {
@@ -57,10 +60,12 @@ interface PawnItem {
   clients?: ClientItem;
   amount?: number | string;
   disbursed_amount?: number | string;
+  price?: number | string;
   created_at?: string;
   pawning_date?: string;
   status?: string;
   description?: string;
+  item_type?: string;
   weight?: string | number;
   appraised_value?: number | string;
   interest_rate?: number;
@@ -134,18 +139,62 @@ export default function InterestPaymentPage() {
     }
   }, []);
 
-  // Fetch Clients Directory
+  // Fetch Clients Directory (both /api/clients and /api/stock-customers)
   useEffect(() => {
     const fetchClients = async () => {
       try {
         setIsSearching(true);
-        const res = await fetch('/api/clients', { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
+        const [clientsRes, stockCustRes] = await Promise.all([
+          fetch('/api/clients', { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null),
+          fetch('/api/stock-customers', { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null)
+        ]);
+
+        const combined: ClientItem[] = [];
+        const seenKeys = new Set<string>();
+
+        if (clientsRes && clientsRes.ok) {
+          const data = await clientsRes.json();
           if (Array.isArray(data)) {
-            setClients(data);
+            for (const c of data) {
+              const nicKey = String(c.national_id || c.nationalId || c.nic || c.id || '').trim().toUpperCase();
+              if (nicKey) seenKeys.add(nicKey);
+              combined.push(c);
+            }
           }
         }
+
+        if (stockCustRes && stockCustRes.ok) {
+          const scJson = await stockCustRes.json();
+          const scList = Array.isArray(scJson) ? scJson : (scJson?.data || []);
+          if (Array.isArray(scList)) {
+            for (const sc of scList) {
+              const nicKey = String(sc.nic || '').trim().toUpperCase();
+              if (nicKey && seenKeys.has(nicKey)) {
+                // Attach linked bills to existing client record if missing
+                const existing = combined.find(
+                  c => String(c.national_id || c.nationalId || c.nic || '').trim().toUpperCase() === nicKey
+                );
+                if (existing && sc.bills && !existing.bills) {
+                  existing.bills = sc.bills;
+                }
+                continue;
+              }
+              if (nicKey) seenKeys.add(nicKey);
+              combined.push({
+                id: sc.id,
+                name: sc.name,
+                nic: sc.nic,
+                national_id: sc.nic,
+                phone: sc.tp,
+                address: sc.address,
+                branch_id: sc.branch_id,
+                bills: sc.bills
+              });
+            }
+          }
+        }
+
+        setClients(combined);
       } catch (err) {
         console.warn('Failed to load clients list:', err);
       } finally {
@@ -166,15 +215,24 @@ export default function InterestPaymentPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter Matching Clients
+  // Filter Matching Clients (by NIC, Name, Phone, or Linked Bill Number)
   const matchingClients = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
+    const qClean = q.replace(/\s+/g, '');
     return clients.filter(c => {
       const nic = String(c.national_id || c.nationalId || c.nic || '').toLowerCase();
       const name = `${c.first_name || ''} ${c.last_name || ''} ${c.name || ''}`.toLowerCase();
-      const phone = String(c.phone || c.mobile || '').toLowerCase();
-      return nic.includes(q) || name.includes(q) || phone.includes(q);
+      const phone = String(c.phone || c.mobile || c.tp || '').toLowerCase();
+      const bills = String(c.bills || '').toLowerCase();
+      const billsClean = bills.replace(/\s+/g, '');
+      return (
+        nic.includes(q) ||
+        name.includes(q) ||
+        phone.includes(q) ||
+        bills.includes(q) ||
+        (qClean.length >= 3 && billsClean.includes(qClean))
+      );
     }).slice(0, 10);
   }, [searchQuery, clients]);
 
@@ -186,26 +244,81 @@ export default function InterestPaymentPage() {
     try {
       const nic = (client.national_id || client.nationalId || client.nic || '').trim();
       const clientId = client.id;
+      const linkedBillsList = (client.bills || '')
+        .split(',')
+        .map(b => b.trim().toUpperCase().replace(/\s+/g, ''))
+        .filter(Boolean);
 
-      // 1. Fetch pawns from /api/pawns
-      const res = await fetch('/api/pawns?filterBranch=ALL', { cache: 'no-store' });
+      // 1. Fetch pawns from /api/pawns and vault stock from /api/stock with auth headers
+      const [res, stockItemsRes] = await Promise.all([
+        fetch('/api/pawns?filterBranch=ALL', { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null),
+        fetch('/api/stock', { cache: 'no-store', headers: getAuthHeaders() }).catch(() => null)
+      ]);
+
       let clientBills: PawnItem[] = [];
+      const seenBillKeys = new Set<string>();
 
-      if (res.ok) {
+      if (res && res.ok) {
         const allPawns = await res.json();
         if (Array.isArray(allPawns)) {
-          clientBills = allPawns.filter((p: any) => {
-            const matchClient = p.client_id === clientId || 
-              (p.client && (p.client.national_id === nic || p.client.id === clientId)) ||
-              (p.clients && (p.clients.national_id === nic || p.clients.id === clientId));
+          const matchedPawns = allPawns.filter((p: any) => {
+            const pBillClean = String(p.bill_no || '').trim().toUpperCase().replace(/\s+/g, '');
+            const matchClient =
+              (clientId && p.client_id === clientId) ||
+              (nic && p.client && (String(p.client.national_id || '').trim().toUpperCase() === nic.toUpperCase() || p.client.id === clientId)) ||
+              (nic && p.clients && (String(p.clients.national_id || '').trim().toUpperCase() === nic.toUpperCase() || p.clients.id === clientId)) ||
+              (pBillClean && linkedBillsList.includes(pBillClean));
             return matchClient && p.status !== 'REDEEMED' && p.status !== 'CANCELLED';
           });
+          for (const p of matchedPawns) {
+            const key = `${String(p.bill_no || '').trim().toUpperCase().replace(/\s+/g, '')}_${p.branch_id || p.branch || ''}`;
+            seenBillKeys.add(key);
+            clientBills.push(p);
+          }
         }
       }
 
-      // 2. Fallback search by bill number if matching in stock items
-      if (clientBills.length === 0) {
-        const stockRes = await fetch('/api/pawns?search=' + encodeURIComponent(nic), { cache: 'no-store' });
+      // 2. Also include matching active items from /api/stock (e.g. Vault Stock / Old Data bills)
+      if (stockItemsRes && stockItemsRes.ok) {
+        const stockJson = await stockItemsRes.json();
+        const stockList = Array.isArray(stockJson) ? stockJson : (stockJson?.data || []);
+        if (Array.isArray(stockList)) {
+          for (const s of stockList) {
+            if (s.status && s.status !== 'ACTIVE' && s.status !== 'FORFEITED') continue;
+            const sBillClean = String(s.bill_no || '').trim().toUpperCase().replace(/\s+/g, '');
+            const key = `${sBillClean}_${s.branch_id || s.branch || ''}`;
+            if (seenBillKeys.has(key)) continue;
+
+            const matchesCustomer =
+              (clientId && s.customer_id === clientId) ||
+              (sBillClean && linkedBillsList.includes(sBillClean));
+
+            if (matchesCustomer) {
+              seenBillKeys.add(key);
+              clientBills.push({
+                id: s.id,
+                bill_no: s.bill_no,
+                disbursed_amount: s.price || s.disbursed_amount || s.appraised_value || 0,
+                amount: s.price || s.disbursed_amount || s.appraised_value || 0,
+                pawning_date: s.pawning_date || s.created_at,
+                created_at: s.pawning_date || s.created_at,
+                status: s.status || 'ACTIVE',
+                description: s.item_type || s.description || 'Pawned Gold Articles',
+                weight: s.weight ? `${s.weight} mg` : undefined,
+                branch_id: s.branch_id || s.branch,
+                branch: s.branch_id || s.branch
+              });
+            }
+          }
+        }
+      }
+
+      // 3. Fallback search by NIC if still empty
+      if (clientBills.length === 0 && nic) {
+        const stockRes = await fetch('/api/pawns?search=' + encodeURIComponent(nic), {
+          cache: 'no-store',
+          headers: getAuthHeaders()
+        });
         if (stockRes.ok) {
           const searchData = await stockRes.json();
           if (Array.isArray(searchData)) {
@@ -234,7 +347,7 @@ export default function InterestPaymentPage() {
     loadInterestHistory(bill.bill_no);
 
     // Calculate standard 1 month interest
-    const principal = parseFloat(String(bill.disbursed_amount || bill.amount || '0')) || 0;
+    const principal = parseFloat(String(bill.disbursed_amount || bill.price || bill.amount || '0')) || 0;
     const rate = bill.interest_rate || monthlyRatePercent || 2.5;
     const oneMonth = Math.round((principal * (rate / 100)));
 
@@ -247,7 +360,10 @@ export default function InterestPaymentPage() {
   const loadInterestHistory = async (billNo: string) => {
     setIsLoadingHistory(true);
     try {
-      const res = await fetch(`/api/stock/interest?bill_no=${encodeURIComponent(billNo)}`, { cache: 'no-store' });
+      const res = await fetch(`/api/stock/interest?bill_no=${encodeURIComponent(billNo)}`, {
+        cache: 'no-store',
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const json = await res.json();
         const records = json.data || [];
@@ -275,7 +391,7 @@ export default function InterestPaymentPage() {
   const handleSelectMonths = (months: number) => {
     setPaidMonthsOption(months);
     if (!selectedBill) return;
-    const principal = parseFloat(String(selectedBill.disbursed_amount || selectedBill.amount || '0')) || 0;
+    const principal = parseFloat(String(selectedBill.disbursed_amount || selectedBill.price || selectedBill.amount || '0')) || 0;
     const rate = selectedBill.interest_rate || monthlyRatePercent || 2.5;
     const calculated = Math.round(principal * (rate / 100) * months);
     setInterestAmount(String(calculated));
@@ -285,7 +401,7 @@ export default function InterestPaymentPage() {
   // Select Client from Dropdown
   const handleSelectClient = (client: ClientItem) => {
     setSelectedClient(client);
-    setSearchQuery(client.national_id || client.nationalId || client.nic || '');
+    setSearchQuery(client.national_id || client.nationalId || client.nic || client.name || '');
     setIsDropdownOpen(false);
     loadPawnBillsForClient(client);
   };
@@ -317,6 +433,27 @@ export default function InterestPaymentPage() {
       return;
     }
 
+    // Connect Bluetooth FIRST while user gesture is active (Web Bluetooth requires direct user activation)
+    let btTransport: WebBluetoothTransport | null = null;
+    if (printBluetooth) {
+      try {
+        setIsBtPrinting(true);
+        btTransport = new WebBluetoothTransport();
+        const connected = await btTransport.connect();
+        if (!connected) {
+          btTransport = null;
+        }
+      } catch (btErr: any) {
+        btTransport = null;
+        setIsBtPrinting(false);
+        if (btErr?.name === 'NotFoundError' || btErr?.message?.includes('cancel')) {
+          toast.error('Bluetooth printer selection cancelled.');
+          return;
+        }
+        toast.warning('Bluetooth printer not connected. Saving interest & opening receipt preview...');
+      }
+    }
+
     setIsSubmitting(true);
     const toastId = toast.loading('Recording interest payment...');
 
@@ -334,7 +471,7 @@ export default function InterestPaymentPage() {
 
       const res = await fetch('/api/stock/interest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(payload)
       });
 
@@ -347,15 +484,15 @@ export default function InterestPaymentPage() {
 
       // Build receipt data
       const receiptData = {
-        receiptNo: `REC-INT-${Date.now().toString().slice(-6)}`,
+        receiptNo: result.data?.id ? String(result.data.id).slice(0, 12).toUpperCase() : `REC-INT-${Date.now().toString().slice(-6)}`,
         billNo: selectedBill.bill_no,
         date: paymentDate,
         customerName: `${selectedClient?.first_name || ''} ${selectedClient?.last_name || ''}`.trim() || selectedClient?.name || 'Customer',
         customerNic: selectedClient?.national_id || selectedClient?.nationalId || selectedClient?.nic || 'N/A',
-        customerPhone: selectedClient?.phone || selectedClient?.mobile || 'N/A',
+        customerPhone: selectedClient?.phone || selectedClient?.mobile || selectedClient?.tp || 'N/A',
         customerAddress: selectedClient?.address || selectedClient?.address_line1 || 'Sri Lanka',
-        principal: parseFloat(String(selectedBill.disbursed_amount || selectedBill.amount || '0')),
-        articleDescription: selectedBill.description || 'Pawned Gold Articles',
+        principal: parseFloat(String(selectedBill.disbursed_amount || selectedBill.price || selectedBill.amount || '0')),
+        articleDescription: selectedBill.description || selectedBill.item_type || 'Pawned Gold Articles',
         weight: selectedBill.weight ? `${selectedBill.weight}` : 'N/A',
         interestPaid: numericAmount,
         paidPeriod: paymentNotes,
@@ -372,27 +509,34 @@ export default function InterestPaymentPage() {
       loadInterestHistory(selectedBill.bill_no);
 
       // Trigger Bluetooth Print if requested
-      if (printBluetooth) {
-        printViaBluetooth(receiptData);
+      if (printBluetooth && btTransport) {
+        await printViaBluetooth(receiptData, btTransport);
       }
 
     } catch (err: any) {
       console.error('Interest submission error:', err);
       toast.error(err.message || 'Error occurred while recording interest.', { id: toastId });
+      if (btTransport) {
+        btTransport.disconnect().catch(() => {});
+      }
     } finally {
       setIsSubmitting(false);
+      setIsBtPrinting(false);
     }
   };
 
   // Direct Bluetooth Print Function
-  const printViaBluetooth = async (data: any) => {
+  const printViaBluetooth = async (data: any, existingTransport?: WebBluetoothTransport | null) => {
     setIsBtPrinting(true);
-    const toastId = toast.loading('Connecting to Bluetooth Thermal Printer...');
+    const toastId = toast.loading(existingTransport ? 'Printing interest bill...' : 'Connecting to Bluetooth Thermal Printer...');
 
     try {
-      const transport = new WebBluetoothTransport();
-      const connected = await transport.connect();
-      if (!connected) throw new Error('Could not connect to Bluetooth printer.');
+      let transport = existingTransport || null;
+      if (!transport || !transport.isConnected()) {
+        transport = new WebBluetoothTransport();
+        const connected = await transport.connect();
+        if (!connected) throw new Error('Could not connect to Bluetooth printer.');
+      }
 
       toast.loading('Printing interest bill...', { id: toastId });
 
@@ -461,7 +605,8 @@ export default function InterestPaymentPage() {
       await transport.write(payload);
 
       toast.success('Interest Bill Printed via Bluetooth!', { id: toastId });
-      setTimeout(() => transport.disconnect(), 1200);
+      const activeTransport = transport;
+      setTimeout(() => activeTransport.disconnect(), 1200);
 
     } catch (err: any) {
       if (err.name === 'NotFoundError' || err.message?.includes('cancel')) {
@@ -500,7 +645,7 @@ export default function InterestPaymentPage() {
           .right { text-align: right; }
           .bold { font-weight: bold; }
           .sep { border-top: 1px dashed #000; margin: 8px 0; }
-          .row { display: flex; justify-space-between; margin-bottom: 4px; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
         </style>
       </head>
       <body>
@@ -564,7 +709,7 @@ export default function InterestPaymentPage() {
               <span>Pawn Interest Payment & Billing</span>
             </h1>
             <p className="text-xs text-slate-400 font-medium">
-              Search customer NIC, select active pawn ticket, set payment date, and print thermal receipt via Bluetooth printer.
+              Search customer NIC, Name, or Bill Number, select active pawn ticket, set payment date, and print thermal receipt via Bluetooth printer.
             </p>
           </div>
 
@@ -585,7 +730,7 @@ export default function InterestPaymentPage() {
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 shadow-xl relative" ref={dropdownRef}>
           <Label className="text-xs font-black uppercase tracking-wider text-amber-400 block mb-2 flex items-center gap-2">
             <Search className="w-4 h-4 text-amber-400" />
-            <span>Step 1: Search Customer by NIC Number or Name</span>
+            <span>Step 1: Search Customer by NIC Number, Name, or Bill Number</span>
           </Label>
 
           <div className="relative">
@@ -597,7 +742,7 @@ export default function InterestPaymentPage() {
                 setIsDropdownOpen(true);
               }}
               onFocus={() => setIsDropdownOpen(true)}
-              placeholder="Type Customer NIC (e.g. 941234567V or 199412345678) or Name..."
+              placeholder="Type Customer NIC (e.g. 941234567V), Name, or Bill No (e.g. 12R 37611)..."
               className="pl-11 pr-10 h-13 bg-slate-950 border-slate-700 text-white font-mono font-bold text-sm rounded-2xl focus:border-amber-500 focus:ring-amber-500/20"
             />
             {searchQuery && (
@@ -618,7 +763,7 @@ export default function InterestPaymentPage() {
                 matchingClients.map((client) => {
                   const nic = client.national_id || client.nationalId || client.nic || '';
                   const name = `${client.first_name || ''} ${client.last_name || ''} ${client.name || ''}`.trim();
-                  const phone = client.phone || client.mobile || 'No Phone';
+                  const phone = client.phone || client.mobile || client.tp || 'No Phone';
                   const branch = client.branch_id || client.branchId || '';
 
                   return (
@@ -633,10 +778,15 @@ export default function InterestPaymentPage() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="font-mono font-bold text-white text-sm">{nic}</span>
+                            <span className="font-mono font-bold text-white text-sm">{nic || 'No NIC'}</span>
                             {branch && (
                               <Badge className="bg-slate-800 text-slate-400 border-slate-700 text-[9px] uppercase">
                                 {branch}
+                              </Badge>
+                            )}
+                            {client.bills && (
+                              <Badge className="bg-amber-500/10 text-amber-300 border-amber-500/20 text-[9px] font-mono">
+                                {client.bills}
                               </Badge>
                             )}
                           </div>
@@ -654,7 +804,7 @@ export default function InterestPaymentPage() {
                 })
               ) : (
                 <div className="p-4 text-center text-xs text-slate-400 font-medium">
-                  No matching customer found with NIC: <span className="font-mono text-amber-400">{searchQuery}</span>
+                  No matching customer found for: <span className="font-mono text-amber-400">{searchQuery}</span>
                 </div>
               )}
             </div>
@@ -673,13 +823,13 @@ export default function InterestPaymentPage() {
                       {`${selectedClient.first_name || ''} ${selectedClient.last_name || ''}`.trim() || selectedClient.name || 'Verified Customer'}
                     </span>
                     <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-mono text-xs">
-                      {selectedClient.national_id || selectedClient.nationalId || selectedClient.nic}
+                      {selectedClient.national_id || selectedClient.nationalId || selectedClient.nic || 'N/A'}
                     </Badge>
                   </div>
                   <div className="text-xs text-slate-400 flex items-center gap-3 mt-1">
                     <span className="flex items-center gap-1">
                       <Phone className="w-3 h-3 text-slate-500" />
-                      <span className="font-mono">{selectedClient.phone || selectedClient.mobile || 'No Phone'}</span>
+                      <span className="font-mono">{selectedClient.phone || selectedClient.mobile || selectedClient.tp || 'No Phone'}</span>
                     </span>
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-slate-500" />
@@ -724,7 +874,7 @@ export default function InterestPaymentPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {pawnBills.map((bill) => {
                   const isSelected = selectedBill?.id === bill.id;
-                  const principal = parseFloat(String(bill.disbursed_amount || bill.amount || '0')) || 0;
+                  const principal = parseFloat(String(bill.disbursed_amount || bill.price || bill.amount || '0')) || 0;
                   const dateStr = bill.created_at ? bill.created_at.split('T')[0] : (bill.pawning_date || 'N/A');
 
                   return (
@@ -755,10 +905,10 @@ export default function InterestPaymentPage() {
                           <span>Pawn Date:</span>
                           <span className="font-mono text-slate-300">{dateStr}</span>
                         </div>
-                        {bill.description && (
+                        {(bill.description || bill.item_type) && (
                           <div className="flex justify-between text-slate-400">
                             <span>Articles:</span>
-                            <span className="font-semibold text-slate-300 truncate max-w-[150px]">{bill.description}</span>
+                            <span className="font-semibold text-slate-300 truncate max-w-[150px]">{bill.description || bill.item_type}</span>
                           </div>
                         )}
                         {bill.weight && (
@@ -798,7 +948,7 @@ export default function InterestPaymentPage() {
                 </div>
 
                 <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 font-mono font-bold">
-                  Principal: Rs. {(parseFloat(String(selectedBill.disbursed_amount || selectedBill.amount || '0')) || 0).toLocaleString()}
+                  Principal: Rs. {(parseFloat(String(selectedBill.disbursed_amount || selectedBill.price || selectedBill.amount || '0')) || 0).toLocaleString()}
                 </Badge>
               </div>
 
@@ -830,7 +980,7 @@ export default function InterestPaymentPage() {
                     onChange={(e) => {
                       const rate = parseFloat(e.target.value) || 0;
                       setMonthlyRatePercent(rate);
-                      const principal = parseFloat(String(selectedBill.disbursed_amount || selectedBill.amount || '0')) || 0;
+                      const principal = parseFloat(String(selectedBill.disbursed_amount || selectedBill.price || selectedBill.amount || '0')) || 0;
                       setInterestAmount(String(Math.round(principal * (rate / 100) * paidMonthsOption)));
                     }}
                     className="h-11 bg-slate-950 border-slate-700 text-white font-mono font-bold rounded-xl"
@@ -845,7 +995,7 @@ export default function InterestPaymentPage() {
                 </Label>
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                   {[1, 2, 3, 6].map((m) => {
-                    const principal = parseFloat(String(selectedBill.disbursed_amount || selectedBill.amount || '0')) || 0;
+                    const principal = parseFloat(String(selectedBill.disbursed_amount || selectedBill.price || selectedBill.amount || '0')) || 0;
                     const calculated = Math.round(principal * (monthlyRatePercent / 100) * m);
                     const isSelected = paidMonthsOption === m;
 
@@ -945,7 +1095,7 @@ export default function InterestPaymentPage() {
                   className="border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900 font-bold text-xs h-13 px-6 rounded-2xl gap-2 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Record Only (No BT)</span>
+                  <span>Record & Preview Bill</span>
                 </Button>
               </div>
             </div>
@@ -1014,15 +1164,15 @@ export default function InterestPaymentPage() {
                           variant="ghost"
                           onClick={() => {
                             const recData = {
-                              receiptNo: rec.id,
+                              receiptNo: String(rec.id || '').slice(0, 12).toUpperCase(),
                               billNo: selectedBill.bill_no,
                               date: rec.date,
                               customerName: `${selectedClient?.first_name || ''} ${selectedClient?.last_name || ''}`.trim() || selectedClient?.name || 'Customer',
                               customerNic: selectedClient?.national_id || selectedClient?.nationalId || selectedClient?.nic || 'N/A',
-                              customerPhone: selectedClient?.phone || selectedClient?.mobile || 'N/A',
+                              customerPhone: selectedClient?.phone || selectedClient?.mobile || selectedClient?.tp || 'N/A',
                               customerAddress: selectedClient?.address || selectedClient?.address_line1 || 'Sri Lanka',
-                              principal: parseFloat(String(selectedBill.disbursed_amount || selectedBill.amount || '0')),
-                              articleDescription: selectedBill.description || 'Pawned Gold Articles',
+                              principal: parseFloat(String(selectedBill.disbursed_amount || selectedBill.price || selectedBill.amount || '0')),
+                              articleDescription: selectedBill.description || selectedBill.item_type || 'Pawned Gold Articles',
                               weight: selectedBill.weight ? `${selectedBill.weight}` : 'N/A',
                               interestPaid: rec.interest_value,
                               paidPeriod: rec.notes || 'Interest Payment',

@@ -14,9 +14,22 @@ export class EscPosAdapter implements PrinterAdapter {
     if (doubleWidth) mode |= 0x20;
     
     commands.push(0x1B, 0x21, mode); // ESC ! n
+
+    // Strip Sinhala Unicode and normalize non-ASCII punctuation so single-byte ESC/POS never emits control/garbage bytes
+    const sanitized = String(content || '')
+      .replace(/[\u0D80-\u0DFF]+/g, '')
+      .replace(/\(\s*\)/g, '')
+      .replace(/\/\s*(?=[,\n\r]|$)/g, '')
+      .replace(/[\u00B7\u2022\u2013\u2014]/g, '-')
+      .replace(/[ \t]{2,}/g, ' ');
     
-    for (let i = 0; i < content.length; i++) {
-      commands.push(content.charCodeAt(i) & 0xFF);
+    for (let i = 0; i < sanitized.length; i++) {
+      const code = sanitized.charCodeAt(i);
+      if (code === 0x0A || code === 0x0D || code === 0x09) {
+        commands.push(code);
+      } else if (code >= 0x20 && code <= 0x7E) {
+        commands.push(code);
+      }
     }
     
     commands.push(0x1B, 0x21, 0x00);

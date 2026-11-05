@@ -40,7 +40,8 @@ import {
   Save,
   Plus,
   ImageIcon,
-  Upload
+  Upload,
+  Bluetooth
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -390,7 +391,7 @@ function EndOfDayContent() {
           adapter.text(`Item      : ${displayItem}\n`, true),
           adapter.text(`Weight    : ${formattedWeight}\n`, true),
           ...(item.purity ? [adapter.text(`Purity    : ${item.purity}\n`)] : []),
-          ...(item.appraised_value ? [adapter.text(`Appraised : Rs. ${Number(item.appraised_value).toLocaleString()}\n`)] : []),
+          ...((item.price || item.disbursed_amount || item.appraised_value) ? [adapter.text(`Amount    : Rs. ${Number(item.price || item.disbursed_amount || item.appraised_value).toLocaleString()}\n`)] : []),
           adapter.text(`${sep}\n`),
 
           // ── CUSTOMER INFO (if matched) ──
@@ -559,7 +560,7 @@ function EndOfDayContent() {
   const fetchStockInterests = async () => {
     let remoteRecords: any[] = [];
     try {
-      const res = await fetch('/api/stock/interest');
+      const res = await fetch('/api/stock/interest', { headers: getAuthHeaders() });
       if (res.ok) {
         const json = await res.json();
         if (json.data && Array.isArray(json.data)) {
@@ -625,13 +626,13 @@ function EndOfDayContent() {
         Promise.all(unsynced.map(item => 
           fetch('/api/stock/interest', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
             body: JSON.stringify(item)
           }).catch(e => console.warn('[Auto-Sync] Failed for item:', item, e))
         )).then(() => {
           console.log('[Auto-Sync] Local interest records successfully synced to cloud.');
           toast.success(`Successfully restored ${unsynced.length} interest payments to Database!`);
-          fetch('/api/stock/interest')
+          fetch('/api/stock/interest', { headers: getAuthHeaders() })
             .then(r => r.json())
             .then(json => {
               if (json && json.data && Array.isArray(json.data)) {
@@ -665,7 +666,178 @@ function EndOfDayContent() {
     setShowAddInterestModal(true);
   };
 
-  const handleSaveInterest = async () => {
+  const buildInterestReceiptPayload = (entry: any) => {
+    const billNo = entry.bill_no || selectedBillForCustomerView || 'N/A';
+    const branchCode = normalizeBranchId(entry.branch || selectedStockItemForCustomerView?.branch_id || selectedBranchForCustomerView || currentUser?.branchId || 'HQ');
+    const bObj = CANONICAL_BRANCHES.find(b => b.id === branchCode);
+    const branchDisplay = bObj ? `${bObj.name} (${branchCode})` : branchCode;
+    const customer = getCustomerForBill(billNo, branchCode);
+    const itemObj = selectedStockItemForCustomerView || stockItems.find((it: any) => (it.bill_no || '').trim().toUpperCase() === billNo.trim().toUpperCase());
+    const principal = parseFloat(String(itemObj?.price || itemObj?.disbursed_amount || itemObj?.appraised_value || '0')) || 0;
+    const weight = itemObj?.weight ? `${itemObj.weight} mg` : 'N/A';
+    const article = itemObj?.item_type || itemObj?.description || 'Pawned Gold Articles';
+    const billInterests = stockInterests.filter(i => (i.bill_no || '').trim().toUpperCase() === billNo.trim().toUpperCase());
+    const totalPaid = billInterests.reduce((sum, r) => sum + (parseFloat(String(r.interest_value)) || 0), 0);
+
+    return {
+      receiptNo: String(entry.id || `REC-${Date.now().toString().slice(-6)}`).slice(0, 12).toUpperCase(),
+      billNo,
+      date: entry.date || new Date().toISOString().split('T')[0],
+      customerName: customer?.name || 'Customer',
+      customerNic: customer?.nic || 'N/A',
+      customerPhone: customer?.tp || 'N/A',
+      customerAddress: customer?.address || 'Sri Lanka',
+      principal,
+      articleDescription: article,
+      weight,
+      interestPaid: parseFloat(String(entry.interest_value || '0')) || 0,
+      paidPeriod: entry.notes || 'Pawn Interest Payment',
+      paymentMode: 'CASH',
+      branch: branchDisplay,
+      cashier: currentUser?.name || currentUser?.email || 'Staff',
+      totalPaidToDate: Math.max(totalPaid, parseFloat(String(entry.interest_value || '0')) || 0)
+    };
+  };
+
+  const handlePrintInterestBluetooth = async (entry: any, existingTransport?: WebBluetoothTransport | null) => {
+    const data = buildInterestReceiptPayload(entry);
+    const toastId = toast.loading(existingTransport ? 'Printing interest receipt...' : 'Connecting to Bluetooth Thermal Printer...');
+    try {
+      let transport = existingTransport || null;
+      if (!transport || !transport.isConnected()) {
+        transport = new WebBluetoothTransport();
+        const connected = await transport.connect();
+        if (!connected) throw new Error('Could not connect to Bluetooth printer.');
+      }
+
+      toast.loading('Printing interest bill...', { id: toastId });
+      const adapter = new EscPosAdapter();
+      const sep = '----------------------------------------';
+      const fmt = (n: number) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      const lines: Uint8Array[] = [
+        adapter.init(),
+        adapter.align(1),
+        adapter.text('RUPASINGHE TRUST\n', true, true, true),
+        adapter.text('INVESTMENTS LTD.\n', true, false, true),
+        adapter.text('(PREV. L.S. RUPASINGHE PAWN BROKERS)\n'),
+        adapter.text(`${data.branch}\n`),
+        adapter.text('Tel: 011 7006588\n'),
+        adapter.text(`${sep}\n`),
+        adapter.text('** PAWN INTEREST RECEIPT **\n', true, false, true),
+        adapter.text(`${sep}\n`),
+        adapter.align(0),
+        adapter.text(`Receipt No : ${data.receiptNo}\n`, true),
+        adapter.text(`Bill No    : ${data.billNo}\n`, true),
+        adapter.text(`Payment Dt : ${data.date}\n`),
+        adapter.text(`${sep}\n`),
+        adapter.text(`Customer   : ${data.customerName}\n`),
+        adapter.text(`NIC        : ${data.customerNic}\n`),
+        adapter.text(`Phone      : ${data.customerPhone}\n`),
+        adapter.text(`Address    : ${data.customerAddress}\n`),
+        adapter.text(`${sep}\n`),
+        adapter.text(`Article    : ${data.articleDescription}\n`),
+        adapter.text(`Weight     : ${data.weight}\n`),
+        adapter.text(`Principal  : Rs. ${fmt(data.principal)}\n`),
+        adapter.text(`${sep}\n`),
+        adapter.align(1),
+        adapter.text(`INTEREST PAID: Rs. ${fmt(data.interestPaid)}\n`, true, false, true),
+        adapter.text(`${sep}\n`),
+        adapter.align(0),
+        adapter.text(`Notes / Period : ${data.paidPeriod}\n`),
+        adapter.text(`Total Paid Till: Rs. ${fmt(data.totalPaidToDate)}\n`),
+        adapter.text(`Cashier / User : ${data.cashier}\n`),
+        adapter.text(`${sep}\n`),
+        adapter.feed(2),
+        adapter.text('Customer Signature      Cashier Signature\n'),
+        adapter.text('-------------------     -------------------\n'),
+        adapter.align(1),
+        adapter.text('Thank you for transacting with Rupasinghe Trust!\n'),
+        adapter.feed(4),
+        adapter.cut(),
+      ];
+
+      await transport.write(EscPosAdapter.concat(lines));
+      toast.success('Interest Bill Printed via Bluetooth!', { id: toastId });
+      const activeTransport = transport;
+      setTimeout(() => activeTransport.disconnect(), 1200);
+    } catch (err: any) {
+      if (err?.name === 'NotFoundError' || err?.message?.includes('cancel')) {
+        toast.error('Bluetooth connection cancelled.', { id: toastId });
+      } else {
+        toast.error('Bluetooth Print Failed: ' + (err?.message || 'Check printer connection'), { id: toastId });
+      }
+    }
+  };
+
+  const handlePrintInterestBrowser = (entry: any) => {
+    const data = buildInterestReceiptPayload(entry);
+    const printWindow = window.open('', '_blank', 'width=450,height=650');
+    if (!printWindow) {
+      toast.error('Popup blocked. Please allow popups to print.');
+      return;
+    }
+    const fmt = (n: number) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Pawn Interest Receipt - ${data.receiptNo}</title>
+        <style>
+          @media print {
+            @page { size: 80mm auto; margin: 0; }
+            body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; background: white !important; margin: 0; padding: 10px; }
+          }
+          body { font-family: 'Courier New', monospace; font-size: 12px; width: 300px; margin: 0 auto; padding: 16px; background: white; color: #000; }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .sep { border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 14px;">RUPASINGHE TRUST</div>
+        <div class="center bold">INVESTMENTS LTD.</div>
+        <div class="center" style="font-size: 10px;">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
+        <div class="center" style="font-size: 10px;">${data.branch} &bull; Tel: 011 7006588</div>
+        <div class="sep"></div>
+        <div class="center bold">** PAWN INTEREST RECEIPT **</div>
+        <div class="sep"></div>
+        <div class="row"><span>Receipt No: <strong>${data.receiptNo}</strong></span><span>Date: ${data.date}</span></div>
+        <div class="row"><span>Bill No: <strong>${data.billNo}</strong></span></div>
+        <div class="sep"></div>
+        <div>Customer: <strong>${data.customerName}</strong></div>
+        <div>NIC: <strong>${data.customerNic}</strong></div>
+        <div>Phone: ${data.customerPhone}</div>
+        <div class="sep"></div>
+        <div>Article: ${data.articleDescription}</div>
+        <div class="row"><span>Weight: ${data.weight}</span><span>Principal: Rs. ${fmt(data.principal)}</span></div>
+        <div class="sep"></div>
+        <div class="center bold" style="border: 2px solid #000; padding: 6px; margin: 8px 0;">
+          <div style="font-size: 10px;">INTEREST PAID</div>
+          <div style="font-size: 16px;">Rs. ${fmt(data.interestPaid)}</div>
+        </div>
+        <div class="row"><span>Notes:</span><span>${data.paidPeriod}</span></div>
+        <div class="row"><span>Total Paid Till:</span><span>Rs. ${fmt(data.totalPaidToDate)}</span></div>
+        <div class="row"><span>Cashier:</span><span>${data.cashier}</span></div>
+        <div class="sep"></div>
+        <div style="margin-top: 30px; display: flex; justify-content: space-between; font-size: 9px;" class="center">
+          <div><div>-------------------</div>Customer Signature</div>
+          <div><div>-------------------</div>Cashier Signature</div>
+        </div>
+        <div class="center" style="font-size: 9px; margin-top: 15px;">Thank you for transacting with Rupasinghe Trust!</div>
+        <script>
+          setTimeout(() => { window.print(); window.close(); }, 500);
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handleSaveInterest = async (printMode?: 'BT' | 'BROWSER') => {
     if (!selectedBillForCustomerView) return;
     if (!interestDate || !interestValue || !interestBranch) {
       toast.error("Please fill in Date, Interest Value, and Branch.");
@@ -675,6 +847,23 @@ function EndOfDayContent() {
     if (isNaN(val) || val <= 0) {
       toast.error("Please enter a valid interest value.");
       return;
+    }
+
+    // If Bluetooth print requested, connect FIRST while user click gesture is active
+    let btTransport: WebBluetoothTransport | null = null;
+    if (printMode === 'BT') {
+      try {
+        btTransport = new WebBluetoothTransport();
+        const connected = await btTransport.connect();
+        if (!connected) btTransport = null;
+      } catch (btErr: any) {
+        btTransport = null;
+        if (btErr?.name === 'NotFoundError' || btErr?.message?.includes('cancel')) {
+          toast.error('Bluetooth printer selection cancelled.');
+          return;
+        }
+        toast.warning('Bluetooth printer not connected. Saving interest entry...');
+      }
     }
 
     setIsSubmittingInterest(true);
@@ -698,7 +887,7 @@ function EndOfDayContent() {
     try {
       const res = await fetch('/api/stock/interest', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify(newEntry)
       });
       let json: any = null;
@@ -714,7 +903,7 @@ function EndOfDayContent() {
         return updated;
       });
 
-      if (res.ok && json.success) {
+      if (res.ok && json?.success) {
         toast.success(`Interest of LKR ${val.toLocaleString()} added for bill ${selectedBillForCustomerView} (${targetBranch})!`);
       } else {
         toast.success(`Interest of LKR ${val.toLocaleString()} saved for ${targetBranch}!`);
@@ -722,6 +911,12 @@ function EndOfDayContent() {
       setShowAddInterestModal(false);
       setInterestValue("");
       setInterestNotes("");
+
+      if (printMode === 'BT' && btTransport) {
+        await handlePrintInterestBluetooth(savedEntry, btTransport);
+      } else if (printMode === 'BROWSER') {
+        handlePrintInterestBrowser(savedEntry);
+      }
     } catch (err: any) {
       const localEntry = { ...newEntry, id: 'loc_' + Date.now() };
       setStockInterests(prev => {
@@ -733,6 +928,11 @@ function EndOfDayContent() {
       setShowAddInterestModal(false);
       setInterestValue("");
       setInterestNotes("");
+      if (printMode === 'BT' && btTransport) {
+        await handlePrintInterestBluetooth(localEntry, btTransport);
+      } else if (printMode === 'BROWSER') {
+        handlePrintInterestBrowser(localEntry);
+      }
     } finally {
       setIsSubmittingInterest(false);
     }
@@ -752,7 +952,7 @@ function EndOfDayContent() {
       return;
     }
     try {
-      await fetch(`/api/stock/interest?id=${id}`, { method: 'DELETE' });
+      await fetch(`/api/stock/interest?id=${id}`, { method: 'DELETE', headers: getAuthHeaders() });
     } catch (e) {}
     setStockInterests(prev => {
       const updated = prev.filter(i => i.id !== id);
@@ -4264,14 +4464,32 @@ function EndOfDayContent() {
                                       <span className="text-slate-500 font-semibold text-[11px]">{item.date}</span>
                                       <span className="text-slate-900 font-black">LKR {Number(item.interest_value || 0).toLocaleString()}</span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteInterest(item.id)}
-                                      className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
-                                      title="Remove Interest Entry"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePrintInterestBluetooth(item)}
+                                        className="text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 p-1 rounded-md transition-colors cursor-pointer"
+                                        title="Print Interest Receipt via Bluetooth"
+                                      >
+                                        <Bluetooth className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePrintInterestBrowser(item)}
+                                        className="text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 p-1 rounded-md transition-colors cursor-pointer"
+                                        title="Print Interest Receipt (Browser)"
+                                      >
+                                        <Printer className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteInterest(item.id)}
+                                        className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                                        title="Remove Interest Entry"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -4441,14 +4659,32 @@ function EndOfDayContent() {
                                       <span className="text-slate-500 font-semibold text-[11px]">{item.date}</span>
                                       <span className="text-slate-900 font-black">LKR {Number(item.interest_value || 0).toLocaleString()}</span>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteInterest(item.id)}
-                                      className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
-                                      title="Remove Interest Entry"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePrintInterestBluetooth(item)}
+                                        className="text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 p-1 rounded-md transition-colors cursor-pointer"
+                                        title="Print Interest Receipt via Bluetooth"
+                                      >
+                                        <Bluetooth className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePrintInterestBrowser(item)}
+                                        className="text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 p-1 rounded-md transition-colors cursor-pointer"
+                                        title="Print Interest Receipt (Browser)"
+                                      >
+                                        <Printer className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteInterest(item.id)}
+                                        className="text-slate-400 hover:text-rose-600 p-1 transition-colors cursor-pointer"
+                                        title="Remove Interest Entry"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -4782,7 +5018,7 @@ function EndOfDayContent() {
               </div>
 
               {/* Buttons */}
-              <div className="flex justify-end gap-2 pt-3">
+              <div className="flex flex-wrap justify-end gap-2 pt-3">
                 <Button
                   type="button"
                   variant="outline"
@@ -4793,12 +5029,30 @@ function EndOfDayContent() {
                 </Button>
                 <Button
                   type="button"
-                  onClick={handleSaveInterest}
+                  onClick={() => handleSaveInterest('BT')}
                   disabled={isSubmittingInterest}
-                  className="rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer px-6 text-xs gap-1.5 shadow-md shadow-emerald-600/20"
+                  className="rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 cursor-pointer px-3.5 text-xs gap-1.5 shadow-md shadow-amber-500/20"
+                >
+                  <Bluetooth className="w-3.5 h-3.5" />
+                  Save & BT Print
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => handleSaveInterest('BROWSER')}
+                  disabled={isSubmittingInterest}
+                  className="rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white cursor-pointer px-3.5 text-xs gap-1.5 shadow-md shadow-blue-600/20"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Save & Print
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => handleSaveInterest()}
+                  disabled={isSubmittingInterest}
+                  className="rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer px-4 text-xs gap-1.5 shadow-md shadow-emerald-600/20"
                 >
                   {isSubmittingInterest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Save Interest
+                  Save Only
                 </Button>
               </div>
             </div>
