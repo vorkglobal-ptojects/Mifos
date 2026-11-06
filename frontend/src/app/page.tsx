@@ -40,6 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { normalizeBranchId, getBranchSearchTerms, CANONICAL_BRANCHES } from "@/lib/branch-mapping";
+import { getAuthHeaders } from "@/lib/getAuthHeaders";
 
 const statsTemplate = [
   { label: "Total Disbursed Portfolio", value: "Rs. 0", change: "+0.0%", trend: "up", icon: DollarSign, color: "emerald" },
@@ -241,53 +242,92 @@ export default function Home() {
     try {
       const isHeadBranch = !userBranchId || normalizeBranchId(userBranchId) === 'HQ' || userBranchId.toUpperCase() === 'HEAD OFFICE';
       const branchTerms = userBranchId ? getBranchSearchTerms(userBranchId) : [];
+      const headers = getAuthHeaders();
 
-      // 1. Get Customers Count (All branches accessible to all users)
-      const { count: clientCount } = await supabase.from('clients').select('*', { count: 'exact', head: true });
-      
-      // 2. Get Pawns Data (Sum and Count)
-      let pawnsQuery = supabase.from('pawns').select('disbursed_amount');
-      if (!isHeadBranch && userBranchId) {
-        pawnsQuery = pawnsQuery.in('branch_id', branchTerms);
+      // 1. Fetch Customers Count & List via server-side API (falls back to client Supabase)
+      let clientCount = 0;
+      const cmap: { [key: string]: string } = {};
+
+      try {
+        const clientRes = await fetch('/api/clients?branchId=ALL&minimal=true', { headers });
+        if (clientRes.ok) {
+          const clientData = await clientRes.json();
+          if (Array.isArray(clientData)) {
+            clientCount = clientData.length;
+            clientData.forEach((c: any) => {
+              cmap[c.id] = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown Client';
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Dashboard clients API fetch note:', e);
       }
-      const { data: pawnsData } = await pawnsQuery;
-      const totalPawnSum = (pawnsData || []).reduce((acc, p) => acc + (p.disbursed_amount || 0), 0);
-      const activePawns = (pawnsData || []).length;
 
-      // 3. Get Recent Pawns / Transactions
-      let recentPawnsQuery = supabase.from('pawns').select('*').order('created_at', { ascending: false }).limit(6);
-      if (!isHeadBranch && userBranchId) {
-        recentPawnsQuery = recentPawnsQuery.in('branch_id', branchTerms);
-      }
-      const { data: txs } = await recentPawnsQuery;
-
-      // 4. Get Client Names mapping to resolve client_id to actual names (All branches)
-      const { data: clientsList } = await supabase.from('clients').select('id, first_name, last_name');
-      const cmap: {[key: string]: string} = {};
-      if (clientsList) {
-        clientsList.forEach((c: any) => {
-          cmap[c.id] = `${c.first_name} ${c.last_name || ''}`.trim();
-        });
+      // If server API was empty, fallback to client Supabase
+      if (clientCount === 0) {
+        try {
+          const { data: clientsList, count } = await supabase.from('clients').select('id, first_name, last_name', { count: 'exact' });
+          if (count) clientCount = count;
+          if (clientsList) {
+            clientsList.forEach((c: any) => {
+              cmap[c.id] = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Unknown Client';
+            });
+          }
+        } catch {}
       }
       setClientMap(cmap);
 
-      setStats([
-        { label: "Total Pawn Value", value: `Rs. ${totalPawnSum.toLocaleString()}`, change: "+0.0%", trend: "up", icon: DollarSign, color: "emerald" },
-        { label: "Active Pawnes", value: activePawns.toString(), change: "+0.0%", trend: "up", icon: CreditCard, color: "blue" },
-        { label: "Total Customers", value: (clientCount || 0).toString(), change: "+0.0%", trend: "up", icon: Users, color: "primary" },
-        { label: "System Health", value: "Online", change: "100%", trend: "up", icon: Zap, color: "indigo" },
-      ]);
-      
-      if (txs) {
-        const formattedTxs = txs.map(p => ({
+      // 2. Fetch Pawns via server-side API
+      let pawnsData: any[] = [];
+      const targetBranchParam = isHeadBranch ? 'ALL' : (userBranchId || 'ALL');
+      try {
+        const pawnsRes = await fetch(`/api/pawns?filterBranch=${targetBranchParam}`, { headers });
+        if (pawnsRes.ok) {
+          const resJson = await pawnsRes.json();
+          if (Array.isArray(resJson)) {
+            pawnsData = resJson;
+          }
+        }
+      } catch (e) {
+        console.warn('Dashboard pawns API fetch note:', e);
+      }
+
+      // If server API was empty, fallback to client Supabase
+      if (pawnsData.length === 0) {
+        try {
+          let pawnsQuery = supabase.from('pawns').select('*');
+          if (!isHeadBranch && userBranchId) {
+            pawnsQuery = pawnsQuery.in('branch_id', branchTerms);
+          }
+          const { data } = await pawnsQuery;
+          if (data) pawnsData = data;
+        } catch {}
+      }
+
+      // Active Pawns are pawns with status === 'ACTIVE'
+      const activePawnsList = pawnsData.filter((p: any) => (p.status || '').toUpperCase() === 'ACTIVE');
+      const activePawnsCount = activePawnsList.length;
+      const totalPawnSum = activePawnsList.reduce((acc: number, p: any) => acc + (parseFloat(p.disbursed_amount) || 0), 0);
+
+      // 3. Recent Transactions (latest 6 pawns)
+      const txs = pawnsData.slice(0, 6);
+      if (txs.length > 0) {
+        const formattedTxs = txs.map((p: any) => ({
           id: p.id,
           client_id: p.client_id,
           type: p.status || 'PAWN',
-          amount: p.disbursed_amount || 0,
+          amount: parseFloat(p.disbursed_amount) || 0,
           timestamp: p.created_at
         }));
         setRecentTransactions(formattedTxs);
       }
+
+      setStats([
+        { label: "Total Pawn Value", value: `Rs. ${totalPawnSum.toLocaleString()}`, change: "+0.0%", trend: "up", icon: DollarSign, color: "emerald" },
+        { label: "Active Pawns", value: activePawnsCount.toString(), change: "+0.0%", trend: "up", icon: CreditCard, color: "blue" },
+        { label: "Total Customers", value: (clientCount || 0).toString(), change: "+0.0%", trend: "up", icon: Users, color: "primary" },
+        { label: "System Health", value: "Online", change: "100%", trend: "up", icon: Zap, color: "indigo" },
+      ]);
     } catch (err) {
       console.error('Dashboard Load Error:', err);
     } finally {
