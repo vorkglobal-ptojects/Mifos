@@ -6,6 +6,7 @@ import {
   RefreshCw, ArrowLeft, ChevronRight, Layers, BarChart3
 } from 'lucide-react';
 import Link from 'next/link';
+import { getAuthHeaders } from '@/lib/getAuthHeaders';
 
 interface MonthData {
   month: string;
@@ -38,7 +39,7 @@ export default function LedgerMatrixPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/ledger/matrix?year=${selectedYear}`);
+      const res = await fetch(`/api/ledger/matrix?year=${selectedYear}`, { headers: getAuthHeaders() });
       const data = await res.json();
 
       if (data.error) {

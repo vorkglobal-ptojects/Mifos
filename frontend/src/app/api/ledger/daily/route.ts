@@ -135,9 +135,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'branch_id and ledger_date are required' }, { status: 400 });
     }
 
-    // Protection: Tellers cannot overwrite submitted daily ledgers or edit past dates without Manager Ticket
+    // Protection: Tellers can create and update their own branch's daily ledgers unless explicitly LOCKED by Admin/Manager
     if (session && session.role === 'TELLER') {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const isTellerHq = !session.branchId || normalizeBranchId(session.branchId) === 'HQ';
+      if (!isTellerHq && normalizeBranchId(session.branchId) !== canonicalBranchId) {
+        return NextResponse.json({
+          error: 'Forbidden. You cannot modify a daily ledger belonging to another branch.'
+        }, { status: 403 });
+      }
+
       const { data: existingLedger } = await adminSupabase
         .from('daily_ledgers')
         .select('id, status, created_by')
@@ -145,9 +151,9 @@ export async function POST(request: Request) {
         .eq('ledger_date', ledger_date)
         .maybeSingle();
 
-      if (existingLedger && (ledger_date < todayStr || existingLedger.status === 'APPROVED' || existingLedger.status === 'LOCKED')) {
+      if (existingLedger && existingLedger.status === 'LOCKED') {
         return NextResponse.json({
-          error: `Daily Ledger for ${ledger_date} has already been submitted and locked. Tellers cannot overwrite locked ledgers directly. Please submit a Ledger Correction Ticket for Manager approval.`
+          error: `Daily Ledger for ${ledger_date} has been locked by Management. Please submit a Ledger Correction Ticket for Manager approval.`
         }, { status: 403 });
       }
     }
@@ -174,19 +180,23 @@ export async function POST(request: Request) {
 
     // --- CAPITAL MATH ---
     const userOpeningCapital = Number(opening_capital) || 0; // New field from payload
-    let userClosingCapital = (cp_balance !== '' && cp_balance !== null && cp_balance !== undefined) ? Number(cp_balance) : 0;
+    const rawCpBalance = (cp_balance !== '' && cp_balance !== null && cp_balance !== undefined) ? Number(cp_balance) : 0;
+    let userClosingCapital = rawCpBalance;
 
     const calculatedClosingCapital = Number((
       userOpeningCapital + calcLoans - calcRedeem
     ).toFixed(2));
 
-    // If cp_balance was unprovided/empty or 0 (and calculatedClosingCapital is non-zero), default to calculatedClosingCapital
-    if ((userClosingCapital === 0 || cp_balance === '' || cp_balance === null || cp_balance === undefined) && calculatedClosingCapital !== 0) {
+    // Only track capital mismatch if either Opening Capital or Closing CP was actually entered
+    const isCapitalTracked = userOpeningCapital !== 0 || rawCpBalance !== 0;
+
+    // If cp_balance was unprovided/empty or 0 (and Opening Capital is tracked), default to calculatedClosingCapital
+    if (isCapitalTracked && (userClosingCapital === 0 || cp_balance === '' || cp_balance === null || cp_balance === undefined) && calculatedClosingCapital !== 0) {
       userClosingCapital = calculatedClosingCapital;
     }
 
-    const capitalMismatch = Math.abs(userClosingCapital - calculatedClosingCapital) > 0.01;
-    const capitalVariance = Number((userClosingCapital - calculatedClosingCapital).toFixed(2));
+    const capitalMismatch = isCapitalTracked && Math.abs(userClosingCapital - calculatedClosingCapital) > 0.01;
+    const capitalVariance = isCapitalTracked ? Number((userClosingCapital - calculatedClosingCapital).toFixed(2)) : 0;
 
     // Determine status (Flag if EITHER is mismatched)
     const finalStatus = (cashMismatch || capitalMismatch) ? 'FLAGGED' : status;
@@ -342,11 +352,12 @@ export async function DELETE(request: Request) {
     }
 
     if (session.role === 'TELLER') {
-      if (ledger.branch_id !== session.branchId) {
+      const isTellerHq = !session.branchId || normalizeBranchId(session.branchId) === 'HQ';
+      if (!isTellerHq && normalizeBranchId(ledger.branch_id) !== normalizeBranchId(session.branchId)) {
         return NextResponse.json({ error: 'Forbidden. You cannot delete a daily ledger belonging to another branch.' }, { status: 403 });
       }
-      if (ledger.status === 'APPROVED') {
-        return NextResponse.json({ error: 'Forbidden. Tellers cannot delete approved daily ledgers.' }, { status: 403 });
+      if (ledger.status === 'LOCKED') {
+        return NextResponse.json({ error: 'Forbidden. Tellers cannot delete locked daily ledgers.' }, { status: 403 });
       }
     }
 
@@ -371,7 +382,8 @@ export async function PATCH(request: Request) {
 
     if (session.role === 'TELLER') {
       const { data: ledger } = await adminSupabase.from('daily_ledgers').select('branch_id').eq('id', id).single();
-      if (ledger && ledger.branch_id !== session.branchId) {
+      const isTellerHq = !session.branchId || normalizeBranchId(session.branchId) === 'HQ';
+      if (ledger && !isTellerHq && normalizeBranchId(ledger.branch_id) !== normalizeBranchId(session.branchId)) {
         return NextResponse.json({ error: 'Forbidden. You cannot modify a daily ledger belonging to another branch.' }, { status: 403 });
       }
     }

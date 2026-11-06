@@ -338,7 +338,7 @@ function MainLedgerContent() {
     setLoadingLedger(true);
     setFeedback(null);
     try {
-      const headers = getAuthHeaders();
+      const headers = getAuthHeaders({ 'x-branch-id': selectedBranch });
 
       const res = await fetch(`/api/ledger/daily?branch_id=${selectedBranch}&date=${ledgerDate}`, { headers });
       const contentType = res.headers.get('content-type');
@@ -495,7 +495,10 @@ function MainLedgerContent() {
     try {
       const res = await fetch('/api/ledger/daily', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({
+          'Content-Type': 'application/json',
+          'x-branch-id': selectedBranch
+        }),
         body: JSON.stringify(payload)
       });
       const contentType = res.headers.get('content-type');
@@ -515,6 +518,10 @@ function MainLedgerContent() {
       if (data.error) {
         setFeedback({ type: 'error', message: data.error });
       } else {
+        setFeedback({
+          type: 'success',
+          message: `Daily Ledger for ${selectedBranch} (${ledgerDate}) saved successfully!`
+        });
         setShowSavedPopup(true);
         fetchLedgerData();
       }
@@ -526,7 +533,7 @@ function MainLedgerContent() {
   };
 
   // Matrix State
-  const [selectedYear, setSelectedYear] = useState('2025');
+  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear().toString());
   const [matrixData, setMatrixData] = useState<Record<string, any>>({});
   const [matrixBranches, setMatrixBranches] = useState<any[]>([]);
   const [loadingMatrix, setLoadingMatrix] = useState(false);
@@ -1653,7 +1660,7 @@ function MainLedgerContent() {
 
               {/* Warning Alerts & Save Button */}
               <div className="pt-3 space-y-3">
-                {Math.abs((Number(userClosingBalance) || 0) - calculatedClosingCash) > 0.01 && (
+                {userClosingBalance !== '' && Math.abs((Number(userClosingBalance) || 0) - calculatedClosingCash) > 0.01 && (
                   <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                     <div className="flex items-start gap-2 text-rose-800">
                       <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
@@ -1674,7 +1681,7 @@ function MainLedgerContent() {
                   </div>
                 )}
 
-                {Math.abs((Number(cpBalance) || 0) - calculatedClosingCapital) > 0.01 && (
+                {cpBalance !== '' && Math.abs((Number(cpBalance) || 0) - calculatedClosingCapital) > 0.01 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                     <div className="flex items-start gap-2 text-amber-900">
                       <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
@@ -1907,30 +1914,6 @@ function MainLedgerContent() {
               </div>
             )}
           </div>
-
-          {/* Saved Success Modal */}
-          {showSavedPopup && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col items-center text-center p-6">
-                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 animate-bounce">
-                  <CheckCircle2 className="w-10 h-10" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-2">Saved Done!</h3>
-                <p className="text-sm text-slate-500 font-medium mb-6">
-                  Ledger data has been successfully saved to the database.
-                </p>
-                <Button 
-                  onClick={() => {
-                    setShowSavedPopup(false);
-                    handleTabSwitch('matrix');
-                  }}
-                  className="w-full font-bold bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-lg"
-                >
-                  OK
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Matrix Branch Ledgers Modal */}
           {matrixBranchModalOpen && selectedMatrixBranch && (
@@ -2200,6 +2183,29 @@ function MainLedgerContent() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Saved Success Modal (Visible on any tab) */}
+      {showSavedPopup && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col items-center text-center p-6">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4 animate-bounce">
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 mb-2">Saved Done!</h3>
+            <p className="text-sm text-slate-500 font-medium mb-6">
+              Ledger data for <span className="font-bold text-slate-800">{selectedBranch}</span> on <span className="font-bold text-slate-800">{ledgerDate}</span> has been successfully saved to the database.
+            </p>
+            <Button 
+              onClick={() => {
+                setShowSavedPopup(false);
+              }}
+              className="w-full font-bold bg-emerald-600 hover:bg-emerald-700 text-white h-12 text-lg"
+            >
+              OK
+            </Button>
           </div>
         </div>
       )}

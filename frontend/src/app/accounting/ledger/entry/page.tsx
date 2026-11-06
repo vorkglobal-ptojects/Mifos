@@ -276,8 +276,8 @@ export default function DailyLedgerEntryPage() {
 
   // Save Handler
   const handleSaveLedger = async () => {
-    // If an existing ledger is already saved and user is TELLER, redirect to Maker-Checker ticket
-    if (hasExistingLedger && currentUser?.role === 'TELLER') {
+    // If an existing ledger is LOCKED by Management and user is TELLER, redirect to Maker-Checker ticket
+    if (hasExistingLedger && existingLedgerData?.status === 'LOCKED' && currentUser?.role === 'TELLER') {
       setLedgerCorrectionModal(true);
       return;
     }
