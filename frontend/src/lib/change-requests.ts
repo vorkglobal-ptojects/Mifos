@@ -117,9 +117,36 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       if (proposed_data.item_type !== undefined) stockUpdate.item_type = proposed_data.item_type;
       if (proposed_data.bill_no !== undefined) stockUpdate.bill_no = stripBranchPrefix(proposed_data.bill_no);
       if (proposed_data.date !== undefined) stockUpdate.date = proposed_data.date;
+      if (proposed_data.branch_id !== undefined) stockUpdate.branch_id = normalizeBranchId(proposed_data.branch_id);
 
-      await adminSupabase.from('stock_items').update(stockUpdate).eq('id', entity_id);
-      await invalidateBranchInventoryCache(branch_id);
+      const { error: stockUpdErr } = await adminSupabase.from('stock_items').update(stockUpdate).eq('id', entity_id);
+      if (stockUpdErr) throw new Error(stockUpdErr.message);
+
+      // Sync corresponding pawn record if price, weight, or bill_no changed
+      const billToMatch = stripBranchPrefix(current_data?.bill_no || ticket.reference_no || '');
+      const targetBranch = normalizeBranchId(proposed_data.branch_id || branch_id || 'HQ');
+      if (billToMatch) {
+        const pawnUpdate: Record<string, any> = {};
+        if (stockUpdate.price !== undefined && !isNaN(stockUpdate.price)) {
+          pawnUpdate.disbursed_amount = stockUpdate.price;
+        }
+        if (stockUpdate.weight !== undefined && !isNaN(stockUpdate.weight)) {
+          pawnUpdate.weight_grams = stockUpdate.weight;
+          pawnUpdate.weight_mg = Math.round(stockUpdate.weight * 1000);
+        }
+        if (stockUpdate.bill_no !== undefined) {
+          pawnUpdate.bill_no = stockUpdate.bill_no;
+        }
+        if (Object.keys(pawnUpdate).length > 0) {
+          await adminSupabase
+            .from('pawns')
+            .update(pawnUpdate)
+            .eq('bill_no', billToMatch)
+            .eq('branch_id', targetBranch);
+        }
+      }
+
+      await invalidateBranchInventoryCache(targetBranch);
     }
   } else if (entity_type === 'DAILY_LEDGER') {
     // Apply ledger modifications

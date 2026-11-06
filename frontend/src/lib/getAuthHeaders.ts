@@ -36,7 +36,8 @@ export function getAuthHeaders(extraHeaders?: Record<string, string>): Record<st
     return { 'Content-Type': 'application/json', ...(extraHeaders || {}) };
   }
 
-  const token = localStorage.getItem('auth_token') || '';
+  const rawToken = localStorage.getItem('auth_token') || '';
+  const token = rawToken.trim().replace(/^["']|["']$/g, '').replace(/[\r\n]+/g, '');
   const storedUser = localStorage.getItem('user');
   let branchId = '';
 

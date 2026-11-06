@@ -79,6 +79,8 @@ export default function ApprovalsPage() {
   const [changeTickets, setChangeTickets] = useState<any[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [isTicketActionLoading, setIsTicketActionLoading] = useState(false);
+  const [isTicketReviewModalOpen, setIsTicketReviewModalOpen] = useState(false);
+  const [ticketReviewNotes, setTicketReviewNotes] = useState('');
   const [isRejectTicketModalOpen, setIsRejectTicketModalOpen] = useState(false);
   const [ticketRejectReason, setTicketRejectReason] = useState('');
 
@@ -242,19 +244,82 @@ export default function ApprovalsPage() {
     }
   };
 
+  // Helper to execute change ticket decision with automatic multi-endpoint fallback
+  const executeTicketDecisionRequest = async (
+    ticketId: string,
+    action: 'APPROVE' | 'REJECT',
+    notes: string
+  ) => {
+    const headers = getAuthHeaders();
+    const payload = JSON.stringify({ id: ticketId, action, notes });
+
+    // 1. Primary: PATCH /api/change-requests (same serverless bundle as GET /api/change-requests)
+    try {
+      const res = await fetch('/api/change-requests', {
+        method: 'PATCH',
+        headers,
+        body: payload
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      return data;
+    } catch (primaryErr: any) {
+      const isNetworkErr =
+        !primaryErr?.message ||
+        primaryErr.message.includes('Failed to fetch') ||
+        primaryErr.message.includes('NetworkError') ||
+        primaryErr.message.includes('Load failed');
+
+      if (!isNetworkErr) {
+        throw primaryErr;
+      }
+
+      // 2. Fallback A: POST /api/change-requests/[id]/approve or /reject
+      try {
+        const subRoute = action === 'APPROVE' ? 'approve' : 'reject';
+        const res2 = await fetch(`/api/change-requests/${encodeURIComponent(ticketId)}/${subRoute}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ notes })
+        });
+        const data2 = await res2.json();
+        if (!res2.ok) throw new Error(data2.error || `Request failed (${res2.status})`);
+        return data2;
+      } catch (secondaryErr: any) {
+        // 3. Fallback B: GET /api/change-requests?action=...&id=...
+        const qs = new URLSearchParams({
+          action: action.toLowerCase(),
+          id: ticketId,
+          notes
+        });
+        const res3 = await fetch(`/api/change-requests?${qs.toString()}`, {
+          method: 'GET',
+          headers
+        });
+        const data3 = await res3.json();
+        if (!res3.ok) throw new Error(data3.error || `Request failed (${res3.status})`);
+        return data3;
+      }
+    }
+  };
+
   // Maker-Checker Change Request Handlers
-  const handleApproveTicket = async (ticket: any) => {
+  const handleOpenTicketReview = (ticket: any) => {
+    setSelectedTicket(ticket);
+    setTicketReviewNotes(ticket.review_notes || '');
+    setIsTicketReviewModalOpen(true);
+  };
+
+  const handleApproveTicket = async (ticket: any, customNotes?: string) => {
     setIsTicketActionLoading(true);
     const toastId = toast.loading(`Approving ticket ${ticket.ticket_no}...`);
     try {
-      const res = await fetch(`/api/change-requests/${ticket.id}/approve`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ notes: 'Approved by Branch Manager' })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const finalNotes = (customNotes ?? ticketReviewNotes).trim() || 'Approved by Branch Manager';
+      await executeTicketDecisionRequest(ticket.id, 'APPROVE', finalNotes);
       toast.success(`Ticket ${ticket.ticket_no} approved and applied to database!`, { id: toastId });
+      setIsTicketReviewModalOpen(false);
+      setSelectedTicket(null);
+      setTicketReviewNotes('');
       loadDashboardData();
     } catch (err: any) {
       toast.error(err.message || 'Failed to approve ticket', { id: toastId });
@@ -272,15 +337,10 @@ export default function ApprovalsPage() {
     setIsTicketActionLoading(true);
     const toastId = toast.loading(`Rejecting ticket ${selectedTicket.ticket_no}...`);
     try {
-      const res = await fetch(`/api/change-requests/${selectedTicket.id}/reject`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ notes: ticketRejectReason.trim() })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await executeTicketDecisionRequest(selectedTicket.id, 'REJECT', ticketRejectReason.trim());
       toast.success(`Ticket ${selectedTicket.ticket_no} marked as REJECTED.`, { id: toastId });
       setIsRejectTicketModalOpen(false);
+      setIsTicketReviewModalOpen(false);
       setTicketRejectReason('');
       setSelectedTicket(null);
       loadDashboardData();
@@ -646,16 +706,16 @@ export default function ApprovalsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+          <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-900 text-white">
                 <TableRow className="border-b border-slate-800 hover:bg-transparent">
-                  <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-purple-300">Ticket No & Date</TableHead>
-                  <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Entity & Branch</TableHead>
-                  <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Action & Reference</TableHead>
-                  <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Reason / Justification</TableHead>
-                  <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Proposed Changes (Diff)</TableHead>
-                  <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-right text-slate-300">Actions</TableHead>
+                  <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-purple-300">Ticket No & Date</TableHead>
+                  <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Entity & Branch</TableHead>
+                  <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Action & Reference</TableHead>
+                  <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Reason / Justification</TableHead>
+                  <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Proposed Changes (Diff)</TableHead>
+                  <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-right text-slate-300">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -663,8 +723,12 @@ export default function ApprovalsPage() {
                   const isPending = t.status === 'PENDING';
                   const isDelete = t.action_type === 'DELETE' || t.action_type === 'VOID_INTEREST';
                   return (
-                    <TableRow key={t.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
-                      <TableCell className="px-6 py-4">
+                    <TableRow
+                      key={t.id}
+                      onClick={() => handleOpenTicketReview(t)}
+                      className="border-b border-slate-100 hover:bg-purple-50/30 transition-colors cursor-pointer"
+                    >
+                      <TableCell className="px-4 py-4">
                         <div className="font-mono text-xs font-bold text-slate-900">{t.ticket_no}</div>
                         <div className="text-[10px] text-slate-400">{t.created_at ? new Date(t.created_at).toLocaleString() : 'N/A'}</div>
                         <Badge variant="outline" className={`mt-1 text-[9px] font-black uppercase ${
@@ -674,14 +738,14 @@ export default function ApprovalsPage() {
                           {t.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="px-6 py-4">
+                      <TableCell className="px-4 py-4">
                         <Badge variant="outline" className="text-[10px] font-bold bg-slate-100 text-slate-700 border-slate-200">
                           {t.entity_type}
                         </Badge>
                         <div className="text-xs font-bold text-slate-700 mt-1">Branch: {t.branch_id}</div>
                         <div className="text-[10px] text-slate-500">By: {t.requested_by_name || t.requested_by_email}</div>
                       </TableCell>
-                      <TableCell className="px-6 py-4">
+                      <TableCell className="px-4 py-4">
                         <Badge variant="outline" className={`text-[10px] font-bold ${
                           isDelete ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-blue-50 text-blue-700 border-blue-200'
                         }`}>
@@ -689,12 +753,12 @@ export default function ApprovalsPage() {
                         </Badge>
                         <div className="text-xs font-bold text-slate-900 mt-1">{t.reference_no}</div>
                       </TableCell>
-                      <TableCell className="px-6 py-4 max-w-xs">
+                      <TableCell className="px-4 py-4 max-w-[220px]">
                         <div className="text-xs text-slate-700 bg-amber-50/70 p-2.5 rounded-xl border border-amber-100/80 italic">
                           "{t.reason}"
                         </div>
                       </TableCell>
-                      <TableCell className="px-6 py-4">
+                      <TableCell className="px-4 py-4">
                         {isDelete ? (
                           <div className="text-xs font-bold text-rose-600 flex items-center gap-1 bg-rose-50 p-2 rounded-xl border border-rose-200/60">
                             <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Permanent Delete Requested
@@ -715,33 +779,48 @@ export default function ApprovalsPage() {
                           </div>
                         )}
                       </TableCell>
-                      <TableCell className="px-6 py-4 text-right">
-                        {isPending ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              disabled={isTicketActionLoading}
-                              onClick={() => handleApproveTicket(t)}
-                              className="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
-                            >
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isTicketActionLoading}
-                              onClick={() => { setSelectedTicket(t); setIsRejectTicketModalOpen(true); }}
-                              className="h-8 px-3 rounded-xl border-rose-200 hover:bg-rose-50 text-rose-700 font-bold text-xs cursor-pointer"
-                            >
-                              Reject
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="text-[11px] text-slate-500">
-                            Reviewed by: <strong className="text-slate-800">{t.reviewed_by_name || 'Manager'}</strong>
-                            {t.review_notes && <div className="text-[10px] text-slate-400 italic">"{t.review_notes}"</div>}
-                          </div>
-                        )}
+                      <TableCell className="px-4 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isTicketActionLoading}
+                            onClick={() => handleOpenTicketReview(t)}
+                            className="h-8 px-2.5 rounded-xl bg-slate-900 hover:bg-purple-600 text-white hover:text-white border-slate-900 font-bold text-xs cursor-pointer gap-1"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Review
+                          </Button>
+                          {isPending ? (
+                            <>
+                              <Button
+                                size="sm"
+                                disabled={isTicketActionLoading}
+                                onClick={() => handleApproveTicket(t, 'Approved by Branch Manager')}
+                                className="h-8 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isTicketActionLoading}
+                                onClick={() => {
+                                  setSelectedTicket(t);
+                                  setTicketRejectReason('');
+                                  setIsRejectTicketModalOpen(true);
+                                }}
+                                className="h-8 px-3 rounded-xl border-rose-200 hover:bg-rose-50 text-rose-700 font-bold text-xs cursor-pointer"
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          ) : (
+                            <div className="text-[11px] text-slate-500 ml-1 text-left">
+                              Reviewed by: <strong className="text-slate-800">{t.reviewed_by_name || 'Manager'}</strong>
+                              {t.review_notes && <div className="text-[10px] text-slate-400 italic">"{t.review_notes}"</div>}
+                            </div>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -1573,6 +1652,251 @@ export default function ApprovalsPage() {
             >
               {isSubmittingAction ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
               Confirm Final Approval
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* ── CHANGE REQUEST TICKET REVIEW MODAL (MAKER-CHECKER) ── */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={isTicketReviewModalOpen} onOpenChange={setIsTicketReviewModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-slate-200 p-0">
+          {selectedTicket && (
+            <div className="space-y-5 pb-6">
+              {/* Header Banner */}
+              <div className="p-6 bg-slate-900 text-white rounded-t-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 bg-purple-500 text-white font-black text-[10px] uppercase rounded-md">
+                      Maker-Checker Review
+                    </span>
+                    <Badge variant="outline" className="border-slate-700 text-slate-300 text-[10px] font-mono">
+                      Branch: {selectedTicket.branch_id}
+                    </Badge>
+                    <Badge className={`font-black text-[10px] uppercase ${
+                      selectedTicket.status === 'PENDING'
+                        ? 'bg-amber-400 text-slate-950'
+                        : selectedTicket.status === 'APPROVED'
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-rose-500 text-white'
+                    }`}>
+                      {selectedTicket.status}
+                    </Badge>
+                  </div>
+                  <h2 className="text-xl font-black tracking-tight text-white font-mono">
+                    {selectedTicket.ticket_no}
+                  </h2>
+                  <p className="text-xs text-slate-400 font-semibold">
+                    Submitted by {selectedTicket.requested_by_name || selectedTicket.requested_by_email} • {selectedTicket.created_at ? new Date(selectedTicket.created_at).toLocaleString() : 'N/A'}
+                  </p>
+                </div>
+
+                <div className="text-right sm:border-l sm:border-slate-800 sm:pl-6">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Target Reference</span>
+                  <div className="text-xl font-black text-amber-400 font-mono">
+                    {selectedTicket.reference_no}
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-300 uppercase">
+                    {selectedTicket.entity_type} • {selectedTicket.action_type}
+                  </span>
+                </div>
+              </div>
+
+              <div className="px-6 space-y-4">
+                {/* Staff Justification */}
+                <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">
+                    Staff Reason / Justification
+                  </span>
+                  <p className="text-sm font-bold text-slate-900 italic">
+                    "{selectedTicket.reason}"
+                  </p>
+                </div>
+
+                {/* Comparison of Current vs Proposed Values */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Proposed Record Modifications
+                    </h4>
+                    <Badge variant="outline" className="text-[10px] font-bold">
+                      {selectedTicket.action_type}
+                    </Badge>
+                  </div>
+
+                  {selectedTicket.action_type === 'DELETE' || selectedTicket.action_type === 'VOID_INTEREST' ? (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs font-bold">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>Permanent Deletion Requested for {selectedTicket.entity_type} ({selectedTicket.reference_no})</span>
+                      </div>
+                      {selectedTicket.current_data && Object.keys(selectedTicket.current_data).length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200">
+                          {Object.entries(selectedTicket.current_data)
+                            .filter(([k]) => !['id', 'created_at', 'updated_at', 'withdrawal_date', 'withdrawal_notes', 'withdrawal_reason'].includes(k))
+                            .map(([k, v]: any) => (
+                              <div key={k} className="flex justify-between border-b border-slate-100 py-1">
+                                <span className="text-slate-500 font-semibold capitalize">{k.replace(/_/g, ' ')}:</span>
+                                <span className="font-mono font-bold text-slate-900">{String(v ?? '—')}</span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black">
+                            <th className="py-2 px-3 text-left">Field</th>
+                            <th className="py-2 px-3 text-left">Current Value</th>
+                            <th className="py-2 px-3 text-left">Proposed New Value</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 bg-white">
+                          {Object.entries(selectedTicket.proposed_data || {}).map(([key, val]: any) => {
+                            const curr = selectedTicket.current_data?.[key];
+                            const isChanged = String(curr ?? '') !== String(val ?? '');
+                            return (
+                              <tr key={key} className={isChanged ? 'bg-emerald-50/40' : ''}>
+                                <td className="py-2.5 px-3 font-bold text-slate-700 capitalize">
+                                  {key.replace(/_/g, ' ')}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono text-slate-500 line-through">
+                                  {curr !== undefined && curr !== null ? String(curr) : '—'}
+                                </td>
+                                <td className="py-2.5 px-3 font-mono font-black text-emerald-700">
+                                  {String(val)}
+                                  {isChanged && (
+                                    <span className="ml-2 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 rounded uppercase font-sans">
+                                      Changed
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Manager Review Notes */}
+                {selectedTicket.status === 'PENDING' ? (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black uppercase text-slate-700">
+                      Manager Review Note (Optional for Approval)
+                    </label>
+                    <input
+                      type="text"
+                      value={ticketReviewNotes}
+                      onChange={(e) => setTicketReviewNotes(e.target.value)}
+                      placeholder="e.g. Verified against branch physical bill & approved..."
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-100 rounded-xl text-xs space-y-1">
+                    <div className="font-bold text-slate-700">
+                      Reviewed by: <strong className="text-slate-900">{selectedTicket.reviewed_by_name || 'Manager'}</strong> ({selectedTicket.reviewed_at ? new Date(selectedTicket.reviewed_at).toLocaleString() : ''})
+                    </div>
+                    {selectedTicket.review_notes && (
+                      <div className="text-slate-600 italic">Note: "{selectedTicket.review_notes}"</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer Actions */}
+              <div className="px-6 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsTicketReviewModalOpen(false)}
+                  className="w-full sm:w-auto rounded-xl font-bold"
+                >
+                  Close
+                </Button>
+
+                {selectedTicket.status === 'PENDING' && (
+                  <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                    <Button
+                      variant="outline"
+                      disabled={isTicketActionLoading}
+                      onClick={() => {
+                        setTicketRejectReason('');
+                        setIsRejectTicketModalOpen(true);
+                      }}
+                      className="border-rose-300 text-rose-700 hover:bg-rose-50 font-black text-xs uppercase tracking-wider rounded-xl px-4 h-10 cursor-pointer"
+                    >
+                      <XCircle className="w-4 h-4 mr-1.5" /> Reject Ticket
+                    </Button>
+                    <Button
+                      disabled={isTicketActionLoading}
+                      onClick={() => handleApproveTicket(selectedTicket, ticketReviewNotes)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl px-5 h-10 cursor-pointer shadow-md"
+                    >
+                      {isTicketActionLoading ? (
+                        <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                      )}
+                      Approve & Apply Changes
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* ── REJECT CHANGE TICKET MODAL (MAKER-CHECKER) ── */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={isRejectTicketModalOpen} onOpenChange={setIsRejectTicketModalOpen}>
+        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+          <DialogHeader className="space-y-1">
+            <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto sm:mx-0">
+              <XCircle className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-xl font-black text-slate-900">
+              Reject Change Ticket {selectedTicket?.ticket_no}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-medium">
+              Specify the reason for rejecting this change request for <strong>{selectedTicket?.reference_no}</strong>. The live database record will remain untouched.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-slate-700">
+              Rejection Reason <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={3}
+              value={ticketRejectReason}
+              onChange={(e) => setTicketRejectReason(e.target.value)}
+              placeholder="e.g. Incorrect amount requested; please verify original pawn receipt..."
+              className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+            />
+          </div>
+
+          <DialogFooter className="flex sm:justify-between gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsRejectTicketModalOpen(false)}
+              className="rounded-xl font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRejectTicket}
+              disabled={isTicketActionLoading || !ticketRejectReason.trim()}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase tracking-wider rounded-xl gap-2 cursor-pointer shadow-md"
+            >
+              {isTicketActionLoading ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+              Confirm Reject
             </Button>
           </DialogFooter>
         </DialogContent>
