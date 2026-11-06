@@ -34,6 +34,19 @@ export default function LoginPage() {
       const p = new URLSearchParams(window.location.search);
       if (p.get('expired') === 'true') setExpiredAlert(true);
 
+      // Clean up any stale or dead tokens on login screen to prevent Supabase AuthApiError
+      if (p.get('expired') === 'true' || p.get('redirect') || !localStorage.getItem('user')) {
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('sb-access-token');
+        localStorage.removeItem('sb-refresh-token');
+        document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        document.cookie = 'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        document.cookie = 'refresh_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+        supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+      }
+
       // Load live active branches from Supabase if table exists
       supabase.from('branches').select('id, name').order('name').then(({ data, error }) => {
         if (!error && data && data.length > 0) {

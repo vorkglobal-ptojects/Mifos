@@ -399,6 +399,25 @@ Please settle immediately to avoid collateral forfeiture/auction.
     window.print();
   };
 
+  const selectedWithPhoneCount = useMemo(() => {
+    return items.filter(it => selectedIds.includes(it.id) && it.has_phone).length;
+  }, [items, selectedIds]);
+
+  // Bulk SMS live preview for the first selected item
+  const bulkPreviewMessage = useMemo(() => {
+    const firstItem = items.find(it => selectedIds.includes(it.id)) || displayedItems[0];
+    if (!firstItem || !bulkCustomTemplate) return '';
+    return bulkCustomTemplate
+      .replace(/\{customer_name\}/gi, firstItem.customer_name || 'Valued Customer')
+      .replace(/\{bill_no\}/gi, firstItem.bill_no || 'N/A')
+      .replace(/\{branch\}/gi, firstItem.branch_id || 'Branch')
+      .replace(/\{principal\}/gi, parseFloat(firstItem.principal || 0).toLocaleString())
+      .replace(/\{interest_due\}/gi, parseFloat(firstItem.outstanding_interest || 0).toLocaleString())
+      .replace(/\{expiry_date\}/gi, firstItem.effective_expiry_date || 'N/A')
+      .replace(/\{origination_date\}/gi, firstItem.origination_date || 'N/A')
+      .replace(/\{interest_paid\}/gi, parseFloat(firstItem.total_interest_paid || 0).toLocaleString());
+  }, [items, selectedIds, displayedItems, bulkCustomTemplate]);
+
   // Access Denied Screen for Non-Admin
   if (authChecked && !isAdmin) {
     return (
@@ -422,24 +441,6 @@ Please settle immediately to avoid collateral forfeiture/auction.
     );
   }
 
-  const selectedWithPhoneCount = useMemo(() => {
-    return items.filter(it => selectedIds.includes(it.id) && it.has_phone).length;
-  }, [items, selectedIds]);
-
-  // Bulk SMS live preview for the first selected item
-  const bulkPreviewMessage = useMemo(() => {
-    const firstItem = items.find(it => selectedIds.includes(it.id)) || displayedItems[0];
-    if (!firstItem || !bulkCustomTemplate) return '';
-    return bulkCustomTemplate
-      .replace(/\{customer_name\}/gi, firstItem.customer_name || 'Valued Customer')
-      .replace(/\{bill_no\}/gi, firstItem.bill_no || 'N/A')
-      .replace(/\{branch\}/gi, firstItem.branch_id || 'Branch')
-      .replace(/\{principal\}/gi, parseFloat(firstItem.principal || 0).toLocaleString())
-      .replace(/\{interest_due\}/gi, parseFloat(firstItem.outstanding_interest || 0).toLocaleString())
-      .replace(/\{expiry_date\}/gi, firstItem.effective_expiry_date || 'N/A')
-      .replace(/\{origination_date\}/gi, firstItem.origination_date || 'N/A')
-      .replace(/\{interest_paid\}/gi, parseFloat(firstItem.total_interest_paid || 0).toLocaleString());
-  }, [items, selectedIds, displayedItems, bulkCustomTemplate]);
 
   return (
     <>
