@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "verify": "node ../scripts/verify_pre_push.js",
     "backup": "node scripts/backup-database.js",
     "postinstall": "prisma generate || exit 0",
     "contract:emit": "prisma contract emit"

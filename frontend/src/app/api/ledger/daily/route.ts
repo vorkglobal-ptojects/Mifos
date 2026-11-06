@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     const { searchParams } = new URL(request.url);
-    const requestedBranch = searchParams.get('branch_id');
+    const requestedBranch = searchParams.get('branch_id') || searchParams.get('branch');
     const date = searchParams.get('date');
     const month = searchParams.get('month'); // YYYY-MM
 

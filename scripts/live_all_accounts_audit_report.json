@@ -1,0 +1,420 @@
+[
+  {
+    "name": "Admin",
+    "email": "admin@gmail.com",
+    "expectedRole": "ADMIN",
+    "branch": "HQ",
+    "loginStatus": 200,
+    "actualRole": "ADMIN",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Manager",
+    "email": "manager@gmail.com",
+    "expectedRole": "MANAGER",
+    "branch": "HQ",
+    "loginStatus": 200,
+    "actualRole": "MANAGER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Auditor",
+    "email": "auditor@gmail.com",
+    "expectedRole": "AUDITOR",
+    "branch": "HQ",
+    "loginStatus": 200,
+    "actualRole": "AUDITOR",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Manisha Dias",
+    "email": "manishadias@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "PND",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Imashi Pramodya",
+    "email": "kavika2030@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "KHT",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Chamika Sonali",
+    "email": "a.v.chamika.sonali@hrpulse.com",
+    "expectedRole": "TELLER",
+    "branch": "KTW",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "D.M.N.K. Dissanayake",
+    "email": "chathudissanayake63@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "W4",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Dahami Divyanjali",
+    "email": "dahami.divyanjali@hrpulse.com",
+    "expectedRole": "TELLER",
+    "branch": "KOT",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "L.A. Sachini Nisha de Silva",
+    "email": "sachininirasha462@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "KDW",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Dilini Senarathne",
+    "email": "dilinisamudra8210@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "KIR",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Tharushi Sandumini",
+    "email": "tharushisandumini1111@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "HMG",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Rasika Priyangani",
+    "email": "kdrasikapriyangani80@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "BRL",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Chamilka Botheju",
+    "email": "chamilka.botheju@hrpulse.com",
+    "expectedRole": "TELLER",
+    "branch": "DMT",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Chandima Perera",
+    "email": "chandimaperera501@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "W2",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "K.A. Chaseera Sulani Perera",
+    "email": "chasirasulani@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "W3",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Tharushi Apsara",
+    "email": "tharushiaps99@icloud.com",
+    "expectedRole": "TELLER",
+    "branch": "DHW",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Harsha Thamali",
+    "email": "harshaha825@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "TEST",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Lakshika Perera",
+    "email": "pereralakshi90@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "KHT",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "K.U. Geethangani Peiris",
+    "email": "geethanganipeiri2912@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "PND",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Erandi Perera",
+    "email": "erandiperera25@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "KTW",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Chathurika Madushani",
+    "email": "madushaniperera9617@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "KDW",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  },
+  {
+    "name": "Test User",
+    "email": "test@gmail.com",
+    "expectedRole": "TELLER",
+    "branch": "TEST",
+    "loginStatus": 200,
+    "actualRole": "TELLER",
+    "tokenReceived": true,
+    "errors": [],
+    "warnings": [],
+    "endpoints": {
+      "pawnsGet": 200,
+      "stockGet": 200,
+      "interestGet": 200,
+      "ledgerGet": 200,
+      "changeRequestsGet": 200,
+      "stockWithdrawCheck": 404
+    }
+  }
+]

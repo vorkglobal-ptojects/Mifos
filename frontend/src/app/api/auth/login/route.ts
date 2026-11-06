@@ -11,7 +11,8 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, branch } = body;
+    const { email, password, branch, branchId } = body;
+    const requestedBranch = branch || branchId;
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
     // ADMIN can select any operating branch;
     // TELLERs with HQ or unassigned profile can select their operating branch at login;
     // Other staff operate in their assigned database branch.
-    const selectedBranch = branch ? normalizeBranchId(branch) : null;
+    const selectedBranch = requestedBranch ? normalizeBranchId(requestedBranch) : null;
     let effectiveBranch = normalizeBranchId(profile?.branch_id || 'HQ');
     if (role === 'ADMIN' || role === 'AUDITOR' || role === 'MANAGER') {
       // Admin, Auditor, and Manager can operate in HQ (Main Branch) or select any specific branch

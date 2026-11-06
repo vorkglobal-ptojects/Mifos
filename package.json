@@ -6,7 +6,8 @@
     "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",
     "start": "npm --prefix frontend run start",
-    "lint": "npm --prefix frontend run lint"
+    "lint": "npm --prefix frontend run lint",
+    "verify": "node scripts/verify_pre_push.js"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
