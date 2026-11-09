@@ -111,7 +111,7 @@ export default function PawnesPage() {
   // Branch locked for tellers and non-global branch staff: strictly locked to home branch pawns only
   const isBranchLocked = userRole === 'TELLER' || (
     userRole !== 'ADMIN' && userRole !== 'AUDITOR' &&
-    Boolean(branchId) && branchId !== 'HQ' && branchId !== 'DHW' && branchId !== 'ALL'
+    Boolean(branchId) && branchId !== 'HQ' && branchId !== 'ALL'
   );
 
   // Multi-option filters
@@ -522,7 +522,7 @@ export default function PawnesPage() {
       const uBranch = user?.branchId || branchId;
       const locked = effectiveRole === 'TELLER' || (
         effectiveRole !== 'ADMIN' && effectiveRole !== 'AUDITOR' &&
-        Boolean(uBranch) && uBranch !== 'HQ' && uBranch !== 'DHW' && uBranch !== 'ALL'
+        Boolean(uBranch) && uBranch !== 'HQ' && uBranch !== 'ALL'
       );
 
       let activeBranches: string[] = [];
@@ -533,7 +533,7 @@ export default function PawnesPage() {
         activeBranches = Array.isArray(overrideBranches) ? overrideBranches : [overrideBranches];
       } else if (selectedBranches.length > 0) {
         activeBranches = selectedBranches;
-      } else if (uBranch && uBranch !== 'DHW' && uBranch !== 'HQ' && uBranch !== 'ALL') {
+      } else if (uBranch && uBranch !== 'HQ' && uBranch !== 'ALL') {
         activeBranches = [normalizeBranchId(uBranch).toUpperCase()];
       } else {
         activeBranches = ['ALL'];
@@ -643,13 +643,13 @@ export default function PawnesPage() {
     const effectiveRole = ['ADMIN', 'MANAGER', 'AUDITOR'].includes(rawRole) ? rawRole : 'TELLER';
     const locked = effectiveRole === 'TELLER' || (
       effectiveRole !== 'ADMIN' && effectiveRole !== 'AUDITOR' &&
-      Boolean(u?.branchId) && u.branchId !== 'HQ' && u.branchId !== 'DHW' && u.branchId !== 'ALL'
+      Boolean(u?.branchId) && u.branchId !== 'HQ' && u.branchId !== 'ALL'
     );
 
     let initialBranches = ['ALL'];
     if (locked && u?.branchId) {
       initialBranches = [normalizeBranchId(u.branchId).toUpperCase()];
-    } else if (u?.branchId && u.branchId !== 'DHW' && u.branchId !== 'HQ' && u.branchId !== 'ALL') {
+    } else if (u?.branchId && u.branchId !== 'HQ' && u.branchId !== 'ALL') {
       initialBranches = [normalizeBranchId(u.branchId).toUpperCase()];
     }
 

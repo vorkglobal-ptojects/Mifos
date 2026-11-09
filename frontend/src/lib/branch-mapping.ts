@@ -1,7 +1,7 @@
 // Canonical Branch IDs matching public.branches table in Supabase
 export const CANONICAL_BRANCHES = [
   { id: 'HQ',   name: 'Head Office' },
-  { id: 'DHW',  name: 'Main Branch' },
+  { id: 'DHW',  name: 'Dehiwala' },
   { id: 'KHT',  name: 'Kahathuduwa' },
   { id: 'KTW',  name: 'Kottawa' },
   { id: 'KOT',  name: 'Kotikawatta' },

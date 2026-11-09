@@ -416,7 +416,7 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
         const u = JSON.parse(stored);
         const branchToUse = activeBranch || u.branchId;
         // Anyone logged into a specific branch defaults to that isolated branch
-        if (branchToUse && branchToUse !== 'DHW' && branchToUse !== 'HQ' && branchToUse !== 'ALL') {
+        if (branchToUse && branchToUse !== 'HQ' && branchToUse !== 'ALL') {
           const myBranch = normalizeBranchId(branchToUse).toUpperCase();
           initialBranches = [myBranch];
         }

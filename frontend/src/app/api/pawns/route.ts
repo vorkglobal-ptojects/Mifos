@@ -32,12 +32,12 @@ export async function GET(request: Request) {
     // A user logged into a branch (e.g. Panadura PND) can ONLY see that branch's pawns.
     // Admin, Auditor, or HQ staff can view all branches or specific selected branches.
     const userRole = (session.role || 'TELLER').toUpperCase();
-    const isGlobalManager = ['ADMIN', 'AUDITOR'].includes(userRole) && (!session.branchId || session.branchId === 'HQ' || session.branchId === 'DHW' || session.branchId === 'ALL');
+    const isGlobalManager = ['ADMIN', 'AUDITOR'].includes(userRole) && (!session.branchId || session.branchId === 'HQ' || session.branchId === 'ALL');
 
-    if (!isGlobalManager && session.branchId && session.branchId !== 'HQ' && session.branchId !== 'DHW' && session.branchId !== 'ALL') {
+    if (!isGlobalManager && session.branchId && session.branchId !== 'HQ' && session.branchId !== 'ALL') {
       branchTokens = [session.branchId];
     } else if (branchTokens.length === 0) {
-      if (session.branchId && session.branchId !== 'HQ' && session.branchId !== 'DHW' && session.branchId !== 'ALL') {
+      if (session.branchId && session.branchId !== 'HQ' && session.branchId !== 'ALL') {
         branchTokens = [session.branchId];
       } else {
         branchTokens = ['HQ'];

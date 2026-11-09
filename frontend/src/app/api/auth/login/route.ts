@@ -96,24 +96,24 @@ export async function POST(request: Request) {
       // Admin, Auditor, and Manager can operate in HQ (Main Branch) or select any specific branch
       effectiveBranch = selectedBranch || effectiveBranch || 'HQ';
     } else {
-      // TELLER must operate in their assigned or selected local branch
-      if (selectedBranch && selectedBranch !== 'HQ' && selectedBranch !== 'DHW') {
+      // TELLER must operate in their assigned or selected local branch (including Dehiwala)
+      if (selectedBranch && selectedBranch !== 'HQ') {
         effectiveBranch = selectedBranch;
-      } else if (profile?.branch_id && normalizeBranchId(profile.branch_id) !== 'HQ' && normalizeBranchId(profile.branch_id) !== 'DHW') {
+      } else if (profile?.branch_id && normalizeBranchId(profile.branch_id) !== 'HQ') {
         effectiveBranch = normalizeBranchId(profile.branch_id);
       }
     }
 
-    // Main Branch (DHW / HQ) is reserved for Management, Admin, and Auditor - Tellers must log into their assigned local branch
-    if ((effectiveBranch === 'DHW' || effectiveBranch === 'HQ') && role === 'TELLER') {
+    // Head Office (HQ) is reserved for Management, Admin, and Auditor - Tellers must log into their assigned local branch
+    if (effectiveBranch === 'HQ' && role === 'TELLER') {
       return NextResponse.json(
-        { error: 'Access Denied: Main Branch is reserved for Administrator and Management login only. Please select your assigned local branch.' },
+        { error: 'Access Denied: Head Office is reserved for Administrator and Management login only. Please select your assigned local branch.' },
         { status: 403 }
       );
     }
 
     const branchObj = CANONICAL_BRANCHES.find(b => b.id === effectiveBranch);
-    const effectiveBranchName = branchObj ? branchObj.name : ((effectiveBranch === 'HQ' || effectiveBranch === 'DHW') ? 'Main Branch' : (profile?.branch_name || effectiveBranch));
+    const effectiveBranchName = branchObj ? branchObj.name : (effectiveBranch === 'HQ' ? 'Head Office' : (effectiveBranch === 'DHW' ? 'Dehiwala' : (profile?.branch_name || effectiveBranch)));
 
     // Auto-heal missing profile in public.profiles if user authenticated successfully
     let userProfile = profile;
