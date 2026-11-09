@@ -97,7 +97,7 @@ async function verifyFeatures() {
       interestPaid: 10110,
       coveredMonths: 6,
       lastInterestDate: '2026-10-23',
-      customMessage: `RUPASINGHE PAWNING (PVT) LTD
+      customMessage: `RUPASINGHA CAPITAL
 Dear K.D. Silva,
 URGENT: Pawn Ticket #3R 31431 [KTW] (Date: 2026-02-06, 3M)
 Principal: Rs. 61,230 | Expired: 2026-10-23
@@ -137,7 +137,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
           coveredMonths: 1
         }
       ],
-      customTemplate: 'RUPASINGHE PAWNING: Dear {customer_name}, your ticket #{bill_no} [{branch}] has due interest Rs. {interest_due}. Settle before auction.'
+      customTemplate: 'RUPASINGHA CAPITAL: Dear {customer_name}, your ticket #{bill_no} [{branch}] has due interest Rs. {interest_due}. Settle before auction.'
     })
   });
   const bulkData = await bulkRes.json();

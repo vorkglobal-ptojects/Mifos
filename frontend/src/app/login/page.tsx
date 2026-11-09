@@ -837,7 +837,7 @@ export default function LoginPage() {
           <div className="shield-ring">
             <div className="shield-img-wrap">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/rupasinghe_logo.png" alt="Rupasinghe Pawning" className="shield-img" />
+              <img src="/rupasinghe_logo.png" alt="Rupasingha Capital" className="shield-img" />
             </div>
           </div>
           <div className="right-text">

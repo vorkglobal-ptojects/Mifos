@@ -158,7 +158,7 @@ export function printLoanAgreement(details: AgreementDetails) {
     <body>
       <!-- THE AGREEMENT CONTENT -->
       <div id="agreement-content">
-        <div class="watermark">RUPASINGHE PAWNING</div>
+        <div class="watermark">RUPASINGHA CAPITAL</div>
 
         <!-- PAGE 1: TITLE & RECITALS -->
         <div class="header-section">
@@ -175,7 +175,7 @@ export function printLoanAgreement(details: AgreementDetails) {
         </p>
         <p class="bold" style="margin-top: 10px;">AND</p>
         <p class="justify">
-          (2) <span class="bold">RUPASINGHE TRUST INVESTMENTS LTD. (RUPASINGHE PAWNING JEWELLERS)</span>, a company duly incorporated under the laws of Sri Lanka, having its registered head office in Sri Lanka (hereinafter referred to as the <span class="bold">"Lender"</span>) which term or expression shall where the context so requires include its successors and permitted assigns.
+          (2) <span class="bold">RUPASINGHA CAPITAL</span>, a company duly incorporated under the laws of Sri Lanka, having its registered head office in Sri Lanka (hereinafter referred to as the <span class="bold">"Lender"</span>) which term or expression shall where the context so requires include its successors and permitted assigns.
         </p>
         <p class="justify" style="margin-top: 10px;">The Borrower and the Lender are hereinafter individually referred to as a "Party" and collectively as the "Parties".</p>
 
@@ -309,11 +309,11 @@ export function printLoanAgreement(details: AgreementDetails) {
 
           <div class="signature-box">
             <div class="signature-title">Signed by the Lender</div>
-            <div class="signature-field">Company: <span>RUPASINGHE TRUST INVESTMENTS LTD.</span></div>
-            <div class="signature-field">Brand: <span>RUPASINGHE PAWNING</span></div>
+            <div class="signature-field">Company: <span>RUPASINGHA CAPITAL</span></div>
+            <div class="signature-field">Brand: <span>RUPASINGHA CAPITAL</span></div>
             <div class="signature-field" style="margin-top: 20px;">Lender Signature (Verification Code):</div>
             <div class="bold" style="font-size: 16pt; color: #555; margin-top: 5px; letter-spacing: 2px;">
-              RUPASINGHE-AUTH
+              RUPASINGHA-AUTH
             </div>
             <div class="signature-field" style="font-size: 8pt; color: #888; margin-top: 15px;">
               Authorized Branch Representative Signature

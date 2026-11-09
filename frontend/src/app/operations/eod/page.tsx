@@ -373,7 +373,7 @@ function EndOfDayContent() {
           adapter.init(),
           // ── HEADER (centered) ──
           adapter.align(1),
-          adapter.text('RUPASINGHE TRUST INVESTMENTS\n', true, true, true),
+          adapter.text('RUPASINGHA CAPITAL\n', true, true, true),
           adapter.text(`${fullBranchName} Branch · Safe Custody\n`, true),
           adapter.text(`${dsep}\n`),
           adapter.text('PAWN STOCK TICKET\n', true, false, true),
@@ -718,9 +718,7 @@ function EndOfDayContent() {
       const lines: Uint8Array[] = [
         adapter.init(),
         adapter.align(1),
-        adapter.text('RUPASINGHE TRUST\n', true, true, true),
-        adapter.text('INVESTMENTS LTD.\n', true, false, true),
-        adapter.text('(PREV. L.S. RUPASINGHE PAWN BROKERS)\n'),
+        adapter.text('RUPASINGHA CAPITAL\n', true, true, true),
         adapter.text(`${data.branch}\n`),
         adapter.text('Tel: 011 7006588\n'),
         adapter.text(`${sep}\n`),
@@ -752,7 +750,7 @@ function EndOfDayContent() {
         adapter.text('Customer Signature      Cashier Signature\n'),
         adapter.text('-------------------     -------------------\n'),
         adapter.align(1),
-        adapter.text('Thank you for transacting with Rupasinghe Trust!\n'),
+        adapter.text('Thank you for transacting with Rupasingha Capital!\n'),
         adapter.feed(4),
         adapter.cut(),
       ];
@@ -798,9 +796,7 @@ function EndOfDayContent() {
         </style>
       </head>
       <body>
-        <div class="center bold" style="font-size: 14px;">RUPASINGHE TRUST</div>
-        <div class="center bold">INVESTMENTS LTD.</div>
-        <div class="center" style="font-size: 10px;">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
+        <div class="center bold" style="font-size: 14px;">RUPASINGHA CAPITAL</div>
         <div class="center" style="font-size: 10px;">${data.branch} &bull; Tel: 011 7006588</div>
         <div class="sep"></div>
         <div class="center bold">** PAWN INTEREST RECEIPT **</div>
@@ -827,7 +823,7 @@ function EndOfDayContent() {
           <div><div>-------------------</div>Customer Signature</div>
           <div><div>-------------------</div>Cashier Signature</div>
         </div>
-        <div class="center" style="font-size: 9px; margin-top: 15px;">Thank you for transacting with Rupasinghe Trust!</div>
+        <div class="center" style="font-size: 9px; margin-top: 15px;">Thank you for transacting with Rupasingha Capital!</div>
         <script>
           setTimeout(() => { window.print(); window.close(); }, 500);
         </script>

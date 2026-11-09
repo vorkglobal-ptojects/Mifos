@@ -189,7 +189,7 @@ export default function ForfeitureManagementPage() {
       ? `\nInterest Paid: Rs. ${item.total_interest_paid.toLocaleString()} (${item.covered_months || 0} mo. covered${item.last_interest_date ? `, last: ${item.last_interest_date}` : ''})` 
       : '\nInterest Paid: Rs. 0 (None)';
 
-    return `RUPASINGHE PAWNING (PVT) LTD
+    return `RUPASINGHA CAPITAL
 Dear ${nameDisplay},
 URGENT: Pawn Ticket #${item.bill_no} [${item.branch_id}]${dateInfo}
 Principal: Rs. ${(item.principal || 0).toLocaleString()} | Expired: ${item.effective_expiry_date}${paidInfo}
@@ -206,7 +206,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
 
   // Open Bulk SMS Modal
   const openBulkSmsModal = () => {
-    const defaultTemplate = `RUPASINGHE PAWNING (PVT) LTD
+    const defaultTemplate = `RUPASINGHA CAPITAL
 Dear {customer_name},
 URGENT: Pawn Ticket #{bill_no} [{branch}] (Date: {origination_date})
 Principal: Rs. {principal} | Expired: {expiry_date}
@@ -383,7 +383,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Rupasinghe_FS_Overdue_Items_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `Rupasingha_Capital_FS_Overdue_Items_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -514,7 +514,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
                 <div className="flex justify-between items-start">
                   <div>
                     <h1 className="text-xl font-black tracking-tight text-slate-900 leading-tight">
-                      RUPASINGHE PAWNING (PVT) LTD
+                      RUPASINGHA CAPITAL
                     </h1>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs font-black uppercase bg-slate-900 text-white px-2 py-0.5 rounded tracking-wider">
@@ -1342,7 +1342,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
                     <button
                       type="button"
                       onClick={() => {
-                        setBulkCustomTemplate(`RUPASINGHE PAWNING (PVT) LTD
+                        setBulkCustomTemplate(`RUPASINGHA CAPITAL
 Dear {customer_name},
 URGENT: Pawn Ticket #{bill_no} [{branch}] (Date: {origination_date})
 Principal: Rs. {principal} | Expired: {expiry_date}

@@ -552,9 +552,7 @@ export default function InterestPaymentPage() {
         adapter.init(),
         // ── HEADER (centered) ──
         adapter.align(1),
-        adapter.text('RUPASINGHE TRUST\n', true, true, true),
-        adapter.text('INVESTMENTS LTD.\n', true, false, true),
-        adapter.text('(PREV. L.S. RUPASINGHE PAWN BROKERS)\n'),
+        adapter.text('RUPASINGHA CAPITAL\n', true, true, true),
         adapter.text(`${data.branch || 'Dehiwala Head Office'}\n`),
         adapter.text(`Tel: ${branchTel}\n`),
         adapter.text(`${sep}\n`),
@@ -599,7 +597,7 @@ export default function InterestPaymentPage() {
         adapter.text('Customer Signature      Cashier Signature\n'),
         adapter.text('-------------------     -------------------\n'),
         adapter.align(1),
-        adapter.text('Thank you for transacting with Rupasinghe Trust!\n'),
+        adapter.text('Thank you for transacting with Rupasingha Capital!\n'),
         adapter.feed(4),
         adapter.cut(),
       ];
@@ -652,9 +650,7 @@ export default function InterestPaymentPage() {
         </style>
       </head>
       <body>
-        <div class="center bold" style="font-size: 14px;">RUPASINGHE TRUST</div>
-        <div class="center bold">INVESTMENTS LTD.</div>
-        <div class="center" style="font-size: 10px;">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
+        <div class="center bold" style="font-size: 14px;">RUPASINGHA CAPITAL</div>
         <div class="center" style="font-size: 10px;">${data.branch || 'Dehiwala Head Office'} &bull; Tel: ${(String(data.branch || '').toUpperCase().includes('HOM') || String(data.branch || '').toUpperCase().includes('HMG')) ? '011 7006388' : '011 7006588'}</div>
         <div class="sep"></div>
         <div class="center bold">** PAWN INTEREST RECEIPT **</div>
@@ -682,7 +678,7 @@ export default function InterestPaymentPage() {
           <div><div>-------------------</div>Customer Signature</div>
           <div><div>-------------------</div>Cashier Signature</div>
         </div>
-        <div class="center" style="font-size: 9px; margin-top: 15px;">Thank you for transacting with Rupasinghe Trust!</div>
+        <div class="center" style="font-size: 9px; margin-top: 15px;">Thank you for transacting with Rupasingha Capital!</div>
         <script>
           setTimeout(() => { window.print(); window.close(); }, 500);
         </script>
@@ -1230,9 +1226,7 @@ export default function InterestPaymentPage() {
               {/* Receipt Render View (Simulating 80mm ESC/POS Paper) */}
               <div className="bg-white text-black font-mono text-xs p-4 rounded-xl shadow-inner space-y-2 border border-slate-300 max-h-[60vh] overflow-y-auto">
                 <div className="text-center font-bold">
-                  <div className="text-sm font-black">RUPASINGHE TRUST</div>
-                  <div className="text-xs">INVESTMENTS LTD.</div>
-                  <div className="text-[10px] text-gray-600">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
+                  <div className="text-sm font-black">RUPASINGHA CAPITAL</div>
                   <div className="text-[10px]">
                     {activeReceiptData.branch} • Tel: {(String(activeReceiptData.branch || '').toUpperCase().includes('HOM') || String(activeReceiptData.branch || '').toUpperCase().includes('HMG')) ? '011 7006388' : '011 7006588'}
                   </div>

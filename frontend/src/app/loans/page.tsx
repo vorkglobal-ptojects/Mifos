@@ -2947,7 +2947,7 @@ export default function PawnesPage() {
               </DialogTitle>
             </div>
             <DialogDescription className="text-slate-400 font-bold uppercase tracking-wider text-xs">
-              Rupasinghe Core Settlement System
+              Rupasingha Capital Core Settlement System
             </DialogDescription>
           </DialogHeader>
 
@@ -3659,9 +3659,7 @@ function PawnDetailsModal({
         adapter.init(),
         // ── HEADER (centered) ──
         adapter.align(1),
-        adapter.text('RUPASINGHE TRUST\n', true, true, true),
-        adapter.text('INVESTMENTS LTD.\n', true, false, true),
-        adapter.text('(PREV. L.S. RUPASINGHE PAWN BROKERS)\n'),
+        adapter.text('RUPASINGHA CAPITAL\n', true, true, true),
         adapter.text(`${billBranchAddress || 'Head Office, Dehiwala.'}\n`),
         adapter.text(`Tel: ${billBranchPhone || '011 7006588'}\n`),
         adapter.text(`${sep}\n`),
@@ -3882,9 +3880,7 @@ function PawnDetailsModal({
         </style>
       </head>
       <body>
-        <div class="center bold" style="font-size: 14px; letter-spacing: 1px;">RUPASINGHE TRUST</div>
-        <div class="center bold" style="font-size: 12px;">INVESTMENTS LTD.</div>
-        <div class="center" style="font-size: 9px;">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
+        <div class="center bold" style="font-size: 14px; letter-spacing: 1px;">RUPASINGHA CAPITAL</div>
         <div class="center" style="font-size: 10px; margin-top: 2px;">${billBranchAddress || 'Head Office, Dehiwala.'}</div>
         <div class="center" style="font-size: 10px;">Tel: ${billBranchPhone || '011 7006588'}</div>
         <div class="sep"></div>
@@ -3991,8 +3987,7 @@ function PawnDetailsModal({
             
             {/* Header */}
             <div className="text-center border-b-2 border-slate-900 pb-3 mb-4">
-              <h2 className="text-2xl font-black tracking-tight uppercase text-blue-900 font-sans">RUPASINGHE TRUST INVESTMENTS LTD.</h2>
-              <p className="text-xs font-bold tracking-wide italic text-slate-700 font-sans">(PREVIOUSLY L. S. RUPASINGHE PAWN BROKERS)</p>
+              <h2 className="text-2xl font-black tracking-tight uppercase text-blue-900 font-sans">RUPASINGHA CAPITAL</h2>
               <div className="flex justify-between items-center text-xs font-sans font-bold text-slate-800 mt-2 px-1">
                 <div className="flex items-center gap-1">
                   <span>Phone:</span>
@@ -4281,7 +4276,7 @@ function RedemptionReceiptModal({
   })() : null;
 
   // Editable Form State
-  const [companyTitle, setCompanyTitle] = useState('RUPASINGHE TRUST INVESTMENTS LTD.');
+  const [companyTitle, setCompanyTitle] = useState('RUPASINGHA CAPITAL');
   const [branchAddress, setBranchAddress] = useState('');
   const [billNo, setBillNoState] = useState('');
   const [redemptionDate, setRedemptionDate] = useState('');
@@ -4303,7 +4298,7 @@ function RedemptionReceiptModal({
   // Sync state when data prop changes
   useEffect(() => {
     if (resolvedData) {
-      setCompanyTitle('RUPASINGHE TRUST INVESTMENTS LTD.');
+      setCompanyTitle('RUPASINGHA CAPITAL');
       setBranchAddress(resolvedData.bAddress || 'No. 3/B/1, Station Road, Dehiwala. Tel: 011 7006588');
       setBillNoState(resolvedData.billNo || '12R 0001');
       setRedemptionDate(resolvedData.redeemedAt || new Date().toISOString().substring(0, 10));
@@ -4333,7 +4328,7 @@ function RedemptionReceiptModal({
 
   const resetFormDefaults = () => {
     if (resolvedData) {
-      setCompanyTitle('RUPASINGHE TRUST INVESTMENTS LTD.');
+      setCompanyTitle('RUPASINGHA CAPITAL');
       setBranchAddress(resolvedData.bAddress || 'No. 3/B/1, Station Road, Dehiwala. Tel: 011 7006588');
       setBillNoState(resolvedData.billNo || '12R 0001');
       setRedemptionDate(resolvedData.redeemedAt || new Date().toISOString().substring(0, 10));
@@ -4378,7 +4373,7 @@ function RedemptionReceiptModal({
         adapter.init(),
         // ── HEADER (centered) ──
         adapter.align(1),
-        adapter.text(`${companyTitle || 'RUPASINGHE TRUST INVESTMENTS LTD.'}\n`, true, true, true),
+        adapter.text(`${companyTitle || 'RUPASINGHA CAPITAL'}\n`, true, true, true),
         adapter.text(`${branchAddress || 'No. 3/B/1, Station Road, Dehiwala.'}\n`),
         adapter.text(`${sep}\n`),
         adapter.text('PAWN REDEMPTION RECEIPT\n', true, false, true),

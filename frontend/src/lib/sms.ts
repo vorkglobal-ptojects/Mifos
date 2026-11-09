@@ -142,7 +142,7 @@ export async function sendFreeSms(params: SendSmsParams) {
 }
 
 /**
- * Trilingual Branded SMS Template Builders for Rupasinghe Pawning (PVT) Ltd
+ * Trilingual Branded SMS Template Builders for Rupasingha Capital
  * (Strictly excludes 'Mifos' branding, includes Customer Name and clear company header)
  */
 
@@ -158,7 +158,7 @@ export function buildPawnReceiptSms(params: {
     : 'Valued Customer';
   const today = dateStr || new Date().toLocaleDateString('en-GB');
 
-  return `RUPASINGHE PAWNING (PVT) LTD
+  return `RUPASINGHA CAPITAL
 Dear ${nameDisplay},
 Pawn Ticket No: #${ticketNo}
 Disbursed Amount: Rs. ${amount.toLocaleString()}
@@ -180,7 +180,7 @@ export function buildPawnRedeemSms(params: {
     ? customerName 
     : 'Valued Customer';
 
-  return `RUPASINGHE PAWNING (PVT) LTD
+  return `RUPASINGHA CAPITAL
 Dear ${nameDisplay},
 Pawn Ticket No: #${ticketNo}
 Status: REDEEMED (උකස් බේරාගන්නා ලදී)
@@ -201,7 +201,7 @@ export function buildPawnReminderSms(params: {
     ? customerName 
     : 'Valued Customer';
 
-  return `RUPASINGHE PAWNING (PVT) LTD
+  return `RUPASINGHA CAPITAL
 Dear ${nameDisplay},
 Reminder: Pawn Ticket No: #${ticketNo} (Rs. ${amount.toLocaleString()}).
 Please visit our branch for interest payment or renewal.
@@ -241,7 +241,7 @@ export function buildForfeitureWarningSms(params: {
     ? `\nInterest Paid: Rs. ${interestPaid.toLocaleString()} (${coveredMonths} mo. covered${lastInterestDate ? `, last: ${lastInterestDate}` : ''})` 
     : '\nInterest Paid: Rs. 0 (None)';
 
-  return `RUPASINGHE PAWNING (PVT) LTD
+  return `RUPASINGHA CAPITAL
 Dear ${nameDisplay},
 URGENT: Pawn Ticket #${ticketNo}${branchName ? ` [${branchName}]` : ''}${dateInfo}
 Principal: Rs. ${principal.toLocaleString()} | Expired: ${expiryDate}${paidInfo}

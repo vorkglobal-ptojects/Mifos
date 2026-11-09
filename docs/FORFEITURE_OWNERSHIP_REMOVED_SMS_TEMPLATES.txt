@@ -1,0 +1,79 @@
+  ================================================================================
+RUPASINGHA CAPITAL
+FORFEITURE & OWNERSHIP REMOVED (F/S) SMS TEMPLATES
+================================================================================
+
+PLACEHOLDERS:
+{customer_name} = Customer Name (e.g., K.D. Perera)
+{bill_no}       = Pawn Ticket Number (e.g., 3R-2045)
+{amount}        = Overdue Amount / Rs. (e.g., 45,500)
+{branch}        = Branch Name (e.g., Head Office / Horana)
+{branch_phone}  = Branch Contact Number (e.g., 0771234567)
+{date}          = Date (e.g., 06/11/2026)
+
+
+--------------------------------------------------------------------------------
+1. SINHALA TEMPLATES (සිංහල මාධ්‍යය)
+--------------------------------------------------------------------------------
+
+[Template 1A: Compact / කෙටි පණිවිඩය - Recommended]
+RUPASINGHA CAPITAL
+ගරු {customer_name},
+අංක #{bill_no} දරන ඔබගේ උකස් භාණ්ඩය සඳහා නියමිත කාලය ඉක්මවා ඇති බැවින්, එහි හිමිකාරිත්වය අහෝසි වී වෙන්දේසියට යොමු කර ඇත.
+ගෙවීම් කර එය බේරාගැනීමට වහාම අපගේ {branch} ශාඛාව අමතන්න: {branch_phone}
+
+
+[Template 1B: Formal & Detailed / නිල හා පූර්ණ දැනුම්දීම]
+RUPASINGHA CAPITAL
+ගරු {customer_name},
+දැනුම්දීමයි: අංක #{bill_no} දරන ඔබගේ රන් භාණ්ඩ උකස් ගිවිසුමේ නියමිත කාලය සහ සහන කාලය ඉක්මවා ගොස් ඇත.
+උකස් නීතිරීති ප්‍රකාරව එකී භාණ්ඩයේ හිමිකාරිත්වය ආයතනය වෙත පවරාගෙන (සින්න වී) වෙන්දේසි කිරීමට පියවර ගෙන ඇති බව දන්වමු.
+අවසන් පියවරට පෙර හිඟ මුදල (රු. {amount}) ගෙවා බේරාගැනීමට අවශ්‍ය නම් අදම ශාඛාව අමතන්න.
+විමසීම්: {branch_phone} ({branch})
+
+
+--------------------------------------------------------------------------------
+2. TAMIL TEMPLATES (தமிழ் ஊடகம்)
+--------------------------------------------------------------------------------
+
+[Template 2A: Compact / சுருக்கமான வடிவம் - Recommended]
+RUPASINGHA CAPITAL
+மதிப்பிற்குரிய {customer_name},
+அடகு பற்றுச்சீட்டு #{bill_no} க்கான கால அவகாசம் முடிவடைந்ததால், உடன்படிக்கையின்படி தங்கத்தின் உரிமை ரத்து செய்யப்பட்டு ஏலத்திற்கு மாற்றப்பட்டுள்ளது.
+மீட்க உடனடியாக கிளைக்கு வரவும் அல்லது தொடர்பு கொள்ளவும்: {branch_phone} ({branch})
+
+
+[Template 2B: Formal & Detailed / முழுமையான உத்தியோகபூர்வ அறிவிப்பு]
+RUPASINGHA CAPITAL
+மதிப்பிற்குரிய {customer_name},
+உத்தியோகபூர்வ அறிவித்தல்: தங்களின் அடகு இலக்கம் #{bill_no} க்கான கடன் மற்றும் கருணை காலம் முடிவடைந்துள்ளது.
+அடகு சட்ட விதிகளின்படி, குறிப்பிட்ட பொருளின் மீதான தங்களுடைய உரிமை நீக்கப்பட்டு, நிறுவனம் பறிமுதல் செய்து (F/S) பொது ஏலத்திற்கு விட நடவடிக்கை எடுக்கப்பட்டுள்ளது.
+ஏலத்திற்கு முன் நிலுவைத் தொகையை (ரூ. {amount}) செலுத்தி மீட்க இன்றே எமது கிளையைத் தொடர்பு கொள்ளவும்.
+அழைக்க: {branch_phone} ({branch})
+
+
+--------------------------------------------------------------------------------
+3. BILINGUAL COMBINED (සිංහල + தமிழ் එකට)
+--------------------------------------------------------------------------------
+RUPASINGHA CAPITAL
+Notice: Ticket #{bill_no} | Due: Rs. {amount}
+
+[SINHALA]: ගරු {customer_name}, කාලය ඉක්මවීම හේතුවෙන් අංක #{bill_no} උකස් භාණ්ඩයේ හිමිකම අහෝසි වී වෙන්දේසියට යොමුකර ඇත. වහාම අමතන්න: {branch_phone}
+
+[TAMIL]: மதிப்பிற்குரிய {customer_name}, காலாவதியானதால் அடகு #{bill_no} உரிமை ரத்து செய்யப்பட்டு ஏலத்திற்கு மாற்றப்பட்டுள்ளது. தொடர்புக்கு: {branch_phone}
+
+
+--------------------------------------------------------------------------------
+4. GSM-7 / SINGLISH FALLBACK (වියදම අඩු Standard 160-char SMS සඳහා)
+--------------------------------------------------------------------------------
+
+[English Standard]
+RUPASINGHA CAPITAL
+Dear {customer_name},
+Pawn Ticket #{bill_no} has expired and grace period ended. As per pawning regulations, collateral ownership is revoked & scheduled for public auction.
+To settle Rs. {amount} and recover items prior to auction, please contact {branch} branch immediately at {branch_phone}.
+
+
+[Singlish Standard]
+RUPASINGHA CAPITAL: Golu {customer_name}, obage ukas anka #{bill_no} sandaha kaalaya ikmawa athi bavini himikam ahosi vee vendesiyata yomu kara atha. Bera ganeemata wahama amathanna: {branch_phone} ({branch}).
+

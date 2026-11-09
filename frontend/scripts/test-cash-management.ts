@@ -1,6 +1,6 @@
 /**
  * Cash Management Module Automated Verification Test Suite
- * goldloan.app / Rupasinghe Pawning Hub
+ * goldloan.app / Rupasingha Capital
  *
  * Verifies:
  * 1. Denomination math server-side calculation (LKR notes & coins)

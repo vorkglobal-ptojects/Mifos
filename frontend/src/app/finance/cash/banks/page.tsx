@@ -26,7 +26,7 @@ export default function BankAccountsPage() {
   // New Bank Modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [bankName, setBankName] = useState('Commercial Bank of Ceylon');
-  const [accountName, setAccountName] = useState('Rupasinghe Pawning Operations');
+  const [accountName, setAccountName] = useState('Rupasingha Capital Operations');
   const [accountNumber, setAccountNumber] = useState('');
   const [assignedBranch, setAssignedBranch] = useState('HQ');
   const [openingBalance, setOpeningBalance] = useState('');
@@ -258,7 +258,7 @@ export default function BankAccountsPage() {
               <Label className="text-xs font-bold">Account Name / Title</Label>
               <Input
                 required
-                placeholder="e.g. Rupasinghe Pawning Hub - Current A/C"
+                placeholder="e.g. Rupasingha Capital - Current A/C"
                 value={accountName}
                 onChange={(e) => setAccountName(e.target.value)}
                 className="mt-1 h-10 text-sm"

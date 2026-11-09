@@ -297,12 +297,12 @@ export default function DashboardSidebar({
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 bg-[#ffd100] rounded-xl flex items-center justify-center shadow-lg shadow-[#ffd100]/20 ring-2 ring-[#ffd100]/40 group-hover:scale-105 transition-transform duration-300 relative overflow-hidden shrink-0">
               <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent" />
-              <span className="text-[#202020] font-black text-sm tracking-tighter relative z-10">RP</span>
+              <span className="text-[#202020] font-black text-sm tracking-tighter relative z-10">RC</span>
             </div>
             {!isCollapsed && (
               <div className="flex flex-col animate-in fade-in slide-in-from-left-4 duration-500">
-                <span className="text-white font-black tracking-tighter text-lg leading-none">RUPASINGHE</span>
-                <span className="text-[#ffd100] text-[8.5px] font-black uppercase tracking-[0.2em] opacity-95 mt-1">MIFOS Management</span>
+                <span className="text-white font-black tracking-tighter text-lg leading-none">RUPASINGHA</span>
+                <span className="text-[#ffd100] text-[8.5px] font-black uppercase tracking-[0.2em] opacity-95 mt-1">CAPITAL</span>
               </div>
             )}
           </div>

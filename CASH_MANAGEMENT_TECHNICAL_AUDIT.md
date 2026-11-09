@@ -3,7 +3,7 @@
 **Date of Investigation:** October 23, 2026  
 **Auditor:** Antigravity AI Senior Systems & Financial Architecture Auditor  
 **Repository Working Directory:** `c:\Users\janan\Downloads\Mifos-main\Mifos-main`  
-**Target Environment:** Rupasinghe Pawning Hub - MIFOS System (`goldloan.app` / `mifos-finance.vercel.app`)  
+**Target Environment:** Rupasingha Capital - MIFOS System (`goldloan.app` / `mifos-finance.vercel.app`)  
 **Scope:** Investigation and Architectural Blueprint for Consolidated Cash & Bank Management, Branch Cash Requirements, Approvals, Tills, Physical Dispatches, Receipts, and Transfers.
 
 ---
@@ -14,7 +14,7 @@ This investigation was conducted to determine how to safely design and integrate
 
 ### Key Investigation Findings:
 1. **Application Nature — Custom Next.js/Supabase Solution, NOT Apache Fineract:**  
-   Despite the repository naming and credentials referencing "MIFOS System", this application **does not run Apache Fineract** (no Java/Spring backend, no MySQL Fineract schema, no Fineract REST client). Instead, it is a custom-built, full-stack **Next.js 16 (React 19) + Supabase (PostgreSQL 15+) + Upstash Redis** system designed specifically for Sri Lankan pawn brokering ("Rupasinghe Pawning Hub").
+   Despite the repository naming and credentials referencing "MIFOS System", this application **does not run Apache Fineract** (no Java/Spring backend, no MySQL Fineract schema, no Fineract REST client). Instead, it is a custom-built, full-stack **Next.js 16 (React 19) + Supabase (PostgreSQL 15+) + Upstash Redis** system designed specifically for Sri Lankan pawn brokering ("Rupasingha Capital").
 2. **Current Cash State — Branch-Level Daily Ledgers without Till or Bank Visibility:**  
    The system currently tracks cash only as an end-of-day scalar figure per branch inside `public.daily_ledgers` (`opening_balance`, `closing_balance`, `actual_cash_count`, `transfer_in`, `transfer_out`). It lacks cash till/drawer granularity, physical currency denomination breakdowns, bank account master data, and live bank integration feeds.
 3. **Current Transfer State — Primitive & Unsafe:**  
@@ -46,7 +46,7 @@ This investigation was conducted to determine how to safely design and integrate
 ## 3. Existing Mifos/Fineract Capabilities and Customizations
 
 * **Apache Fineract:** **Not present.** Searching for `fineract` yields 0 matches in the entire repository. There are no Spring Boot services, no Gradle builds, and no Fineract API clients.
-* **Mifos Branding & Domain:** The application uses "Mifos" strictly as brand naming for this proprietary pawn finance platform (`Rupasinghe Pawning Hub - MIFOS System`).
+* **Mifos Branding & Domain:** The application uses "Mifos" strictly as brand naming for this proprietary pawn finance platform (`Rupasingha Capital - MIFOS System`).
 * **Core Implemented Domains:**
   1. **Customer KYC / CRM:** [`frontend/src/app/clients/page.tsx`](file:///c:/Users/janan/Downloads/Mifos-main/Mifos-main/frontend/src/app/clients/page.tsx) (`public.clients`, `public.stock_customers`).
   2. **Pawn Origination, Appraisal & Gold Weighing:** [`frontend/src/app/loans/page.tsx`](file:///c:/Users/janan/Downloads/Mifos-main/Mifos-main/frontend/src/app/loans/page.tsx), [`frontend/src/lib/loanAgreementPrint.ts`](file:///c:/Users/janan/Downloads/Mifos-main/Mifos-main/frontend/src/lib/loanAgreementPrint.ts) (`public.pawns`, `public.pawn_items`).

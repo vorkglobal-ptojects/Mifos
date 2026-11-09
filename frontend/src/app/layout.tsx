@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/sonner';
 const interFont = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji'";
 
 export const metadata: Metadata = {
-  title: 'Rupasinghe Pawning | Branch Intelligence',
+  title: 'Rupasingha Capital | Branch Intelligence',
   description: 'Core pawning and branch transaction platform',
   icons: {
     icon: '/rupasinghe_logo.png',

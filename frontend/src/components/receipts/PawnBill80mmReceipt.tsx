@@ -40,11 +40,7 @@ export const PawnBill80mmReceipt = forwardRef<HTMLDivElement, { data: PawnBillDa
       {/* ── HEADER ── */}
       <div style={{ textAlign: 'center', marginBottom: '10px' }}>
         <div style={{ fontSize: '16px', fontWeight: '900', letterSpacing: '1px' }}>
-          RUPASINGHE TRUST
-        </div>
-        <div style={{ fontSize: '13px', fontWeight: '900' }}>INVESTMENTS LTD.</div>
-        <div style={{ fontSize: '10px', marginTop: '2px' }}>
-          (PREV. L.S. RUPASINGHE PAWN BROKERS)
+          RUPASINGHA CAPITAL
         </div>
         <div style={{ fontSize: '11px', marginTop: '4px' }}>
           {data.branchAddress || 'No. 3/B/1, Station Road, Dehiwala.'}
