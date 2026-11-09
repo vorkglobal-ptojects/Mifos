@@ -14,6 +14,7 @@ export interface PawnBillData {
   weight: string;
   lastDate: string;
   branchAddress?: string;
+  branchPhone?: string;
 }
 
 // 80mm thermal receipt — 576px wide (72mm printable @ 8px/mm)
@@ -48,7 +49,7 @@ export const PawnBill80mmReceipt = forwardRef<HTMLDivElement, { data: PawnBillDa
         <div style={{ fontSize: '11px', marginTop: '4px' }}>
           {data.branchAddress || 'No. 3/B/1, Station Road, Dehiwala.'}
         </div>
-        <div style={{ fontSize: '11px' }}>Tel: 011 7006588</div>
+        <div style={{ fontSize: '11px' }}>Tel: {data.branchPhone || '011 7006588'}</div>
       </div>
 
       <div style={{ textAlign: 'center', fontSize: '11px' }}>{sep}</div>

@@ -545,6 +545,9 @@ export default function InterestPaymentPage() {
       const fmt = (n: number) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const cleanSinhala = (str: string) => (str || '').replace(/[\u0D80-\u0DFF]+/g, '').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
 
+      const isHomagama = String(data.branch || '').toUpperCase().includes('HOM') || String(data.branch || '').toUpperCase().includes('HMG');
+      const branchTel = isHomagama ? '011 7006388' : '011 7006588';
+
       const lines: Uint8Array[] = [
         adapter.init(),
         // ── HEADER (centered) ──
@@ -553,7 +556,7 @@ export default function InterestPaymentPage() {
         adapter.text('INVESTMENTS LTD.\n', true, false, true),
         adapter.text('(PREV. L.S. RUPASINGHE PAWN BROKERS)\n'),
         adapter.text(`${data.branch || 'Dehiwala Head Office'}\n`),
-        adapter.text('Tel: 011 7006588\n'),
+        adapter.text(`Tel: ${branchTel}\n`),
         adapter.text(`${sep}\n`),
         adapter.text('** PAWN INTEREST RECEIPT **\n', true, false, true),
         adapter.text(`${sep}\n`),
@@ -652,7 +655,7 @@ export default function InterestPaymentPage() {
         <div class="center bold" style="font-size: 14px;">RUPASINGHE TRUST</div>
         <div class="center bold">INVESTMENTS LTD.</div>
         <div class="center" style="font-size: 10px;">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
-        <div class="center" style="font-size: 10px;">${data.branch || 'Dehiwala Head Office'} &bull; Tel: 011 7006588</div>
+        <div class="center" style="font-size: 10px;">${data.branch || 'Dehiwala Head Office'} &bull; Tel: ${(String(data.branch || '').toUpperCase().includes('HOM') || String(data.branch || '').toUpperCase().includes('HMG')) ? '011 7006388' : '011 7006588'}</div>
         <div class="sep"></div>
         <div class="center bold">** PAWN INTEREST RECEIPT **</div>
         <div class="sep"></div>
@@ -1230,7 +1233,9 @@ export default function InterestPaymentPage() {
                   <div className="text-sm font-black">RUPASINGHE TRUST</div>
                   <div className="text-xs">INVESTMENTS LTD.</div>
                   <div className="text-[10px] text-gray-600">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
-                  <div className="text-[10px]">{activeReceiptData.branch} • Tel: 011 7006588</div>
+                  <div className="text-[10px]">
+                    {activeReceiptData.branch} • Tel: {(String(activeReceiptData.branch || '').toUpperCase().includes('HOM') || String(activeReceiptData.branch || '').toUpperCase().includes('HMG')) ? '011 7006388' : '011 7006588'}
+                  </div>
                   <div className="my-1 border-t border-dashed border-gray-400" />
                   <div className="text-xs font-black uppercase">** PAWN INTEREST RECEIPT **</div>
                   <div className="my-1 border-t border-dashed border-gray-400" />

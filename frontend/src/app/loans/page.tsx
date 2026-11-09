@@ -3397,8 +3397,8 @@ const BRANCH_ADDRESSES: Record<string, string> = {
   PANADURA: 'Panadura Branch, Galle Road, Panadura.',
   KTW: 'Kottawa Branch, High Level Road, Kottawa.',
   KOTTAWA: 'Kottawa Branch, High Level Road, Kottawa.',
-  HMG: 'Homagama Branch, High Level Road, Homagama.',
-  HOMAGAMA: 'Homagama Branch, High Level Road, Homagama.',
+  HMG: 'Homagama Branch, No 47 Katuwana Road, Homagama.',
+  HOMAGAMA: 'Homagama Branch, No 47 Katuwana Road, Homagama.',
   KHT: 'Kahathuduwa Branch, Main Street, Kahathuduwa.',
   KAHATHUDUWA: 'Kahathuduwa Branch, Main Street, Kahathuduwa.',
   TEST: 'Test Branch Office, Colombo.',
@@ -3433,6 +3433,33 @@ const getBranchAddress = (pawn: any, branchesList?: any[]): string => {
   return 'No. 3/B/1, Station Road, Dehiwala.';
 };
 
+const BRANCH_PHONES: Record<string, string> = {
+  HMG: '011 7006388',
+  HOMAGAMA: '011 7006388',
+};
+
+const getBranchPhone = (pawn: any, branchesList?: any[]): string => {
+  if (!pawn) return '011 7006588';
+  if (pawn.branch_phone) return pawn.branch_phone;
+  if (pawn.branchPhone) return pawn.branchPhone;
+
+  const bId = String(pawn.branch_id || pawn.branchId || '').toUpperCase().trim();
+  if (bId && BRANCH_PHONES[bId]) return BRANCH_PHONES[bId];
+
+  const bName = String(pawn.branch_name || pawn.branchName || pawn.branch || '').toUpperCase().trim();
+  if (bName && BRANCH_PHONES[bName]) return BRANCH_PHONES[bName];
+
+  if (branchesList && branchesList.length > 0) {
+    const matchedBranch = branchesList.find((b: any) =>
+      String(b.id || '').toUpperCase() === bId ||
+      String(b.name || '').toUpperCase() === bName
+    );
+    if (matchedBranch?.phone) return matchedBranch.phone;
+  }
+
+  return '011 7006588';
+};
+
 // Ultra-Fast Isolated Sub-Component for Pawn Details & Interactive Bill Receipt (100% Editable Fields)
 function PawnDetailsModal({
   pawn,
@@ -3462,6 +3489,7 @@ function PawnDetailsModal({
   const [billMonths, setBillMonths]       = useState<string>('3');
   const [billDate, setBillDate]           = useState<string>('');
   const [billBranchAddress, setBillBranchAddress] = useState<string>('');
+  const [billBranchPhone, setBillBranchPhone]     = useState<string>('011 7006588');
   const [billName, setBillName]           = useState<string>('');
   const [billAddress, setBillAddress]     = useState<string>('');
   const [billNic, setBillNic]             = useState<string>('');
@@ -3518,6 +3546,7 @@ function PawnDetailsModal({
 
       const cDetails = resolveClientDetails(pawn);
       const bAddress = getBranchAddress(pawn, branchesList);
+      const bPhone = getBranchPhone(pawn, branchesList);
       const computedWeight = pawn.weight_grams || pawn.weight || (Array.isArray(pawn.pawn_items) && pawn.pawn_items.length > 0 ? pawn.pawn_items.reduce((s: number, i: any) => s + (Number(i.weight_grams) || 0), 0) : '0.0');
 
       let wVal = parseFloat(pawn.weight || 0);
@@ -3540,6 +3569,7 @@ function PawnDetailsModal({
       setBillMonths(String(pawnTenorMonths));
       setBillDate(formattedDate);
       setBillBranchAddress(bAddress);
+      setBillBranchPhone(bPhone);
       setBillName(cDetails.name);
       setBillAddress(cDetails.address);
       setBillNic(cDetails.nic);
@@ -3572,6 +3602,7 @@ function PawnDetailsModal({
 
       const cDetails = resolveClientDetails(pawn);
       const bAddress = getBranchAddress(pawn, branchesList);
+      const bPhone = getBranchPhone(pawn, branchesList);
 
       let wVal = parseFloat(pawn.weight || 0);
       if (wVal <= 0 && Array.isArray(pawn.items) && pawn.items.length > 0) {
@@ -3592,6 +3623,7 @@ function PawnDetailsModal({
       setBillMonths(String(pTenor));
       setBillDate(formattedDate);
       setBillBranchAddress(bAddress);
+      setBillBranchPhone(bPhone);
       setBillName(cDetails.name);
       setBillAddress(cDetails.address);
       setBillNic(cDetails.nic);
@@ -3631,7 +3663,7 @@ function PawnDetailsModal({
         adapter.text('INVESTMENTS LTD.\n', true, false, true),
         adapter.text('(PREV. L.S. RUPASINGHE PAWN BROKERS)\n'),
         adapter.text(`${billBranchAddress || 'Head Office, Dehiwala.'}\n`),
-        adapter.text('Tel: 011 7006588\n'),
+        adapter.text(`Tel: ${billBranchPhone || '011 7006588'}\n`),
         adapter.text(`${sep}\n`),
         adapter.text('** PAWN BILL **\n', true),
         adapter.text(`${sep}\n`),
@@ -3854,7 +3886,7 @@ function PawnDetailsModal({
         <div class="center bold" style="font-size: 12px;">INVESTMENTS LTD.</div>
         <div class="center" style="font-size: 9px;">(PREV. L.S. RUPASINGHE PAWN BROKERS)</div>
         <div class="center" style="font-size: 10px; margin-top: 2px;">${billBranchAddress || 'Head Office, Dehiwala.'}</div>
-        <div class="center" style="font-size: 10px;">Tel: 011 7006588</div>
+        <div class="center" style="font-size: 10px;">Tel: ${billBranchPhone || '011 7006588'}</div>
         <div class="sep"></div>
         <div class="center bold" style="font-size: 13px;">** PAWN BILL **</div>
         <div class="sep"></div>
@@ -3962,7 +3994,16 @@ function PawnDetailsModal({
               <h2 className="text-2xl font-black tracking-tight uppercase text-blue-900 font-sans">RUPASINGHE TRUST INVESTMENTS LTD.</h2>
               <p className="text-xs font-bold tracking-wide italic text-slate-700 font-sans">(PREVIOUSLY L. S. RUPASINGHE PAWN BROKERS)</p>
               <div className="flex justify-between items-center text-xs font-sans font-bold text-slate-800 mt-2 px-1">
-                <span>Phone: 011 7006588</span>
+                <div className="flex items-center gap-1">
+                  <span>Phone:</span>
+                  <input
+                    type="text"
+                    value={billBranchPhone}
+                    onChange={(e) => setBillBranchPhone(e.target.value)}
+                    className="border-b-2 border-blue-600 bg-blue-50/80 focus:bg-blue-100 text-blue-900 font-sans font-bold px-1.5 py-0.5 rounded outline-none text-xs w-28"
+                    placeholder="Phone No"
+                  />
+                </div>
                 <input
                   type="text"
                   value={billBranchAddress}
@@ -4222,7 +4263,8 @@ function RedemptionReceiptModal({
     const cAddress = pawn?.client_address || clientObj?.address || 'Station Road, Dehiwala';
     const cNic = pawn?.client_nic || clientObj?.nationalId || getClientNic(pawn) || '200125102002';
     const cPhone = pawn?.client_phone || clientObj?.phone || '077 0000000';
-    const bAddress = getBranchAddress(pawn, branchesList) || 'No. 3/B/1, Station Road, Dehiwala. Tel: 011 7006588';
+    const bPhone = getBranchPhone(pawn, branchesList) || '011 7006588';
+    const bAddress = (getBranchAddress(pawn, branchesList) || 'No. 3/B/1, Station Road, Dehiwala.') + ` Tel: ${bPhone}`;
     
     // Weight calculation
     let weightStr = String(pawn?.weight || '0.00');
