@@ -41,6 +41,13 @@ interface StaffShiftItem {
   status: 'PRESENT' | 'ABSENT';
 }
 
+interface CashTransferItem {
+  id: string;
+  type: 'B2B' | 'B2O' | 'O2B' | '';
+  amount: string | number;
+  note?: string;
+}
+
 const BRANCHES = [
   { id: 'BRL', name: 'Borella' },
   { id: 'KOT', name: 'Kotikawatta' },
@@ -121,12 +128,100 @@ function MainLedgerContent() {
 
   // Daily Cash Figures
   const [openingBalance, setOpeningBalance] = useState<string | number>('');
-  const [transferIn, setTransferIn] = useState<string | number>('');
-  const [transferInType, setTransferInType] = useState<'B2B' | 'B2O' | 'O2B' | ''>('');
-  const [transferOut, setTransferOut] = useState<string | number>('');
-  const [transferOutType, setTransferOutType] = useState<'B2B' | 'B2O' | 'O2B' | ''>('');
+  const [transferInList, setTransferInList] = useState<CashTransferItem[]>([
+    { id: '1', type: '', amount: '', note: '' }
+  ]);
+  const [transferOutList, setTransferOutList] = useState<CashTransferItem[]>([
+    { id: '1', type: '', amount: '', note: '' }
+  ]);
   const [recoveryTotal, setRecoveryTotal] = useState<string | number>('');
   const [userClosingBalance, setUserClosingBalance] = useState<string | number>('');
+
+  const totalTransferIn = useMemo(() => {
+    return transferInList.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  }, [transferInList]);
+
+  const totalTransferOut = useMemo(() => {
+    return transferOutList.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  }, [transferOutList]);
+
+  const handleAddTransferInRow = () => {
+    setTransferInList(prev => [
+      ...prev,
+      { id: Math.random().toString(36).substring(2, 9), type: '', amount: '', note: '' }
+    ]);
+  };
+
+  const handleRemoveTransferInRow = (index: number) => {
+    setTransferInList(prev => {
+      if (prev.length <= 1) return [{ id: '1', type: '', amount: '', note: '' }];
+      return prev.filter((_, idx) => idx !== index);
+    });
+  };
+
+  const handleUpdateTransferInRow = (index: number, field: keyof CashTransferItem, value: any) => {
+    setTransferInList(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const handleAddTransferOutRow = () => {
+    setTransferOutList(prev => [
+      ...prev,
+      { id: Math.random().toString(36).substring(2, 9), type: '', amount: '', note: '' }
+    ]);
+  };
+
+  const handleRemoveTransferOutRow = (index: number) => {
+    setTransferOutList(prev => {
+      if (prev.length <= 1) return [{ id: '1', type: '', amount: '', note: '' }];
+      return prev.filter((_, idx) => idx !== index);
+    });
+  };
+
+  const handleUpdateTransferOutRow = (index: number, field: keyof CashTransferItem, value: any) => {
+    setTransferOutList(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const serializeTransferList = (list: CashTransferItem[]) => {
+    const activeList = list.filter(i => (Number(i.amount) !== 0 || i.type !== '' || (i.note && i.note.trim() !== '')));
+    if (activeList.length === 0) return '';
+    if (activeList.length === 1 && !activeList[0].note) {
+      return activeList[0].type || '';
+    }
+    return JSON.stringify(activeList);
+  };
+
+  const parseTransferList = (typeStr: any, numericTotal: any): CashTransferItem[] => {
+    if (typeStr && typeof typeStr === 'string' && typeStr.trim().startsWith('[')) {
+      try {
+        const parsed = JSON.parse(typeStr);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item, idx) => ({
+            id: item.id || String(idx + 1),
+            type: (item.type === 'B2B' || item.type === 'B2O' || item.type === 'O2B') ? item.type : '',
+            amount: item.amount !== undefined && item.amount !== null && item.amount !== '' ? item.amount : '',
+            note: item.note || ''
+          }));
+        }
+      } catch (e) {
+        console.warn("Failed to parse transfer JSON, falling back to legacy:", e);
+      }
+    }
+
+    return [{
+      id: '1',
+      type: (typeStr === 'B2B' || typeStr === 'B2O' || typeStr === 'O2B') ? typeStr : '',
+      amount: (numericTotal !== null && numericTotal !== undefined && numericTotal !== 0) ? numericTotal : (numericTotal === 0 ? '0' : ''),
+      note: ''
+    }];
+  };
 
   // Manual Summary Totals (Direct paper ledger entry overrides)
   const [manualLoanTotal, setManualLoanTotal] = useState<string | number>('');
@@ -319,12 +414,12 @@ function MainLedgerContent() {
   // Formula Closing Balances
   const calculatedClosingCash = useMemo(() => {
     const op = Number(openingBalance) || 0;
-    const ti = Number(transferIn) || 0;
-    const to = Number(transferOut) || 0;
+    const ti = totalTransferIn;
+    const to = totalTransferOut;
     const rec = Number(recoveryTotal) || 0;
 
     return Number((op + ti - to - effectiveLoansIssued + effectiveRedemptions + effectiveInterest + rec + effectiveInsurance - effectiveExpenses).toFixed(2));
-  }, [openingBalance, transferIn, transferOut, effectiveLoansIssued, effectiveRedemptions, effectiveInterest, recoveryTotal, effectiveInsurance, effectiveExpenses]);
+  }, [openingBalance, totalTransferIn, totalTransferOut, effectiveLoansIssued, effectiveRedemptions, effectiveInterest, recoveryTotal, effectiveInsurance, effectiveExpenses]);
 
   const calculatedClosingCapital = useMemo(() => {
     const opCap = Number(openingCapital) || 0;
@@ -359,10 +454,8 @@ function MainLedgerContent() {
           setCpBalance(l.cp_balance || '');
           setOpeningCapital(l.opening_capital || '');
           setOpeningBalance(l.opening_balance || '');
-          setTransferIn(l.transfer_in || '');
-          setTransferInType(l.transfer_in_type || '');
-          setTransferOut(l.transfer_out || '');
-          setTransferOutType(l.transfer_out_type || '');
+          setTransferInList(parseTransferList(l.transfer_in_type, l.transfer_in));
+          setTransferOutList(parseTransferList(l.transfer_out_type, l.transfer_out));
           setRecoveryTotal(l.recovery_total || '');
           setUserClosingBalance(l.closing_balance || '');
           
@@ -432,10 +525,8 @@ function MainLedgerContent() {
           setCpBalance('');
           setOpeningCapital(data.previous_capital !== null ? data.previous_capital : '');
           setOpeningBalance(data.previous_closing !== null ? data.previous_closing : '');
-          setTransferIn('');
-          setTransferInType('');
-          setTransferOut('');
-          setTransferOutType('');
+          setTransferInList([{ id: '1', type: '', amount: '', note: '' }]);
+          setTransferOutList([{ id: '1', type: '', amount: '', note: '' }]);
           setRecoveryTotal('');
           setUserClosingBalance('');
           
@@ -474,10 +565,10 @@ function MainLedgerContent() {
       cp_balance: (cpBalance !== '' && cpBalance !== null && cpBalance !== undefined) ? cpBalance : calculatedClosingCapital,
       opening_capital: openingCapital,
       opening_balance: openingBalance,
-      transfer_in: transferIn,
-      transfer_in_type: transferInType,
-      transfer_out: transferOut,
-      transfer_out_type: transferOutType,
+      transfer_in: totalTransferIn,
+      transfer_in_type: serializeTransferList(transferInList),
+      transfer_out: totalTransferOut,
+      transfer_out_type: serializeTransferList(transferOutList),
       loan_issued_total: effectiveLoansIssued,
       redemption_total: effectiveRedemptions,
       interest_rec_total: effectiveInterest,
@@ -1264,43 +1355,96 @@ function MainLedgerContent() {
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                       <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">Cash Received</span>
                       
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 gap-2">
-                        <span className="text-xs font-bold text-slate-700">Cash In (Office / Transfer In)</span>
-                        <div className="flex items-center gap-1.5 w-full sm:w-auto">
-                          <div className="flex items-center gap-1">
-                            {['B2B', 'B2O', 'O2B'].map(type => (
-                              <button
-                                key={type}
-                                type="button"
-                                onClick={() => setTransferInType(transferInType === type ? '' : type as any)}
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all border ${
-                                  transferInType === type
-                                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                                    : 'bg-white text-slate-500 border-slate-300 hover:bg-emerald-50 hover:text-emerald-700'
-                                }`}
-                              >
-                                {type}
-                              </button>
-                            ))}
+                      {/* Cash In (Office / Transfer In) Section */}
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">Cash In (Office / Transfer In)</span>
+                            {transferInList.length > 1 && (
+                              <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                Total: LKR {totalTransferIn.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
                           </div>
-                          {renderSignButtons(transferIn, setTransferIn, 'emerald')}
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={transferIn}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '' || val === '-' || /^-?\d*\.?\d*$/.test(val)) {
-                                setTransferIn(val);
-                              }
-                            }}
-                            className={`w-full sm:w-32 bg-white border rounded-lg px-2.5 py-1 text-right font-mono text-xs font-bold focus:ring-2 focus:outline-none ${
-                              String(transferIn ?? '').trim().startsWith('-') || (Number(transferIn) || 0) < 0
-                                ? 'text-rose-600 border-rose-300 focus:ring-rose-500'
-                                : 'text-emerald-700 border-slate-300 focus:ring-emerald-500'
-                            }`}
-                          />
+                          <button
+                            type="button"
+                            onClick={handleAddTransferInRow}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-white text-emerald-700 border border-emerald-300 hover:bg-emerald-50 transition-colors shadow-xs"
+                            title="Add another Cash In transfer"
+                          >
+                            <Plus className="w-3 h-3 text-emerald-600" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {transferInList.map((item, idx) => (
+                            <div key={item.id || idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-1.5 bg-white rounded-lg border border-slate-200">
+                              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                {transferInList.length > 1 && (
+                                  <span className="text-[10px] font-black text-slate-400 w-4 shrink-0">#{idx + 1}</span>
+                                )}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {(['B2B', 'B2O', 'O2B'] as const).map(type => (
+                                    <button
+                                      key={type}
+                                      type="button"
+                                      onClick={() => handleUpdateTransferInRow(idx, 'type', item.type === type ? '' : type)}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all border ${
+                                        item.type === type
+                                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                          : 'bg-white text-slate-500 border-slate-300 hover:bg-emerald-50 hover:text-emerald-700'
+                                      }`}
+                                    >
+                                      {type}
+                                    </button>
+                                  ))}
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="Note / Ref (e.g. HQ float)"
+                                  value={item.note || ''}
+                                  onChange={(e) => handleUpdateTransferInRow(idx, 'note', e.target.value)}
+                                  className="flex-1 min-w-[90px] bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto w-full sm:w-auto justify-end">
+                                {renderSignButtons(
+                                  item.amount,
+                                  (val) => handleUpdateTransferInRow(idx, 'amount', val),
+                                  'emerald'
+                                )}
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  value={item.amount}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === '' || val === '-' || /^-?\d*\.?\d*$/.test(val)) {
+                                      handleUpdateTransferInRow(idx, 'amount', val);
+                                    }
+                                  }}
+                                  className={`w-full sm:w-32 bg-white border rounded-lg px-2.5 py-1 text-right font-mono text-xs font-bold focus:ring-2 focus:outline-none ${
+                                    String(item.amount ?? '').trim().startsWith('-') || (Number(item.amount) || 0) < 0
+                                      ? 'text-rose-600 border-rose-300 focus:ring-rose-500'
+                                      : 'text-emerald-700 border-slate-300 focus:ring-emerald-500'
+                                  }`}
+                                />
+                                {transferInList.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveTransferInRow(idx)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                    title="Remove transfer line"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
@@ -1433,43 +1577,96 @@ function MainLedgerContent() {
                     <div className="space-y-2 pt-2 border-t border-slate-100">
                       <span className="text-[10px] font-black text-rose-700 uppercase tracking-wider block">Cash Paid Out</span>
 
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-200 gap-2">
-                        <span className="text-xs font-bold text-slate-700">Cash Out / Transfer Out</span>
-                        <div className="flex items-center gap-1.5 w-full sm:w-auto">
-                          <div className="flex items-center gap-1">
-                            {['B2B', 'B2O', 'O2B'].map(type => (
-                              <button
-                                key={type}
-                                type="button"
-                                onClick={() => setTransferOutType(transferOutType === type ? '' : type as any)}
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all border ${
-                                  transferOutType === type
-                                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                                    : 'bg-white text-slate-500 border-slate-300 hover:bg-rose-50 hover:text-rose-700'
-                                }`}
-                              >
-                                {type}
-                              </button>
-                            ))}
+                      {/* Cash Out / Transfer Out Section */}
+                      <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">Cash Out / Transfer Out</span>
+                            {transferOutList.length > 1 && (
+                              <span className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded bg-rose-100 text-rose-800">
+                                Total: LKR {totalTransferOut.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
                           </div>
-                          {renderSignButtons(transferOut, setTransferOut, 'rose')}
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0.00"
-                            value={transferOut}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '' || val === '-' || /^-?\d*\.?\d*$/.test(val)) {
-                                setTransferOut(val);
-                              }
-                            }}
-                            className={`w-full sm:w-32 bg-white border rounded-lg px-2.5 py-1 text-right font-mono text-xs font-bold focus:ring-2 focus:outline-none ${
-                              String(transferOut ?? '').trim().startsWith('-') || (Number(transferOut) || 0) < 0
-                                ? 'text-rose-600 border-rose-300 focus:ring-rose-500'
-                                : 'text-slate-900 border-slate-300 focus:ring-rose-500'
-                            }`}
-                          />
+                          <button
+                            type="button"
+                            onClick={handleAddTransferOutRow}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 transition-colors shadow-xs"
+                            title="Add another Cash Out transfer"
+                          >
+                            <Plus className="w-3 h-3 text-rose-600" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {transferOutList.map((item, idx) => (
+                            <div key={item.id || idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 p-1.5 bg-white rounded-lg border border-slate-200">
+                              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                {transferOutList.length > 1 && (
+                                  <span className="text-[10px] font-black text-slate-400 w-4 shrink-0">#{idx + 1}</span>
+                                )}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {(['B2B', 'B2O', 'O2B'] as const).map(type => (
+                                    <button
+                                      key={type}
+                                      type="button"
+                                      onClick={() => handleUpdateTransferOutRow(idx, 'type', item.type === type ? '' : type)}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all border ${
+                                        item.type === type
+                                          ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                          : 'bg-white text-slate-500 border-slate-300 hover:bg-rose-50 hover:text-rose-700'
+                                      }`}
+                                    >
+                                      {type}
+                                    </button>
+                                  ))}
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="Note / Ref (e.g. Sent to HQ)"
+                                  value={item.note || ''}
+                                  onChange={(e) => handleUpdateTransferOutRow(idx, 'note', e.target.value)}
+                                  className="flex-1 min-w-[90px] bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 placeholder-slate-400 focus:bg-white focus:ring-1 focus:ring-rose-500 focus:outline-none"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto w-full sm:w-auto justify-end">
+                                {renderSignButtons(
+                                  item.amount,
+                                  (val) => handleUpdateTransferOutRow(idx, 'amount', val),
+                                  'rose'
+                                )}
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="0.00"
+                                  value={item.amount}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === '' || val === '-' || /^-?\d*\.?\d*$/.test(val)) {
+                                      handleUpdateTransferOutRow(idx, 'amount', val);
+                                    }
+                                  }}
+                                  className={`w-full sm:w-32 bg-white border rounded-lg px-2.5 py-1 text-right font-mono text-xs font-bold focus:ring-2 focus:outline-none ${
+                                    String(item.amount ?? '').trim().startsWith('-') || (Number(item.amount) || 0) < 0
+                                      ? 'text-rose-600 border-rose-300 focus:ring-rose-500'
+                                      : 'text-slate-900 border-slate-300 focus:ring-rose-500'
+                                  }`}
+                                />
+                                {transferOutList.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveTransferOutRow(idx)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                    title="Remove transfer line"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
 

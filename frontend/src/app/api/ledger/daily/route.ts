@@ -228,8 +228,8 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString()
     };
 
-    if (transfer_in_type) ledgerPayload.transfer_in_type = transfer_in_type;
-    if (transfer_out_type) ledgerPayload.transfer_out_type = transfer_out_type;
+    if (transfer_in_type !== undefined) ledgerPayload.transfer_in_type = transfer_in_type || null;
+    if (transfer_out_type !== undefined) ledgerPayload.transfer_out_type = transfer_out_type || null;
 
     let { data: ledger, error: ledgerErr } = await adminSupabase
       .from('daily_ledgers')
