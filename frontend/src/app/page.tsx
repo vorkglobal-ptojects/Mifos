@@ -110,6 +110,10 @@ export default function Home() {
       'manager@gmail.com': 'Manager',
       'admin@gmail.com': 'Admin',
       'admin@rupasinghe.com': 'Admin',
+      'admin_sasindu@gmail.com': 'Sasindu',
+      'admin_nisal@gmail.com': 'Nisal',
+      'admin_dinusha@gmail.com': 'Dinusha',
+      'admin_janani@gmail.com': 'Janani',
       'dilkiisanka3@gmail.com': 'Dilki'
     };
 
