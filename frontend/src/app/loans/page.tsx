@@ -1,8 +1,8 @@
 'use client';
 import { getAuthHeaders } from '@/lib/getAuthHeaders';
-import { getBranchSearchTerms, normalizeBranchId, isNationalId, normalizeNationalId, stripBranchPrefix, extractNumericBillNo, isSameNumericBill } from '@/lib/branch-mapping';
+import { getBranchSearchTerms, normalizeBranchId, isNationalId, normalizeNationalId, stripBranchPrefix, extractNumericBillNo, isSameNumericBill, generateUniqueOrderTag } from '@/lib/branch-mapping';
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { 
   Plus, Search, FileText, Package, TrendingUp, AlertTriangle,
-  Pencil, Trash2, RefreshCcw, Printer, Filter, UserCheck, Calculator, Coins, Scale, Download, Send, Smartphone, Bluetooth, Camera, MapPin, MoreVertical, ShieldCheck, Check, Lock
+  Pencil, Trash2, RefreshCcw, Printer, Filter, UserCheck, Calculator, Coins, Scale, Download, Send, Smartphone, Bluetooth, Camera, MapPin, MoreVertical, ShieldCheck, Check, Lock, Tag, Copy
 } from "lucide-react"
 import { WebBluetoothTransport } from "@/lib/bluetooth/WebBluetoothTransport";
 import { EscPosAdapter } from "@/lib/bluetooth/EscPosAdapter";
@@ -329,6 +329,25 @@ export default function PawnesPage() {
   const [clientsList, setClientsList]   = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(0);
+
+  // Helper to resolve active customer NIC for unique tag generation
+  const activeNic = useMemo(() => {
+    if (!clientId) return '';
+    if (isNationalId(clientId)) return stripBranchPrefix(clientId);
+    const cLower = String(clientId).toLowerCase().trim();
+    if (clientsNicMap[cLower]) return stripBranchPrefix(clientsNicMap[cLower]);
+    const found = clientsList.find(c => String(c.id).toLowerCase() === cLower || String(c.national_id || c.nationalId || '').toLowerCase() === cLower);
+    if (found) return stripBranchPrefix(found.national_id || found.nationalId || found.nic || '');
+    return stripBranchPrefix(clientId);
+  }, [clientId, clientsList, clientsNicMap]);
+
+  // Real-time auto-generated Unique Order Tag (Pattern C: RC-[Branch]-[NIC Part]-[Bill #])
+  const computedUniqueTag = useMemo(() => {
+    const effBranch = editingPawn?.branch_id || branchId || 'HQ';
+    const effBill = billNo ? `${billPrefix ? billPrefix + ' ' : ''}${billNo}` : '';
+    if (editingPawn?.unique_tag && !billNo) return editingPawn.unique_tag;
+    return generateUniqueOrderTag(effBranch, activeNic, effBill, true);
+  }, [editingPawn, branchId, activeNic, billPrefix, billNo]);
 
   const getClientNic = (pawn: any) => {
     if (!pawn) return '—';
@@ -1156,6 +1175,7 @@ export default function PawnesPage() {
           branchId,
           createdByUserId: userId,
           billNo: finalBillNo,
+          unique_tag: generateUniqueOrderTag(branchId, activeNic, finalBillNo),
           weight: goldWeight,
           weightGrams,
           weightMg,
@@ -1556,10 +1576,16 @@ export default function PawnesPage() {
     const id = String(p.id || '').toLowerCase();
     const branch = String(p.branch_id || p.branchId || '').toLowerCase();
     const status = String(p.status || '').toLowerCase();
+    const uniqueTag = String(p.unique_tag || '').toLowerCase();
+    const tagMatches = (
+      uniqueTag.includes(searchLower) ||
+      (searchClean.length > 0 && uniqueTag.replace(/[^a-z0-9]/gi, '').includes(searchClean))
+    );
 
     return (
       billMatches ||
       nicMatches ||
+      tagMatches ||
       clientName.includes(searchLower) ||
       clientPhone.includes(searchLower) ||
       description.includes(searchLower) ||
@@ -2255,6 +2281,45 @@ export default function PawnesPage() {
                       return null;
                     })()}
                   </div>
+
+                  {/* Unique Order Tag (Auto-Generated & Read-Only) */}
+                  <div className="grid gap-1.5 p-3 rounded-2xl bg-amber-50/60 border border-amber-200/80 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <Label className="font-black text-[10px] uppercase tracking-widest text-amber-900 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-amber-600" />
+                        Unique Order Tag (Auto-Generated)
+                      </Label>
+                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-700 bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-300">
+                        Read-Only
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        readOnly
+                        value={computedUniqueTag}
+                        placeholder="RC-HQ-0000-00000"
+                        className="h-10 bg-white border-amber-300 text-amber-950 font-mono font-black text-sm tracking-wide rounded-xl select-all cursor-default pr-10 shadow-inner"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (computedUniqueTag && !computedUniqueTag.includes('.....')) {
+                            navigator.clipboard.writeText(computedUniqueTag);
+                            toast.success(`Unique Order Tag copied: ${computedUniqueTag}`);
+                          } else {
+                            toast.info('Enter a Bill Number to generate complete tag');
+                          }
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-amber-700 hover:text-amber-900 transition-colors rounded-lg hover:bg-amber-100"
+                        title="Copy Unique Tag"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-amber-800/80 font-medium">
+                      Auto-generated from Branch, Customer NIC, and Bill Number.
+                    </p>
+                  </div>
                 </div>
 
               </div>
@@ -2763,8 +2828,24 @@ export default function PawnesPage() {
             ) : (
               filtered.map(pawn => (
                 <TableRow key={pawn.id} className="group hover:bg-amber-50/40 transition-all duration-200">
-                  <TableCell className="px-2.5 py-2 font-black text-slate-900 text-xs tracking-tight whitespace-nowrap">
-                    {getBillNo(pawn)}
+                  <TableCell className="px-2.5 py-2 whitespace-nowrap">
+                    <div className="font-black text-slate-900 text-xs tracking-tight">
+                      {getBillNo(pawn)}
+                    </div>
+                    {(() => {
+                      const tag = pawn.unique_tag || generateUniqueOrderTag(pawn.branch_id, getClientNic(pawn), pawn.bill_no || pawn.description);
+                      return tag ? (
+                        <div className="mt-0.5">
+                          <span 
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50/90 border border-amber-200/90 text-amber-900 font-mono text-[9px] font-black tracking-tight"
+                            title={`Unique Order Tag: ${tag}`}
+                          >
+                            <Tag className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                            {tag}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
                   </TableCell>
                   <TableCell className="px-1.5 py-2 whitespace-nowrap">
                     <Badge className="bg-slate-100 text-slate-700 border-slate-200 font-bold text-[9px] uppercase px-1.5 py-0.5">
@@ -3978,6 +4059,36 @@ function PawnDetailsModal({
               </Button>
             </div>
           </div>
+
+          {/* Unique Order Tag Bar */}
+          {(() => {
+            const tag = pawn.unique_tag || generateUniqueOrderTag(pawn.branch_id, getClientNic(pawn), pawn.bill_no || pawn.description);
+            return tag ? (
+              <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-1.5 mt-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                  Unique Order Tag:
+                </span>
+                <code className="text-xs font-mono font-black text-amber-200 tracking-wider">
+                  {tag}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(tag);
+                    toast.success(`Unique Order Tag copied: ${tag}`);
+                  }}
+                  className="p-1 hover:bg-amber-500/20 rounded text-amber-300 transition-colors ml-1"
+                  title="Copy Unique Order Tag"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[9px] font-bold text-slate-400 ml-auto hidden sm:inline">
+                  (Internal Ref &bull; Not Printed on Bill)
+                </span>
+              </div>
+            ) : null;
+          })()}
         </DialogHeader>
 
 

@@ -50,6 +50,7 @@ ledger/Ledger/
 err.txt
 
 # Scratch Scripts & Local Tools
+scratch/
 check_*.js
 seed_*.js
 update_*.js
