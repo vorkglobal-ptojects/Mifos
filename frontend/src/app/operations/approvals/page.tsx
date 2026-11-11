@@ -499,7 +499,7 @@ export default function ApprovalsPage() {
   const customerAvatar: string | null = cData?.photo_url || customerNicFront || null;
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-24 animate-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8 max-w-[1600px] w-full mx-auto pb-24 animate-in slide-in-from-bottom-4 duration-500">
       
       {/* ── HEADER ── */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center glass p-8 rounded-3xl border-slate-200 shadow-xl gap-6">
@@ -593,14 +593,14 @@ export default function ApprovalsPage() {
       </div>
 
       {/* ── FILTER & SEARCH BAR ── */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-sm space-y-3">
+        <div className="flex flex-col 2xl:flex-row items-stretch 2xl:items-center justify-between gap-3">
           
-          {/* Filter Tabs */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl w-full md:w-auto overflow-x-auto">
+          {/* Filter Tabs — wrapped cleanly so every tab is always visible with zero scrollbar */}
+          <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl w-full 2xl:w-auto">
             <button
               onClick={() => setFilterTab('CHANGE_REQUESTS')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                 filterTab === 'CHANGE_REQUESTS'
                   ? 'bg-purple-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -610,7 +610,7 @@ export default function ApprovalsPage() {
             </button>
             <button
               onClick={() => setFilterTab('AUDITED')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'AUDITED'
                   ? 'bg-amber-500 text-slate-950 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -620,7 +620,7 @@ export default function ApprovalsPage() {
             </button>
             <button
               onClick={() => setFilterTab('RECHECK')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'RECHECK'
                   ? 'bg-rose-500 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -630,7 +630,7 @@ export default function ApprovalsPage() {
             </button>
             <button
               onClick={() => setFilterTab('APPROVED')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'APPROVED'
                   ? 'bg-emerald-600 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -640,7 +640,7 @@ export default function ApprovalsPage() {
             </button>
             <button
               onClick={() => setFilterTab('ALL')}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
                 filterTab === 'ALL'
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -651,14 +651,14 @@ export default function ApprovalsPage() {
           </div>
 
           {/* Branch & Search Group */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-end gap-3 w-full 2xl:w-auto shrink-0">
             {/* Branch Selector Dropdown */}
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2.5 w-full sm:w-auto">
               <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
               <select
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer w-full sm:w-auto"
               >
                 <option value="ALL">All Branches (incl. Head Office)</option>
                 <option value="HQ">HQ - Head Office</option>
@@ -860,16 +860,16 @@ export default function ApprovalsPage() {
         </Card>
       ) : (
         <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
-          <Table>
+          <Table className="w-full table-auto">
             <TableHeader className="bg-slate-900 text-white">
               <TableRow className="border-b border-slate-800 hover:bg-transparent">
-                <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-amber-400">Bill No</TableHead>
-                <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Customer Details</TableHead>
-                <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Item & Weight</TableHead>
-                <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300 text-right">Disbursed Loan</TableHead>
-                <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Auditor Status</TableHead>
-                <TableHead className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-slate-300">Status</TableHead>
-                <TableHead className="px-6 py-4 text-right font-black text-[10px] uppercase tracking-widest text-slate-300">Actions</TableHead>
+                <TableHead className="px-3 py-3.5 font-black text-[10px] uppercase tracking-widest text-amber-400">Bill No</TableHead>
+                <TableHead className="px-3 py-3.5 font-black text-[10px] uppercase tracking-widest text-slate-300">Customer Details</TableHead>
+                <TableHead className="px-3 py-3.5 font-black text-[10px] uppercase tracking-widest text-slate-300">Item & Weight</TableHead>
+                <TableHead className="px-3 py-3.5 font-black text-[10px] uppercase tracking-widest text-slate-300 text-right">Disbursed Loan</TableHead>
+                <TableHead className="px-3 py-3.5 font-black text-[10px] uppercase tracking-widest text-slate-300">Auditor Status</TableHead>
+                <TableHead className="px-3 py-3.5 font-black text-[10px] uppercase tracking-widest text-slate-300">Status</TableHead>
+                <TableHead className="px-3 py-3.5 text-right font-black text-[10px] uppercase tracking-widest text-slate-300">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-slate-100">
@@ -879,14 +879,19 @@ export default function ApprovalsPage() {
                 const custName = pawn.clients?.first_name 
                   ? `${pawn.clients.first_name} ${pawn.clients.last_name || ''}`.trim()
                   : pawn.customer_name || 'Customer';
+                const isAwaitingManager = pawn.status === 'AUDITED_PENDING_APPROVAL' || pawn.status === 'PENDING_APPROVAL';
 
                 return (
-                  <TableRow key={pawn.id} className="hover:bg-amber-50/20 transition-all duration-200">
+                  <TableRow
+                    key={pawn.id}
+                    onClick={() => handleOpenReview(pawn.id)}
+                    className="hover:bg-amber-50/30 transition-all duration-200 cursor-pointer"
+                  >
                     
                     {/* Bill No */}
-                    <TableCell className="px-6 py-4">
+                    <TableCell className="px-3 py-3.5 align-middle whitespace-nowrap">
                       <div className="flex flex-col">
-                        <span className="font-mono font-black text-slate-950 text-sm">{cleanBill}</span>
+                        <span className="font-mono font-black text-slate-950 text-xs sm:text-sm">{cleanBill}</span>
                         <span className="text-[10px] font-bold text-slate-400 mt-0.5">
                           {new Date(pawn.created_at).toLocaleDateString('en-GB')}
                         </span>
@@ -894,31 +899,31 @@ export default function ApprovalsPage() {
                     </TableCell>
 
                     {/* Customer */}
-                    <TableCell className="px-6 py-4">
+                    <TableCell className="px-3 py-3.5 align-middle whitespace-normal min-w-[130px] max-w-[190px]">
                       <div className="flex flex-col">
-                        <span className="font-black text-slate-900 text-xs">{custName}</span>
-                        <span className="text-[10px] font-mono text-slate-500">
+                        <span className="font-black text-slate-900 text-xs break-words">{custName}</span>
+                        <span className="text-[10px] font-mono text-slate-500 break-words">
                           NIC: {pawn.clients?.national_id || 'N/A'}
                         </span>
                       </div>
                     </TableCell>
 
                     {/* Collateral & Weight */}
-                    <TableCell className="px-6 py-4">
-                      <div className="flex flex-col max-w-xs">
-                        <span className="font-bold text-slate-800 text-xs truncate">
+                    <TableCell className="px-3 py-3.5 align-middle whitespace-normal min-w-[170px] max-w-[260px]">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-800 text-xs break-words line-clamp-2 leading-snug">
                           {pawn.description || 'Gold Jewelry'}
                         </span>
-                        <span className="text-[10px] font-semibold text-slate-500">
+                        <span className="text-[10px] font-semibold text-slate-500 mt-0.5">
                           Weight: {pawn.weight_mg ? `${pawn.weight_mg.toLocaleString()} mg` : (pawn.weight_grams ? `${Math.round(pawn.weight_grams * 1000).toLocaleString()} mg` : (pawn.weight ? `${Math.round(Number(pawn.weight) * 1000).toLocaleString()} mg` : '—'))}
                         </span>
                       </div>
                     </TableCell>
 
                     {/* Disbursed Loan */}
-                    <TableCell className="px-6 py-4 text-right">
+                    <TableCell className="px-3 py-3.5 align-middle text-right whitespace-nowrap">
                       <div className="flex flex-col items-end">
-                        <span className="font-mono font-black text-slate-950 text-sm">
+                        <span className="font-mono font-black text-slate-950 text-xs sm:text-sm">
                           Rs. {(pawn.disbursed_amount || 0).toLocaleString()}
                         </span>
                         <span className="text-[10px] font-bold text-slate-400">
@@ -928,13 +933,13 @@ export default function ApprovalsPage() {
                     </TableCell>
 
                     {/* Auditor Status */}
-                    <TableCell className="px-6 py-4">
+                    <TableCell className="px-3 py-3.5 align-middle whitespace-nowrap">
                       {auditRecord?.action === 'AUDITOR_APPROVED' || pawn.status === 'AUDITED_PENDING_APPROVAL' ? (
                         <div className="flex flex-col items-start gap-1">
                           <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-black text-[9px] uppercase tracking-wider flex items-center gap-1">
                             <Check className="w-3 h-3 text-emerald-600" /> AUDITOR VERIFIED
                           </Badge>
-                          <span className="text-[10px] font-semibold text-slate-500 truncate max-w-[140px]">
+                          <span className="text-[10px] font-semibold text-slate-500 truncate max-w-[130px]">
                             {auditRecord?.auditor_email || 'Auditor'}
                           </span>
                         </div>
@@ -950,8 +955,8 @@ export default function ApprovalsPage() {
                     </TableCell>
 
                     {/* Status Badge */}
-                    <TableCell className="px-6 py-4">
-                      <Badge className={`font-black text-[9px] uppercase tracking-wider px-2.5 py-0.5 border ${
+                    <TableCell className="px-3 py-3.5 align-middle whitespace-nowrap">
+                      <Badge className={`font-black text-[9px] uppercase tracking-wider px-2 py-0.5 border ${
                         pawn.status === 'AUDITED_PENDING_APPROVAL'
                           ? 'bg-amber-100 text-amber-900 border-amber-300'
                           : pawn.status === 'ACTIVE'
@@ -965,13 +970,25 @@ export default function ApprovalsPage() {
                     </TableCell>
 
                     {/* Action Button */}
-                    <TableCell className="px-6 py-4 text-right">
+                    <TableCell className="px-3 py-3.5 align-middle text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         onClick={() => handleOpenReview(pawn.id)}
-                        className="bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white font-black text-[11px] uppercase tracking-wider h-9 px-4 rounded-xl gap-1.5 transition-all shadow-xs cursor-pointer"
+                        className={`font-black text-[11px] uppercase tracking-wider h-9 px-3 rounded-xl gap-1.5 transition-all shadow-xs cursor-pointer ${
+                          isAwaitingManager
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                            : 'bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white'
+                        }`}
                       >
-                        <Eye className="w-3.5 h-3.5" /> Review & Decide
+                        {isAwaitingManager ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Review & Approve
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3.5 h-3.5" /> Review & Decide
+                          </>
+                        )}
                       </Button>
                     </TableCell>
 
