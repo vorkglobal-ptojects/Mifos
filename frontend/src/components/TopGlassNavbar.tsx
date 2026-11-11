@@ -385,11 +385,15 @@ export default function TopGlassNavbar() {
                   const isOpen = activeDropdown === group.label;
 
                   return (
-                    <div key={group.label} className="relative">
+                    <div
+                      key={group.label}
+                      className="relative"
+                      onMouseEnter={() => setActiveDropdown(group.label)}
+                      onMouseLeave={() => setActiveDropdown(null)}
+                    >
                       <button
                         type="button"
                         onClick={() => setActiveDropdown(isOpen ? null : group.label)}
-                        onMouseEnter={() => setActiveDropdown(group.label)}
                         className={cn(
                           "flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold transition-all duration-200 cursor-pointer outline-none select-none",
                           groupActive || isOpen
@@ -402,31 +406,30 @@ export default function TopGlassNavbar() {
                       </button>
 
                       {isOpen && (
-                        <div
-                          onMouseLeave={() => setActiveDropdown(null)}
-                          className="absolute top-full left-0 mt-2 w-60 bg-slate-950/98 backdrop-blur-2xl border border-amber-500/25 rounded-2xl p-2 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150"
-                        >
-                          <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-amber-500/60 border-b border-white/5 mb-1">
-                            {group.label}
+                        <div className="absolute top-full left-0 pt-2 z-50">
+                          <div className="w-60 bg-slate-950/98 backdrop-blur-2xl border border-amber-500/25 rounded-2xl p-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+                            <div className="px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-amber-500/60 border-b border-white/5 mb-1">
+                              {group.label}
+                            </div>
+                            {group.items.map((item) => {
+                              if (item.adminOnly && effectiveRole !== 'ADMIN') return null;
+                              const active = isActive(item.href);
+                              const ItemIcon = item.icon;
+                              return (
+                                <Link key={item.name} href={item.href}
+                                  onClick={() => setActiveDropdown(null)}
+                                  className={cn(
+                                    "flex items-center gap-3 px-3 py-2 rounded-xl text-[11px] font-bold transition-all duration-150 mb-0.5",
+                                    active
+                                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                      : "text-slate-300 hover:bg-white/8 hover:text-white"
+                                  )}>
+                                  <ItemIcon className={cn("w-4 h-4 shrink-0", active ? "text-amber-400" : "text-slate-400")} />
+                                  <span className="truncate">{item.name}</span>
+                                </Link>
+                              );
+                            })}
                           </div>
-                          {group.items.map((item) => {
-                            if (item.adminOnly && effectiveRole !== 'ADMIN') return null;
-                            const active = isActive(item.href);
-                            const ItemIcon = item.icon;
-                            return (
-                              <Link key={item.name} href={item.href}
-                                onClick={() => setActiveDropdown(null)}
-                                className={cn(
-                                  "flex items-center gap-3 px-3 py-2 rounded-xl text-[11px] font-bold transition-all duration-150 mb-0.5",
-                                  active
-                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                                    : "text-slate-300 hover:bg-white/8 hover:text-white"
-                                )}>
-                                <ItemIcon className={cn("w-4 h-4 shrink-0", active ? "text-amber-400" : "text-slate-400")} />
-                                <span className="truncate">{item.name}</span>
-                              </Link>
-                            );
-                          })}
                         </div>
                       )}
                     </div>

@@ -401,8 +401,7 @@ export default function AuditLogsPage() {
       {/* Main Audit Trail Data Table */}
       <Card className="glass border-white/40 shadow-2xl rounded-3xl overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
+          <Table>
               <TableHeader className="bg-slate-950 text-white">
                 <TableRow className="hover:bg-slate-900 border-slate-800">
                   <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-300 py-4 pl-6">Timestamp</TableHead>
@@ -529,7 +528,6 @@ export default function AuditLogsPage() {
                 )}
               </TableBody>
             </Table>
-          </div>
         </CardContent>
       </Card>
 

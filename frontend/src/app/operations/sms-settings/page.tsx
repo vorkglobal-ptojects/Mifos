@@ -240,12 +240,12 @@ export default function SmsSettingsPage() {
       )}
 
       {/* Branch Selector Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+      <div className="flex flex-wrap items-center gap-2 pb-1">
         <button
           onClick={() => handleBranchChange('GLOBAL')}
-          className={`px-5 py-3 rounded-2xl text-xs font-black transition-all duration-200 flex items-center gap-2 whitespace-nowrap shadow-sm border ${
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all duration-200 flex items-center gap-2 whitespace-nowrap shadow-sm border cursor-pointer ${
             selectedBranchId === 'GLOBAL'
-              ? 'bg-slate-950 text-amber-400 border-slate-900 shadow-md scale-105'
+              ? 'bg-slate-950 text-[#ffd100] border-slate-900 shadow-md'
               : 'bg-white/80 text-slate-600 border-slate-200 hover:bg-slate-100'
           }`}
         >
@@ -258,9 +258,9 @@ export default function SmsSettingsPage() {
             <button
               key={b.id}
               onClick={() => handleBranchChange(b.id)}
-              className={`px-5 py-3 rounded-2xl text-xs font-black transition-all duration-200 flex items-center gap-2 whitespace-nowrap shadow-sm border ${
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all duration-200 flex items-center gap-2 whitespace-nowrap shadow-sm border cursor-pointer ${
                 selectedBranchId === b.id
-                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md scale-105'
+                  ? 'bg-[#ffd100] text-[#202020] border-amber-400 shadow-md'
                   : 'bg-white/80 text-slate-600 border-slate-200 hover:bg-slate-100'
               }`}
             >

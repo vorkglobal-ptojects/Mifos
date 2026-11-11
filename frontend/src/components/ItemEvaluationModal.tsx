@@ -239,12 +239,12 @@ export function ItemEvaluationModal({ isOpen, onOpenChange, onAccept }: ItemEval
 
   return (
     <Dialog open={isOpen} onOpenChange={(v) => { onOpenChange(v); if(!v) resetForm(); }}>
-      <DialogContent className="sm:max-w-xl bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-xl bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] max-h-[90dvh] flex flex-col gap-0 overflow-hidden">
         <div className="h-2.5 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 shrink-0" />
         
         {showWebcam && captureTarget ? (
-          <div className="p-6">
-            <h3 className="text-lg font-bold mb-4 text-center">Capture {captureTarget === 'AIR' ? 'Air' : 'Water'} Weight</h3>
+          <div className="flex-1 min-h-0 overflow-y-auto p-6">
+            <h3 className="text-lg font-bold mb-4 text-center pr-8">Capture {captureTarget === 'AIR' ? 'Air' : 'Water'} Weight</h3>
             <WebcamCapture 
               onCapture={handleCapture} 
               onClose={() => setShowWebcam(false)} 
@@ -253,7 +253,7 @@ export function ItemEvaluationModal({ isOpen, onOpenChange, onAccept }: ItemEval
           </div>
         ) : (
           <>
-            <div className="p-6 pb-2 border-b border-slate-100">
+            <div className="p-6 pb-3 border-b border-slate-100 shrink-0 pr-12">
               <DialogHeader>
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-amber-500/10 rounded-2xl text-amber-600">
@@ -269,17 +269,19 @@ export function ItemEvaluationModal({ isOpen, onOpenChange, onAccept }: ItemEval
               </DialogHeader>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 overscroll-contain">
               {/* Mode Toggle */}
               <div className="flex bg-slate-100 p-1 rounded-xl">
                 <button
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${mode === 'MANUAL' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                  type="button"
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors cursor-pointer ${mode === 'MANUAL' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                   onClick={() => setMode('MANUAL')}
                 >
                   Manual Mode
                 </button>
                 <button
-                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2 ${mode === 'AUTO' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                  type="button"
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 ${mode === 'AUTO' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                   onClick={() => setMode('AUTO')}
                 >
                   <Camera className="w-4 h-4" /> Auto (OCR) Mode
@@ -462,7 +464,7 @@ export function ItemEvaluationModal({ isOpen, onOpenChange, onAccept }: ItemEval
             </div>
 
             {/* Actions */}
-            <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
+            <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-100 flex gap-3 shrink-0">
               <Button 
                 variant="outline" 
                 onClick={handleReject} 
@@ -475,7 +477,7 @@ export function ItemEvaluationModal({ isOpen, onOpenChange, onAccept }: ItemEval
               <Button 
                 onClick={handleAccept} 
                 disabled={isRejecting || isAccepting || isProcessingOcr || !airWeight || !waterWeight || !trueValue}
-                className="flex-[2] bg-amber-500 hover:bg-amber-600 text-white font-black h-12 text-lg shadow-lg shadow-amber-500/20"
+                className="flex-[2] bg-[#ffd100] hover:bg-[#ffee32] text-[#202020] font-black h-12 text-base sm:text-lg shadow-lg shadow-amber-500/20"
               >
                 {isAccepting ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
                 Accept & Continue

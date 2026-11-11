@@ -175,9 +175,9 @@ export default function CashTransfersTrackerPage() {
       </div>
 
       {/* Transfers Table */}
-      <Card className="rounded-2xl border-slate-200/80 dark:border-slate-800 shadow-xs">
+      <Card className="rounded-2xl border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div className="w-full">
             <Table>
               <TableHeader>
                 <TableRow>

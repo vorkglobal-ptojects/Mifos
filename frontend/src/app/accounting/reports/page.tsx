@@ -84,10 +84,10 @@ export default function FinancialReportsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {(userRole === 'ADMIN' || userRole === 'AUDITOR') && (
             <Select value={filterBranch} onValueChange={(v) => v && setFilterBranch(v)}>
-              <SelectTrigger className="h-12 w-44 bg-white/70 border-white/40 font-black text-[11px] uppercase tracking-widest rounded-2xl shadow-lg">
+              <SelectTrigger className="h-12 w-full sm:w-44 bg-white/70 border-white/40 font-black text-[11px] uppercase tracking-widest rounded-2xl shadow-lg">
                 <Filter className="w-3.5 h-3.5 mr-2 text-slate-400" />
                 <SelectValue />
               </SelectTrigger>
@@ -103,6 +103,7 @@ export default function FinancialReportsPage() {
 
           <Button
             onClick={loadFinancials}
+            disabled={loading}
             variant="outline"
             className="h-12 px-5 bg-white border-[#d6d6d6] text-[#202020] hover:bg-slate-100 font-bold rounded-2xl shadow-xs"
           >

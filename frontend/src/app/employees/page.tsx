@@ -383,7 +383,7 @@ export default function StaffPage() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
         <button
           onClick={() => setActiveTab('staff')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
@@ -414,12 +414,12 @@ export default function StaffPage() {
 
       {/* Dialog */}
       <Dialog open={isOpen} onOpenChange={(v) => { setIsOpen(v); if (!v) resetForm(); }}>
-        <DialogContent className="sm:max-w-[480px] glass border-white/40 p-0 overflow-hidden rounded-[2rem]">
-          <div className="h-2 bg-primary" />
-          <div className="p-8 space-y-6">
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[480px] glass border-white/40 p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-[#ffd100] shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 space-y-6 overscroll-contain">
+            <DialogHeader className="pr-8">
               <DialogTitle className="text-2xl font-black tracking-tighter flex items-center gap-3">
-                <UserPlus className="w-6 h-6 text-primary" />
+                <UserPlus className="w-6 h-6 text-amber-600" />
                 {editingUser ? 'Edit User Account' : 'Create New User'}
               </DialogTitle>
               <DialogDescription className="font-medium text-slate-500">
@@ -551,11 +551,11 @@ export default function StaffPage() {
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-              <Button variant="ghost" className="font-bold text-slate-500 h-12 rounded-xl" onClick={() => setIsOpen(false)}>Cancel</Button>
+              <Button variant="ghost" className="font-bold text-slate-500 h-11 rounded-xl" onClick={() => setIsOpen(false)}>Cancel</Button>
               <Button
                 disabled={isSaving}
                 onClick={handleSave}
-                className="bg-primary hover:bg-primary/90 text-white font-black px-8 h-12 rounded-xl shadow-lg shadow-primary/20 gap-2"
+                className="bg-[#ffd100] hover:bg-[#ffee32] text-[#202020] font-black px-8 h-11 rounded-xl shadow-lg shadow-black/10 gap-2"
               >
                 {isSaving ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
                 {isSaving ? 'Saving...' : (editingUser ? 'Update Account' : 'Create Account')}
@@ -568,22 +568,22 @@ export default function StaffPage() {
       {/* Content depending on Active Tab */}
       {activeTab === 'staff' ? (
         <div className="glass border-white/40 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white/40">
-          <div className="px-8 py-6 border-b border-slate-100 flex items-center gap-3">
-            <Users className="w-5 h-5 text-primary" />
+          <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+            <Users className="w-5 h-5 text-amber-600" />
             <h2 className="font-black text-slate-800 tracking-tighter text-lg">All User Accounts</h2>
-            <Badge className="ml-auto bg-primary/10 text-primary border-primary/20 font-black text-[10px] uppercase tracking-widest">
+            <Badge className="ml-auto bg-amber-100 text-amber-900 border-amber-200 font-black text-[10px] uppercase tracking-widest">
               {staff.length} total
             </Badge>
           </div>
           <Table>
             <TableHeader className="bg-slate-50/50">
               <TableRow>
-                <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Email</TableHead>
-                <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Branch</TableHead>
-                <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Branch ID</TableHead>
-                <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Role</TableHead>
-                <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Last Login</TableHead>
-                <TableHead className="px-8 py-5" />
+                <TableHead className="px-5 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Email</TableHead>
+                <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Branch</TableHead>
+                <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Branch ID</TableHead>
+                <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Role</TableHead>
+                <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Last Login</TableHead>
+                <TableHead className="px-4 py-4" />
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-slate-50">
@@ -655,7 +655,7 @@ export default function StaffPage() {
                         : 'Never'}
                     </TableCell>
                     <TableCell className="px-8 py-5">
-                      <div className="flex items-center gap-2 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-2 justify-end">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -794,10 +794,10 @@ export default function StaffPage() {
 
       {/* Password Reset Resolution Modal */}
       <Dialog open={!!resolvingReq} onOpenChange={(v) => { if (!v) { setResolvingReq(null); setNewStaffPassword(''); } }}>
-        <DialogContent className="sm:max-w-[450px] glass border-white/40 p-0 overflow-hidden rounded-[2rem]">
-          <div className="h-2 bg-[#ffd100]" />
-          <div className="p-8 space-y-6">
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[450px] glass border-white/40 p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-[#ffd100] shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 space-y-6 overscroll-contain">
+            <DialogHeader className="pr-8">
               <DialogTitle className="text-xl font-black tracking-tighter flex items-center gap-2.5">
                 <KeyRound className="w-5 h-5 text-[#ffd100]" />
                 Reset Password for Staff

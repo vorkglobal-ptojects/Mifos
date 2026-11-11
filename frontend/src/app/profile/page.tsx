@@ -20,7 +20,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export default function ProfilePage() {
@@ -279,9 +279,7 @@ export default function ProfilePage() {
   const initials = `${(user?.first_name || 'U')[0]}${(user?.last_name || '?')[0]}`.toUpperCase();
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-      <Toaster position="top-right" richColors />
-      
+    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12">
       {/* Header with Glassmorphism */}
       <div className="relative overflow-hidden rounded-[2.5rem] p-8 border border-[#d6d6d6] bg-white shadow-xl group">
         <div className="absolute top-0 right-0 -mt-20 -mr-20 w-64 h-64 bg-[#ffd100]/10 rounded-full blur-3xl group-hover:bg-[#ffd100]/20 transition-all duration-1000" />
@@ -315,12 +313,12 @@ export default function ProfilePage() {
               
               <div className="flex flex-col gap-2 text-slate-600 font-bold text-sm">
                 <p className="flex items-center gap-2 justify-center md:justify-start">
-                  <Mail className="h-4 w-4 text-[#ffd100]" />
+                  <Mail className="h-4 w-4 text-amber-600" />
                   {user?.email}
                 </p>
                 <div className="flex items-center gap-4 justify-center md:justify-start">
                   <p className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-[#ffd100]" />
+                    <Building2 className="h-4 w-4 text-amber-600" />
                     {user?.branch_name || 'Main Branch'}
                   </p>
                   <p className="px-2 py-0.5 bg-slate-100 rounded text-[10px] text-slate-500">ID: {user?.id?.slice(0, 8)}...</p>
@@ -343,31 +341,31 @@ export default function ProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <Card className="rounded-[2rem] border-slate-100 shadow-xl shadow-slate-200/40 overflow-hidden bg-white">
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-10">
+            <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-6 sm:p-8">
               <CardTitle className="flex items-center gap-3 text-xl font-black tracking-tight uppercase text-slate-900">
-                <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <User className="h-5 w-5 text-primary" />
+                <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                  <User className="h-5 w-5 text-amber-700" />
                 </div>
                 Personal Profile
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-10">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <CardContent className="p-6 sm:p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-1.5 group">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-primary transition-colors">First Name</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-amber-700 transition-colors">First Name</p>
                   <p className="text-xl font-extrabold text-slate-700">{user?.first_name || 'Not Set'}</p>
                 </div>
                 <div className="space-y-1.5 group">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-primary transition-colors">Last Name</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-amber-700 transition-colors">Last Name</p>
                   <p className="text-xl font-extrabold text-slate-700">{user?.last_name || 'Not Set'}</p>
                 </div>
                 <div className="space-y-1.5 group">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-primary transition-colors">Phone Number</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-amber-700 transition-colors">Phone Number</p>
                   <p className="text-xl font-extrabold text-slate-700">{user?.phone || 'Not Set'}</p>
                 </div>
-                <div className="space-y-1.5 opacity-50">
+                <div className="space-y-1.5 opacity-70">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Account Email</p>
-                  <p className="text-xl font-extrabold text-slate-700">{user?.email}</p>
+                  <p className="text-xl font-extrabold text-slate-700 break-all">{user?.email}</p>
                 </div>
               </div>
             </CardContent>
@@ -376,25 +374,25 @@ export default function ProfilePage() {
 
         <div className="space-y-8">
           <Card className="rounded-[2rem] border-slate-100 shadow-xl shadow-slate-200/40 overflow-hidden bg-white group cursor-pointer" onClick={() => setIsSupportOpen(true)}>
-            <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-8">
+            <CardContent className="p-8 flex flex-col items-center justify-center text-center gap-6">
               <div className="relative">
-                <div className="h-24 w-24 rounded-[2rem] bg-primary/10 flex items-center justify-center animate-bounce duration-[4000ms]">
-                  <AlertCircle className="h-12 w-12 text-primary" />
+                <div className="h-20 w-20 rounded-[1.75rem] bg-amber-100 flex items-center justify-center">
+                  <AlertCircle className="h-10 w-10 text-amber-700" />
                 </div>
-                <div className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 rounded-full border-4 border-white animate-pulse" />
+                <div className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-red-500 rounded-full border-4 border-white" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-3xl font-black tracking-tighter text-slate-900 uppercase">Need Help?</h3>
-                <p className="text-slate-400 font-bold text-sm px-4 leading-relaxed">
+                <h3 className="text-2xl font-black tracking-tighter text-slate-900 uppercase">Need Help?</h3>
+                <p className="text-slate-500 font-bold text-sm px-2 leading-relaxed">
                   Branch issues or technical trouble? Our IT team is ready to help you.
                 </p>
               </div>
               <Button 
                 variant="outline" 
-                className="w-full rounded-[1.25rem] h-16 font-black border-2 border-primary/20 text-primary hover:bg-primary hover:text-white transition-all active:scale-95 group shadow-lg shadow-primary/5 text-lg"
+                className="w-full rounded-2xl h-12 font-black border-2 border-amber-300 text-slate-900 hover:bg-[#ffd100] hover:text-[#202020] hover:border-[#ffd100] transition-all active:scale-95 group shadow-md text-base"
               >
                 Contact Support
-                <Phone className="ml-3 h-5 w-5 group-hover:rotate-12 transition-transform" />
+                <Phone className="ml-2.5 h-4 w-4 group-hover:rotate-12 transition-transform" />
               </Button>
             </CardContent>
           </Card>
@@ -403,35 +401,35 @@ export default function ProfilePage() {
 
       {/* ── EDIT PROFILE MODAL ── */}
       <Dialog open={isEditMode} onOpenChange={setIsEditMode}>
-        <DialogContent className="sm:max-w-lg rounded-[3rem] p-0 overflow-hidden border-0 shadow-2xl bg-white/95 backdrop-blur-3xl animate-in zoom-in-95 duration-300">
-          <div className="bg-primary h-2 w-full" />
+        <DialogContent className="sm:max-w-lg rounded-[2rem] p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden border border-slate-200 shadow-2xl bg-white/95 backdrop-blur-3xl animate-in zoom-in-95 duration-300">
+          <div className="bg-[#ffd100] h-2 w-full shrink-0" />
           
-          <div className="p-10 space-y-10">
-            <div className="flex justify-between items-start">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 space-y-6 overscroll-contain">
+            <div className="flex justify-between items-start pr-8">
               <div className="space-y-1">
-                <h1 className="text-3xl font-black text-slate-900 tracking-tighter">Edit Profile</h1>
-                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Personal Identification</p>
+                <h1 className="text-2xl font-black text-slate-900 tracking-tighter">Edit Profile</h1>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Personal Identification</p>
               </div>
-              <div className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center shadow-sm">
-                <Pencil className="h-6 w-6 text-primary" />
+              <div className="h-11 w-11 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center shadow-sm">
+                <Pencil className="h-5 w-5 text-amber-700" />
               </div>
             </div>
 
             {/* Avatar centered in modal */}
-            <div className="flex flex-col items-center gap-4 py-2">
+            <div className="flex flex-col items-center gap-3 py-1">
               <div className="relative group cursor-pointer" onClick={() => fileRef.current?.click()}>
-                <div className="h-32 w-32 rounded-[2.5rem] bg-slate-900 border-4 border-white shadow-2xl overflow-hidden flex items-center justify-center group-hover:scale-105 transition-all duration-500">
+                <div className="h-28 w-28 rounded-[2rem] bg-slate-900 border-4 border-white shadow-xl overflow-hidden flex items-center justify-center group-hover:scale-105 transition-all duration-500">
                   {user?.avatar_url ? (
                     <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-5xl font-black text-white">{initials}</span>
+                    <span className="text-4xl font-black text-[#ffd100]">{initials}</span>
                   )}
                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300">
-                    <Camera className="h-10 w-10 text-white scale-90 group-hover:scale-100 transition-transform" />
+                    <Camera className="h-8 w-8 text-white scale-90 group-hover:scale-100 transition-transform" />
                   </div>
                 </div>
-                <div className="absolute -bottom-2 -right-2 bg-primary text-white rounded-2xl p-3 shadow-xl group-hover:scale-110 transition-all">
-                  <Camera className="h-5 w-5" />
+                <div className="absolute -bottom-2 -right-2 bg-[#ffd100] text-[#202020] rounded-xl p-2.5 shadow-lg group-hover:scale-110 transition-all border border-white">
+                  <Camera className="h-4 w-4" />
                 </div>
               </div>
               <div className="text-center">
@@ -477,16 +475,16 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="pt-6 flex gap-4">
-              <DialogClose render={<Button variant="ghost" className="flex-1 h-16 rounded-[1.25rem] font-black text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all" />}>
+            <div className="pt-4 flex gap-3 border-t border-slate-100">
+              <DialogClose render={<Button variant="outline" className="flex-1 h-12 rounded-xl font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-all" />}>
                 Cancel
               </DialogClose>
               <Button 
                 onClick={handleSaveProfile}
                 disabled={updating}
-                className="flex-[2] h-16 rounded-[1.25rem] bg-primary hover:bg-primary/90 text-white font-black shadow-2xl shadow-primary/20 transition-all active:scale-95 text-lg"
+                className="flex-[2] h-12 rounded-xl bg-[#ffd100] hover:bg-[#ffee32] text-[#202020] font-black shadow-lg transition-all active:scale-95 text-sm"
               >
-                {updating ? <Loader2 className="h-6 w-6 animate-spin mr-3" /> : <CheckCircle2 className="h-6 w-6 mr-3 border-2 border-white/20 rounded-full" />}
+                {updating ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <CheckCircle2 className="h-5 w-5 mr-2" />}
                 Save Changes
               </Button>
             </div>
@@ -496,32 +494,32 @@ export default function ProfilePage() {
 
       {/* ── SUPPORT MODAL ── */}
       <Dialog open={isSupportOpen} onOpenChange={setIsSupportOpen}>
-        <DialogContent className="sm:max-w-md rounded-[3rem] border-0 bg-white/90 backdrop-blur-3xl shadow-2xl p-0 overflow-hidden">
-          <div className="bg-primary h-2" />
-          <div className="p-12 text-center space-y-10">
+        <DialogContent className="sm:max-w-md rounded-[2rem] border border-slate-200 bg-white/95 backdrop-blur-3xl shadow-2xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden">
+          <div className="bg-[#ffd100] h-2 shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 text-center space-y-6 overscroll-contain">
             <div className="flex justify-center">
-              <div className="h-28 w-28 rounded-[2.5rem] bg-primary/10 flex items-center justify-center animate-pulse">
-                <Phone className="h-12 w-12 text-primary" />
+              <div className="h-20 w-20 rounded-[1.75rem] bg-amber-100 flex items-center justify-center">
+                <Phone className="h-9 w-9 text-amber-700" />
               </div>
             </div>
             
-            <div className="space-y-2">
-              <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.4em]">Official Support</h2>
-              <h1 className="text-5xl font-black text-slate-900 tracking-tighter leading-none">Vork.Global</h1>
+            <div className="space-y-1">
+              <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Official Support</h2>
+              <h1 className="text-3xl font-black text-slate-900 tracking-tighter leading-none">Vork.Global</h1>
             </div>
 
-            <div className="p-10 rounded-[2rem] bg-slate-900 border border-slate-800 flex flex-col items-center gap-3 group transition-all hover:scale-105 duration-500 shadow-2xl">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Contact Hotline</p>
-              <p className="text-5xl font-black text-white tracking-tighter group-hover:text-primary transition-colors">0775088850</p>
+            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center gap-2 group transition-all duration-500 shadow-xl">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Contact Hotline</p>
+              <p className="text-3xl sm:text-4xl font-black text-white tracking-tighter group-hover:text-[#ffd100] transition-colors">0775088850</p>
             </div>
 
-            <p className="text-base font-bold text-slate-400 px-6 leading-relaxed">
+            <p className="text-sm font-semibold text-slate-500 px-2 leading-relaxed">
               Our technical engineering team is available 24/7 to ensure seamless branch operations.
             </p>
 
             <Button 
               onClick={() => setIsSupportOpen(false)}
-              className="w-full h-16 rounded-[1.5rem] bg-slate-100 hover:bg-slate-200 text-slate-900 font-black text-sm uppercase tracking-widest transition-all active:scale-95"
+              className="w-full h-12 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-black text-xs uppercase tracking-widest transition-all active:scale-95"
             >
               Close Hub
             </Button>

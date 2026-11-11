@@ -189,7 +189,7 @@ export default function CctvSettingsPage() {
             <p className="text-sm font-semibold text-slate-500">Configure branch camera IPs, RTSP credentials, 20s clip timing, and retention policies</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Button onClick={handleSaveSettings} disabled={saving} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold">
             <Save className="w-4 h-4 mr-2" /> {saving ? 'Saving...' : 'Save Settings'}
           </Button>
@@ -197,7 +197,7 @@ export default function CctvSettingsPage() {
       </div>
 
       {/* Settings Navigation Tabs */}
-      <div className="flex gap-2 border-b border-slate-200 pb-2">
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('cameras')}
           className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
@@ -429,14 +429,14 @@ export default function CctvSettingsPage() {
       {/* Modal: Add/Edit Camera IP & Credentials */}
       {showCamModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+          <div className="bg-white w-full max-w-lg max-h-[90dvh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center shrink-0">
               <h3 className="text-base font-black text-slate-900">
                 {editingCam ? `Edit Camera IP: ${editingCam.camera_name}` : 'Add New Branch Camera'}
               </h3>
-              <button onClick={() => setShowCamModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button type="button" onClick={() => setShowCamModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
             </div>
-            <form onSubmit={handleSaveCamForm} className="p-6 space-y-4">
+            <form onSubmit={handleSaveCamForm} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
               <div>
                 <Label className="font-bold text-slate-700 text-xs">Branch</Label>
                 <select

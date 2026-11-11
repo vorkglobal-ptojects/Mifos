@@ -149,7 +149,7 @@ export default function BankAccountsPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button variant="outline" size="sm" onClick={loadBanks} disabled={loading} className="rounded-xl h-10 font-bold">
             <RefreshCcw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
@@ -162,10 +162,9 @@ export default function BankAccountsPage() {
       </div>
 
       {/* Banks Table */}
-      <Card className="rounded-2xl border-slate-200/80 dark:border-slate-800 shadow-xs">
+      <Card className="rounded-2xl border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
+          <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="font-bold text-[11px] uppercase tracking-wider">Bank Name</TableHead>
@@ -228,7 +227,6 @@ export default function BankAccountsPage() {
                 )}
               </TableBody>
             </Table>
-          </div>
         </CardContent>
       </Card>
 

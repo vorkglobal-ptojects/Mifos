@@ -927,8 +927,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
         {/* Spacious, Full-Width Main FS Data Table */}
         <Card className="glass border-white/40 shadow-2xl rounded-3xl overflow-hidden">
           <CardContent className="p-0">
-            <div className="overflow-x-auto w-full">
-              <Table className="w-full">
+            <Table className="w-full">
                 <TableHeader className="bg-slate-50/90 border-b border-slate-200">
                   <TableRow>
                     <TableHead className="w-12 text-center p-3">
@@ -1190,7 +1189,6 @@ Please settle immediately to avoid collateral forfeiture/auction.
                   )}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
 
@@ -1413,7 +1411,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
         {/* MARK AS FORFEITED (F/S) MODAL */}
         {forfeitModalItem && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center pb-4 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <div className="p-2 bg-rose-500/15 text-rose-600 rounded-xl">

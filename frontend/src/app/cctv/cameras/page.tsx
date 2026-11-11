@@ -141,12 +141,12 @@ export default function CctvCamerasPage() {
         {/* Modal: Register Camera */}
         {showAddModal && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
-              <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+            <div className="bg-white w-full max-w-lg max-h-[90dvh] rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+              <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center shrink-0">
                 <h3 className="text-lg font-black text-slate-900">Register New Camera</h3>
-                <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
               </div>
-              <form onSubmit={handleAddCamera} className="p-6 space-y-4">
+              <form onSubmit={handleAddCamera} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
                 <div>
                   <Label className="font-bold text-slate-700 text-xs">Camera Name</Label>
                   <Input 

@@ -128,7 +128,7 @@ export default function CctvLivePage() {
 
         {/* Stream Source Selector Bar */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-700 mr-2">Stream Source:</span>
             <Button
               onClick={() => { setStreamMode('agent'); setAgentStreamError(false); }}

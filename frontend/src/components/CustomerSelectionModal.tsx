@@ -549,12 +549,12 @@ export function CustomerSelectionModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[98vw] sm:w-[95vw] md:max-w-4xl lg:max-w-5xl xl:max-w-6xl h-[90dvh] max-h-[90dvh] sm:h-auto sm:max-h-[90vh] bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] flex flex-col overflow-hidden my-auto">
+      <DialogContent className="w-[98vw] sm:w-[95vw] md:max-w-4xl lg:max-w-5xl xl:max-w-6xl h-[90dvh] max-h-[90dvh] sm:h-auto sm:max-h-[90dvh] bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] flex flex-col gap-0 overflow-hidden my-auto">
         {/* Top Accent Bar */}
         <div className="h-2.5 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 shrink-0" />
 
         {/* Modal Header */}
-        <div className="p-3 sm:p-6 pb-2.5 sm:pb-3 border-b border-slate-100 bg-white shrink-0">
+        <div className="p-3 sm:p-6 pb-2.5 sm:pb-3 pr-12 border-b border-slate-100 bg-white shrink-0">
           <DialogHeader>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -1006,44 +1006,44 @@ export function CustomerSelectionModal({
               {/* Right Column: Webcam KYC Capture */}
               <div className="space-y-4">
                 {/* KYC Tabs */}
-                <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-xl">
+                <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
                   <button
                     type="button"
                     onClick={() => { setActiveKycTab('front'); stopCamera(); }}
-                    className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    className={`flex-1 min-w-[95px] py-2 px-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       activeKycTab === 'front' 
-                        ? 'bg-amber-500 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-white/60'
+                        ? 'bg-[#ffd100] text-[#202020] shadow-sm' 
+                        : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
                     }`}
                   >
                     <span>💳 NIC Front</span>
-                    <span className={`w-2 h-2 rounded-full ${kycFront ? 'bg-emerald-400' : 'bg-amber-300'}`} />
+                    <span className={`w-2 h-2 rounded-full ${kycFront ? 'bg-emerald-600' : 'bg-amber-600'}`} />
                   </button>
 
                   <button
                     type="button"
                     onClick={() => { setActiveKycTab('back'); stopCamera(); }}
-                    className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    className={`flex-1 min-w-[95px] py-2 px-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       activeKycTab === 'back' 
-                        ? 'bg-amber-500 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-white/60'
+                        ? 'bg-[#ffd100] text-[#202020] shadow-sm' 
+                        : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
                     }`}
                   >
                     <span>💳 NIC Back</span>
-                    <span className={`w-2 h-2 rounded-full ${kycBack ? 'bg-emerald-400' : 'bg-amber-300'}`} />
+                    <span className={`w-2 h-2 rounded-full ${kycBack ? 'bg-emerald-600' : 'bg-amber-600'}`} />
                   </button>
 
                   <button
                     type="button"
                     onClick={() => { setActiveKycTab('sign'); stopCamera(); }}
-                    className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                    className={`flex-1 min-w-[95px] py-2 px-2 rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                       activeKycTab === 'sign' 
-                        ? 'bg-amber-500 text-white shadow-sm' 
-                        : 'text-slate-600 hover:bg-white/60'
+                        ? 'bg-[#ffd100] text-[#202020] shadow-sm' 
+                        : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'
                     }`}
                   >
                     <span>✍️ Signature</span>
-                    <span className={`w-2 h-2 rounded-full ${kycSign ? 'bg-emerald-400' : 'bg-amber-300'}`} />
+                    <span className={`w-2 h-2 rounded-full ${kycSign ? 'bg-emerald-600' : 'bg-amber-600'}`} />
                   </button>
                 </div>
 

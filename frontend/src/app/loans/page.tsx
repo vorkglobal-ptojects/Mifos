@@ -1680,11 +1680,11 @@ export default function PawnesPage() {
 
       {/* Dialog */}
       <Dialog open={isOpen} onOpenChange={(v) => { setIsOpen(v); if (!v) resetForm(); }}>
-        <DialogContent className="w-[95vw] sm:w-[92vw] lg:max-w-5xl max-h-[90vh] bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:w-[92vw] lg:max-w-5xl max-h-[90dvh] bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] flex flex-col gap-0 overflow-hidden">
           <div className="h-2.5 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 shrink-0" />
           
           {/* Fixed Header */}
-          <div className="p-4 sm:p-6 pb-3 border-b border-slate-100 shrink-0 bg-white">
+          <div className="p-4 sm:p-6 pb-3 pr-12 border-b border-slate-100 shrink-0 bg-white">
             <DialogHeader>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <DialogTitle className="text-xl sm:text-2xl font-black tracking-tighter flex items-center gap-2.5 sm:gap-3 text-slate-900">
@@ -1695,7 +1695,7 @@ export default function PawnesPage() {
                 </DialogTitle>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-[10px] sm:text-xs font-mono font-black shrink-0 flex items-center gap-1.5">
-                    <MapPin className="w-3 h-3 text-primary" />
+                    <MapPin className="w-3 h-3 text-amber-600" />
                     <span>Branch: {branches.find(b => b.id === branchId || b.id === (branchId ? branchId.toUpperCase() : ''))?.name || branchId || 'Active Branch'}</span>
                   </span>
                   <span className="px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 rounded-full text-[10px] sm:text-xs font-mono font-bold shrink-0">
@@ -1710,7 +1710,7 @@ export default function PawnesPage() {
           </div>
 
           {/* Scrollable Form Body */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-5 overscroll-contain">
             {/* 2-COLUMN GRID LAYOUT */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
 
@@ -1854,11 +1854,11 @@ export default function PawnesPage() {
                                   onClick={() => selectClient(c)}
                                   onMouseEnter={() => setActiveSuggestion(i)}
                                   className={`w-full text-left px-4 py-2.5 text-xs font-bold transition-all flex flex-col gap-0.5 border-b border-slate-100 last:border-0 ${
-                                    isSelected ? 'bg-primary text-white' : 'hover:bg-slate-50 text-slate-700'
+                                    isSelected ? 'bg-[#ffd100] text-[#202020]' : 'hover:bg-slate-50 text-slate-700'
                                   }`}
                                 >
-                                  <span className={`${isSelected ? 'text-white' : 'text-slate-900'} font-black text-xs`}>{nameStr}</span>
-                                  <span className={`${isSelected ? 'text-slate-200' : 'text-slate-400'} font-mono text-[10px]`}>{nicStr}</span>
+                                  <span className={`${isSelected ? 'text-[#202020]' : 'text-slate-900'} font-black text-xs`}>{nameStr}</span>
+                                  <span className={`${isSelected ? 'text-slate-800' : 'text-slate-400'} font-mono text-[10px]`}>{nicStr}</span>
                                 </button>
                               );
                             })}
@@ -2199,9 +2199,9 @@ export default function PawnesPage() {
                           key={pref}
                           type="button"
                           onClick={() => handlePrefixChange(pref)}
-                          className={`px-3 py-1.5 text-xs font-black rounded-xl transition-all border ${
+                          className={`px-3 py-1.5 text-xs font-black rounded-xl transition-all border cursor-pointer ${
                             billPrefix === pref
-                              ? 'bg-primary text-white border-primary shadow-md scale-105'
+                              ? 'bg-[#ffd100] text-[#202020] border-amber-400 shadow-sm'
                               : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                           }`}
                         >
@@ -2214,7 +2214,7 @@ export default function PawnesPage() {
                   <div className="grid gap-1.5">
                     <Label className="font-black text-[10px] uppercase tracking-widest text-slate-500">Bill Number</Label>
                     <div className="flex items-center gap-2">
-                      <span className="font-black text-sm text-primary px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl">
+                      <span className="font-black text-sm text-amber-900 px-3 py-2 bg-amber-100 border border-amber-200 rounded-xl">
                         {billPrefix || '1R'}
                       </span>
                       <Input
@@ -2462,7 +2462,7 @@ export default function PawnesPage() {
             <Button
               disabled={isSaving}
               onClick={handleSave}
-              className="bg-primary hover:bg-primary/90 text-white font-black px-8 h-11 sm:h-12 rounded-xl shadow-lg shadow-primary/20 gap-2 w-full sm:w-auto"
+              className="bg-[#ffd100] hover:bg-[#ffee32] text-[#202020] font-black px-8 h-11 sm:h-12 rounded-xl shadow-lg gap-2 w-full sm:w-auto"
             >
               {isSaving ? <RefreshCcw className="w-4 h-4 animate-spin" /> : null}
               {isSaving ? 'Saving...' : (editingPawn ? 'Update Ticket' : 'Finalize & Disburse')}
@@ -2561,7 +2561,7 @@ export default function PawnesPage() {
                 {/* Header & Quick Actions */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-primary" />
+                    <MapPin className="w-3.5 h-3.5 text-amber-600" />
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-700">Select Branches</span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -2569,7 +2569,7 @@ export default function PawnesPage() {
                       <button
                         type="button"
                         onClick={selectHomeBranchOnly}
-                        className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-primary hover:text-white text-slate-600 transition-colors cursor-pointer"
+                        className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-[#ffd100] hover:text-[#202020] text-slate-600 transition-colors cursor-pointer"
                         title="Reset to only your home branch"
                       >
                         My Branch
@@ -2578,7 +2578,7 @@ export default function PawnesPage() {
                     <button
                       type="button"
                       onClick={selectAllBranches}
-                      className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-primary hover:text-white text-slate-600 transition-colors cursor-pointer"
+                      className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-[#ffd100] hover:text-[#202020] text-slate-600 transition-colors cursor-pointer"
                       title="Select all branches"
                     >
                       All
@@ -2591,14 +2591,14 @@ export default function PawnesPage() {
                   onClick={() => toggleBranch('ALL')}
                   className={`flex items-center justify-between px-2.5 py-1.5 rounded-xl cursor-pointer transition-colors ${
                     selectedBranches.includes('ALL')
-                      ? 'bg-primary/10 text-primary font-black'
+                      ? 'bg-amber-50 text-amber-900 font-black'
                       : 'hover:bg-slate-50 text-slate-700 font-bold'
                   }`}
                 >
                   <div className="flex items-center gap-2">
                     <div className={`w-3.5 h-3.5 rounded-md border flex items-center justify-center transition-colors ${
                       selectedBranches.includes('ALL')
-                        ? 'bg-primary border-primary text-white'
+                        ? 'bg-[#ffd100] border-amber-500 text-[#202020]'
                         : 'border-slate-300 bg-white'
                     }`}>
                       {selectedBranches.includes('ALL') && <Check className="w-2.5 h-2.5 stroke-[3]" />}
@@ -2628,7 +2628,7 @@ export default function PawnesPage() {
                         <div className="flex items-center gap-2 truncate">
                           <div className={`w-3.5 h-3.5 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                             isTicked
-                              ? 'bg-primary border-primary text-white'
+                              ? 'bg-[#ffd100] border-amber-500 text-[#202020]'
                               : 'border-slate-300 bg-white'
                           }`}>
                             {isTicked && <Check className="w-2.5 h-2.5 stroke-[3]" />}
@@ -2658,7 +2658,7 @@ export default function PawnesPage() {
                   <button
                     type="button"
                     onClick={() => setIsBranchFilterOpen(false)}
-                    className="px-2.5 py-1 bg-primary text-white text-[9px] font-black uppercase tracking-wider rounded-lg shadow-xs hover:bg-primary/90 transition-colors cursor-pointer"
+                    className="px-2.5 py-1 bg-[#ffd100] text-[#202020] text-[9px] font-black uppercase tracking-wider rounded-lg shadow-xs hover:bg-[#ffee32] transition-colors cursor-pointer"
                   >
                     Done
                   </button>
@@ -2727,7 +2727,7 @@ export default function PawnesPage() {
       </div>
 
       {/* Table — Screen fitting for tablet & desktop */}
-      <div className="w-full overflow-x-auto glass border-white/50 rounded-2xl shadow-xl bg-white/70">
+      <div className="w-full glass border-white/50 rounded-2xl shadow-xl bg-white/70 overflow-hidden">
         <Table className="w-full text-xs">
           <TableHeader className="bg-slate-50/80 border-b border-slate-200/70">
             <TableRow>
@@ -2753,7 +2753,7 @@ export default function PawnesPage() {
                     <FileText className="h-12 w-12 text-slate-200" />
                     <p className="text-slate-400 font-bold">{search || filterBranch !== 'ALL' || filterDescription !== 'ALL' || filterStatus !== 'ALL' ? 'No matching pawn items found.' : "No active pawn items. Click 'Originate Pawn' to begin."}</p>
                     {!search && filterBranch === 'ALL' && filterDescription === 'ALL' && filterStatus === 'ALL' && (
-                      <Button variant="outline" onClick={openAdd} className="border-primary/20 text-primary font-black text-[10px] uppercase tracking-widest h-12 rounded-xl hover:bg-primary hover:text-white transition-all px-8">
+                      <Button variant="outline" onClick={openAdd} className="border-amber-300 text-slate-900 font-black text-[10px] uppercase tracking-widest h-11 rounded-xl hover:bg-[#ffd100] hover:text-[#202020] transition-all px-8">
                         Create First Ticket
                       </Button>
                     )}
@@ -2762,8 +2762,8 @@ export default function PawnesPage() {
               </TableRow>
             ) : (
               filtered.map(pawn => (
-                <TableRow key={pawn.id} className="group hover:bg-primary/5 transition-all duration-200">
-                  <TableCell className="px-2.5 py-2 font-black text-primary text-xs tracking-tight whitespace-nowrap">
+                <TableRow key={pawn.id} className="group hover:bg-amber-50/40 transition-all duration-200">
+                  <TableCell className="px-2.5 py-2 font-black text-slate-900 text-xs tracking-tight whitespace-nowrap">
                     {getBillNo(pawn)}
                   </TableCell>
                   <TableCell className="px-1.5 py-2 whitespace-nowrap">
@@ -2869,7 +2869,7 @@ export default function PawnesPage() {
                           variant="default"
                           size="sm"
                           onClick={() => handleApprove(pawn)}
-                          className="h-7 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
+                          className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
                         >
                           <UserCheck className="h-3 w-3" /> Approve
                         </Button>
@@ -2879,7 +2879,7 @@ export default function PawnesPage() {
                           variant="default"
                           size="sm"
                           onClick={() => openRedeem(pawn)}
-                          className="h-7 px-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1 font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
+                          className="h-8 px-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1 font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
                         >
                           <Coins className="h-3 w-3" /> Settle
                         </Button>
@@ -2888,14 +2888,14 @@ export default function PawnesPage() {
                         variant="default"
                         size="sm"
                         onClick={() => openDetails(pawn)}
-                        className="h-7 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
+                        className="h-8 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1 font-bold text-[10px] shrink-0 shadow-xs cursor-pointer"
                       >
                         <FileText className="h-3 w-3" /> Details
                       </Button>
 
                       {/* Dropdown for SMS Reminder, Edit, and Delete */}
                       <DropdownMenu>
-                        <DropdownMenuTrigger className="h-7 w-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer outline-none shrink-0 shadow-xs">
+                        <DropdownMenuTrigger className="h-8 w-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer outline-none shrink-0 shadow-xs">
                           <MoreVertical className="w-3.5 h-3.5" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-48 glass p-1.5 rounded-xl border-slate-200 shadow-xl bg-white/95">
@@ -3190,9 +3190,9 @@ export default function PawnesPage() {
         open={viewPhotoModal.isOpen} 
         onOpenChange={(v) => setViewPhotoModal(prev => ({ ...prev, isOpen: v }))}
       >
-        <DialogContent className="w-[95vw] sm:w-[90vw] lg:max-w-3xl bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:w-[90vw] lg:max-w-3xl max-h-[90dvh] bg-white border border-slate-200 shadow-2xl p-0 rounded-2xl sm:rounded-[2.5rem] flex flex-col gap-0 overflow-hidden">
           <div className="h-2.5 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 shrink-0" />
-          <div className="p-6 border-b border-slate-100">
+          <div className="p-5 sm:p-6 border-b border-slate-100 shrink-0 pr-12">
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -3204,7 +3204,7 @@ export default function PawnesPage() {
                       Captured Weight Photos
                     </DialogTitle>
                     <DialogDescription className="text-xs font-bold text-slate-500 mt-0.5">
-                      Scale proof for Bill: <span className="font-mono text-primary font-black">{viewPhotoModal.billNo}</span>
+                      Scale proof for Bill: <span className="font-mono text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded font-black">{viewPhotoModal.billNo}</span>
                     </DialogDescription>
                   </div>
                 </div>
@@ -3212,7 +3212,7 @@ export default function PawnesPage() {
             </DialogHeader>
           </div>
 
-          <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-6 overscroll-contain">
             {/* Scale Photos Section */}
             <div>
               <div className="flex items-center gap-2 mb-3">
@@ -3929,17 +3929,17 @@ function PawnDetailsModal({
 
   return (
     <Dialog open={!!pawn} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-4xl max-w-4xl w-[95vw] max-h-[94vh] border border-slate-700 shadow-2xl rounded-3xl p-5 bg-slate-950 text-slate-100 flex flex-col overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl max-w-4xl w-[95vw] max-h-[92dvh] border border-slate-700 shadow-2xl rounded-3xl p-5 bg-slate-950 text-slate-100 flex flex-col gap-0 overflow-y-auto">
         {/* Modal Header */}
-        <DialogHeader className="border-b border-slate-800 pb-3 shrink-0">
-          <div className="flex items-center justify-between flex-wrap gap-2">
+        <DialogHeader className="border-b border-slate-800 pb-3 pr-10 shrink-0">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-blue-400">
               <FileText className="w-5 h-5" />
               <DialogTitle className="text-xl font-black tracking-tight text-white">
                 Pawn Bill Generator & Interactive Editor
               </DialogTitle>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 onClick={resetDefaults}
                 type="button"

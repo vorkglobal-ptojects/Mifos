@@ -781,7 +781,7 @@ export default function AuditorDashboard() {
 
       {/* View Switcher: Pawn Loans Audit vs Vault Inventory & Redis Cache */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200/80 pb-3">
-        <div className="flex items-center gap-2 bg-slate-100/90 p-1.5 rounded-2xl">
+        <div className="flex flex-wrap items-center gap-2 bg-slate-100/90 p-1.5 rounded-2xl w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setActiveTab('pawns')}
@@ -886,8 +886,8 @@ export default function AuditorDashboard() {
                 </div>
               </div>
 
-              {/* Horizontal Filter Rail for Mobile & Desktop */}
-              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 -mx-1 px-1">
+              {/* Responsive Filter Rail for Mobile & Desktop (No Horizontal Clipping) */}
+              <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
                 {/* 1. All Tickets */}
                 <button
                   type="button"
@@ -1014,7 +1014,7 @@ export default function AuditorDashboard() {
 
               {/* Collapsible Advanced Loan Status Row */}
               {showAdvancedFilters && (
-                <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
                   <span className="text-[10px] font-black uppercase text-slate-400 shrink-0 mr-1">Status:</span>
                   {(['ALL', 'ACTIVE', 'AUDITED_PENDING_APPROVAL', 'PENDING_APPROVAL', 'REQUIRES_RECHECK', 'REDEEMED'] as const).map((pst) => (
                     <button
@@ -1051,7 +1051,7 @@ export default function AuditorDashboard() {
               </span>
             </div>
 
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block">
               <Table>
                 <TableHeader className="bg-slate-50/80">
                   <TableRow className="border-b border-slate-200/80">
@@ -1608,7 +1608,7 @@ export default function AuditorDashboard() {
               </div>
             </div>
 
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block">
               <Table>
                 <TableHeader className="bg-slate-50/80">
                   <TableRow className="border-b border-slate-200/80">
@@ -1712,14 +1712,14 @@ export default function AuditorDashboard() {
 
       {/* Comprehensive Audit Inspection Modal */}
       <Dialog open={isAuditModalOpen} onOpenChange={setIsAuditModalOpen}>
-        <DialogContent className="w-[95vw] sm:w-[90vw] lg:max-w-4xl bg-white border border-slate-200 shadow-2xl p-0 rounded-3xl flex flex-col overflow-hidden max-h-[90vh]">
+        <DialogContent className="w-[95vw] sm:w-[90vw] lg:max-w-4xl bg-white border border-slate-200 shadow-2xl p-0 rounded-3xl flex flex-col gap-0 overflow-hidden max-h-[90dvh]">
           {/* Header */}
           <div className="h-2.5 bg-gradient-to-r from-amber-500 via-amber-600 to-yellow-500 shrink-0" />
-          <div className="p-6 border-b border-slate-100">
+          <div className="p-5 sm:p-6 border-b border-slate-100 shrink-0 pr-12">
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-amber-500/10 rounded-2xl text-amber-600">
+                  <div className="p-2.5 bg-amber-500/10 rounded-2xl text-amber-600 shrink-0">
                     <ShieldCheck className="w-6 h-6" />
                   </div>
                   <div>
@@ -1736,7 +1736,7 @@ export default function AuditorDashboard() {
           </div>
 
           {/* Modal Body */}
-          <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+          <div className="flex-1 min-h-0 p-5 sm:p-6 space-y-6 overflow-y-auto overscroll-contain">
             {selectedPawn && (
               <>
                 {/* Audit History Banner if ticket was previously audited */}

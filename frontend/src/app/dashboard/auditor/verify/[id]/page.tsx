@@ -11,7 +11,7 @@ import {
   ShieldCheck, ArrowLeft, User, Phone, MapPin, CreditCard,
   Scale, FileText, Camera, DollarSign, Package, AlertTriangle,
   CheckCircle2, Clock, Building2, Eye, ExternalLink, RefreshCcw,
-  Check, X, AlertCircle, Sparkles, Layers, Image as ImageIcon,
+  Check, AlertCircle, Sparkles, Layers, Image as ImageIcon,
   Upload, PenTool, RotateCcw, Loader2, CameraOff, Video,
   QrCode, Tag
 } from 'lucide-react';
@@ -1434,13 +1434,13 @@ export default function AuditorVerificationPage() {
             <div className="space-y-4 text-xs font-bold text-slate-700">
               {/* 1. Physical item exists */}
               <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>1. Physical item exists in vault?</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => setPhysicalExists(true)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         physicalExists === true ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1449,7 +1449,7 @@ export default function AuditorVerificationPage() {
                     <button
                       type="button"
                       onClick={() => setPhysicalExists(false)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         physicalExists === false ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1461,13 +1461,13 @@ export default function AuditorVerificationPage() {
 
               {/* 2. Item matches system details */}
               <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>2. Item matches system description?</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => setItemMatches(true)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         itemMatches === true ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1476,7 +1476,7 @@ export default function AuditorVerificationPage() {
                     <button
                       type="button"
                       onClick={() => setItemMatches(false)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         itemMatches === false ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1488,13 +1488,13 @@ export default function AuditorVerificationPage() {
 
               {/* 3. Weight matches */}
               <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>3. Weight matches declared scale?</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => setWeightMatches(true)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         weightMatches === true ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1503,7 +1503,7 @@ export default function AuditorVerificationPage() {
                     <button
                       type="button"
                       onClick={() => setWeightMatches(false)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         weightMatches === false ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1519,20 +1519,20 @@ export default function AuditorVerificationPage() {
                     value={observedWeight}
                     onChange={(e) => setObservedWeight(e.target.value)}
                     placeholder={String(pawn.weight_mg || Math.round(grossWeightGrams * 1000))}
-                    className="h-8 text-xs font-mono font-bold bg-slate-50"
+                    className="h-9 text-xs font-mono font-bold bg-slate-50"
                   />
                 </div>
               </div>
 
               {/* 4. Karat matches */}
               <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>4. Karat matches gold testing?</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => setKaratMatches(true)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         karatMatches === true ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1541,7 +1541,7 @@ export default function AuditorVerificationPage() {
                     <button
                       type="button"
                       onClick={() => setKaratMatches(false)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         karatMatches === false ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1564,7 +1564,7 @@ export default function AuditorVerificationPage() {
                           setObservedKarat(val);
                         }
                       }}
-                      className="h-8 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 cursor-pointer flex-1"
+                      className="h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 cursor-pointer flex-1"
                     >
                       <option value="">Select Karat...</option>
                       <option value="24K">24K (99.9% Pure Gold)</option>
@@ -1582,7 +1582,7 @@ export default function AuditorVerificationPage() {
                         value={observedKarat}
                         onChange={(e) => setObservedKarat(e.target.value)}
                         placeholder="e.g. 19.5K"
-                        className="h-8 w-24 text-xs font-bold bg-white border-amber-300 focus:ring-amber-500"
+                        className="h-9 w-24 text-xs font-bold bg-white border-amber-300 focus:ring-amber-500"
                         autoFocus
                       />
                     )}
@@ -1592,13 +1592,13 @@ export default function AuditorVerificationPage() {
 
               {/* 5. Quantity / items count matches */}
               <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>5. Quantity of pieces matches?</span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => setQuantityMatches(true)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         quantityMatches === true ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1607,7 +1607,7 @@ export default function AuditorVerificationPage() {
                     <button
                       type="button"
                       onClick={() => setQuantityMatches(false)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         quantityMatches === false ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1619,16 +1619,16 @@ export default function AuditorVerificationPage() {
 
               {/* 6. Vault Packet Sealed & Sticker QR Scanned */}
               <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-2.5">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5">
-                    <QrCode className="w-4 h-4 text-amber-600" />
+                    <QrCode className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>6. Vault Packet Sealed & Sticker QR?</span>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => setPacketVerified(true)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         packetVerified === true ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1637,7 +1637,7 @@ export default function AuditorVerificationPage() {
                     <button
                       type="button"
                       onClick={() => setPacketVerified(false)}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] cursor-pointer transition-all ${
+                      className={`min-h-[34px] px-3 py-1.5 rounded-lg font-black text-[11px] cursor-pointer transition-all ${
                         packetVerified === false ? 'bg-rose-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                       }`}
                     >
@@ -1770,16 +1770,13 @@ export default function AuditorVerificationPage() {
 
       {/* Image Preview Modal (Full Zoom) */}
       <Dialog open={Boolean(previewImage)} onOpenChange={(v) => !v && setPreviewImage(null)}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border-slate-800 rounded-3xl">
-          <div className="p-4 flex items-center justify-between border-b border-white/10 text-white">
+        <DialogContent className="max-w-4xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-black/95 border-slate-800 rounded-3xl">
+          <div className="p-4 pr-12 flex items-center justify-between border-b border-white/10 text-white shrink-0">
             <span className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
               <Camera className="w-4 h-4 text-amber-400" /> Evidence Photo Inspection
             </span>
-            <button onClick={() => setPreviewImage(null)} className="text-slate-400 hover:text-white">
-              <X className="w-5 h-5" />
-            </button>
           </div>
-          <div className="p-4 flex items-center justify-center max-h-[80vh] overflow-auto">
+          <div className="p-4 flex-1 min-h-0 flex items-center justify-center overflow-auto">
             {previewImage && (
               <img 
                 src={previewImage} 
@@ -1793,12 +1790,12 @@ export default function AuditorVerificationPage() {
 
       {/* AUDITOR ISSUE / ERROR NOTE MODAL */}
       <Dialog open={isIssueModalOpen} onOpenChange={setIsIssueModalOpen}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
+        <DialogContent className="max-w-xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
           {/* Header Bar */}
-          <div className="h-2.5 bg-gradient-to-r from-rose-500 via-rose-600 to-red-500" />
+          <div className="h-2.5 bg-gradient-to-r from-rose-500 via-rose-600 to-red-500 shrink-0" />
           
-          <div className="p-6 space-y-5">
-            <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-3 text-left">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 overscroll-contain">
+            <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-3 pr-8 text-left">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center font-black">
                   <AlertTriangle className="w-5 h-5 text-rose-600" />
@@ -1901,14 +1898,14 @@ export default function AuditorVerificationPage() {
 
       {/* AUDITOR APPROVAL CONFIRMATION MODAL */}
       <Dialog open={isConfirmApprovalModalOpen} onOpenChange={setIsConfirmApprovalModalOpen}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
+        <DialogContent className="max-w-xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
           {/* Header Bar */}
-          <div className="h-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-500" />
+          <div className="h-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-500 shrink-0" />
           
-          <div className="p-6 space-y-5">
-            <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-3 text-left">
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-5 overscroll-contain">
+            <DialogHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-3 pr-8 text-left">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-black">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-black shrink-0">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
@@ -1927,7 +1924,7 @@ export default function AuditorVerificationPage() {
               <p className="text-xs font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" /> Completed Verification Summary
               </p>
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-emerald-900 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-bold text-emerald-900 pt-1">
                 <div className="flex items-center gap-1.5">
                   <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span>Physical item in vault: Verified</span>
@@ -1979,7 +1976,7 @@ export default function AuditorVerificationPage() {
             </label>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
               <Button
                 variant="outline"
                 onClick={() => setIsConfirmApprovalModalOpen(false)}
@@ -2006,17 +2003,17 @@ export default function AuditorVerificationPage() {
 
       {/* ── LIVE CAMERA / DRAW / UPLOAD KYC CAPTURE MODAL ── */}
       <Dialog open={!!captureTarget} onOpenChange={(open) => !open && closeCaptureModal()}>
-        <DialogContent className="w-[95vw] sm:w-[90vw] md:max-w-2xl bg-white border border-slate-200 shadow-2xl p-0 rounded-3xl overflow-hidden">
-          <div className="h-2.5 bg-gradient-to-r from-amber-500 via-emerald-500 to-blue-500" />
-          <div className="p-6 border-b border-slate-100">
+        <DialogContent className="w-[95vw] sm:w-[90vw] md:max-w-2xl max-h-[90dvh] flex flex-col gap-0 bg-white border border-slate-200 shadow-2xl p-0 rounded-3xl overflow-hidden">
+          <div className="h-2.5 bg-gradient-to-r from-amber-500 via-emerald-500 to-blue-500 shrink-0" />
+          <div className="p-5 sm:p-6 border-b border-slate-100 shrink-0 pr-12">
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-amber-500/10 rounded-2xl text-amber-600">
+                  <div className="p-2.5 bg-amber-500/10 rounded-2xl text-amber-600 shrink-0">
                     {captureTarget === 'signature' ? <PenTool className="w-6 h-6" /> : <Camera className="w-6 h-6" />}
                   </div>
                   <div>
-                    <DialogTitle className="text-xl font-black text-slate-900">
+                    <DialogTitle className="text-lg sm:text-xl font-black text-slate-900">
                       {captureTarget === 'nic_front' 
                         ? 'Capture Customer NIC - Front Side'
                         : captureTarget === 'nic_back'
@@ -2032,7 +2029,7 @@ export default function AuditorVerificationPage() {
             </DialogHeader>
 
             {/* Mode Selector Tabs */}
-            <div className="flex items-center gap-2 mt-4 bg-slate-100 p-1 rounded-xl w-fit">
+            <div className="flex flex-wrap items-center gap-1.5 mt-4 bg-slate-100 p-1 rounded-xl w-full sm:w-fit">
               {captureTarget === 'signature' && (
                 <button
                   type="button"
@@ -2081,7 +2078,7 @@ export default function AuditorVerificationPage() {
           </div>
 
           {/* Modal Body */}
-          <div className="p-6 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-6 space-y-4 overscroll-contain">
             {/* 1. CAMERA MODE */}
             {captureMode === 'camera' && (
               <div className="space-y-3">

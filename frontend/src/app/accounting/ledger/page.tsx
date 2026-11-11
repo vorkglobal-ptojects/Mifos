@@ -866,12 +866,12 @@ function MainLedgerContent() {
           </p>
         </div>
 
-        {/* Tab switcher — own row, scrollable on small screens */}
-        <div className="overflow-x-auto -mx-1 px-1 pb-0.5">
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 w-max min-w-full">
+        {/* Tab switcher — wraps cleanly on small screens without horizontal scrollbar */}
+        <div>
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 w-full">
             <button
               onClick={() => handleTabSwitch('entry')}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs transition whitespace-nowrap flex-1 ${
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs transition whitespace-nowrap flex-1 min-w-[140px] cursor-pointer ${
                 activeTab === 'entry' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
@@ -880,16 +880,16 @@ function MainLedgerContent() {
             </button>
             <button
               onClick={() => handleTabSwitch('matrix')}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs transition whitespace-nowrap flex-1 ${
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs transition whitespace-nowrap flex-1 min-w-[140px] cursor-pointer ${
                 activeTab === 'matrix' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               <Layers className="w-3.5 h-3.5 shrink-0" />
-              11-Branch Matrix
+              Branches Matrix
             </button>
             <button
               onClick={() => handleTabSwitch('journal')}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs transition whitespace-nowrap flex-1 ${
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs transition whitespace-nowrap flex-1 min-w-[140px] cursor-pointer ${
                 activeTab === 'journal' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
@@ -1068,7 +1068,7 @@ function MainLedgerContent() {
                                   key={pref}
                                   type="button"
                                   onClick={() => handleUpdateTransactionRow(idx, 'loan_no', applyBillPrefix(t.loan_no, pref))}
-                                  className="px-1 py-0.2 bg-blue-50 hover:bg-blue-600 hover:text-white border border-blue-200 rounded text-[9px] font-black text-blue-800 transition-all cursor-pointer active:scale-95 shadow-2xs"
+                                  className="px-1.5 py-0.5 bg-blue-50 hover:bg-blue-600 hover:text-white border border-blue-200 rounded text-[10px] font-black text-blue-800 transition-all cursor-pointer active:scale-95 shadow-2xs"
                                   title={`Click to set ${pref} prefix`}
                                 >
                                   {pref}
@@ -2148,7 +2148,7 @@ function MainLedgerContent() {
                   ) : (
                     <div className="space-y-3">
                       {matrixBranchLedgers.map((ledger) => (
-                        <div key={ledger.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-300 transition-colors">
+                        <div key={ledger.id} className="flex flex-wrap items-center justify-between gap-3 p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-300 transition-colors">
                           <div>
                             <div className="flex items-center gap-3 mb-1">
                               <span className="font-mono font-black text-slate-900 text-lg">

@@ -129,16 +129,16 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
           {/* Visibility Toggle (HQ Admin Only) */}
           {userProfile?.role === 'ADMIN' && userProfile?.branchId === 'HQ' && (
             <>
-              <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 w-full sm:w-auto">
+              <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl border border-slate-200 w-full sm:w-auto gap-1">
                 <button 
                   onClick={() => setViewMode('GLOBAL')}
                   className={cn(
-                    "flex-1 sm:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                    viewMode === 'GLOBAL' ? "bg-white text-primary shadow-lg shadow-slate-200" : "text-slate-500 hover:text-slate-800"
+                    "flex-1 sm:px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer",
+                    viewMode === 'GLOBAL' ? "bg-[#ffd100] text-[#202020] shadow-sm" : "text-slate-600 hover:text-slate-900"
                   )}
                 >
                   Global View
@@ -146,8 +146,8 @@ export default function TransactionsPage() {
                 <button 
                   onClick={() => setViewMode('LOCAL')}
                   className={cn(
-                    "flex-1 sm:px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                    viewMode === 'LOCAL' ? "bg-white text-primary shadow-lg shadow-slate-200" : "text-slate-500 hover:text-slate-800"
+                    "flex-1 sm:px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer",
+                    viewMode === 'LOCAL' ? "bg-[#ffd100] text-[#202020] shadow-sm" : "text-slate-600 hover:text-slate-900"
                   )}
                 >
                   Local Branch
@@ -157,9 +157,9 @@ export default function TransactionsPage() {
               {/* Branch Filter (Only in Global Mode) */}
               {viewMode === 'GLOBAL' && (
                 <Select value={filterBranchId} onValueChange={(val) => val && setFilterBranchId(val)}>
-                  <SelectTrigger className="h-12 w-full sm:w-[200px] rounded-2xl border-slate-200 font-bold text-[10px] uppercase tracking-widest transition-all glass">
+                  <SelectTrigger className="h-11 w-full sm:w-[200px] rounded-2xl border-slate-200 font-bold text-[10px] uppercase tracking-widest transition-all glass">
                     <div className="flex items-center gap-2">
-                      <Building2 className="w-3.5 h-3.5 text-primary" />
+                      <Building2 className="w-3.5 h-3.5 text-amber-600" />
                       <SelectValue placeholder="All Branches" />
                     </div>
                   </SelectTrigger>
@@ -176,7 +176,7 @@ export default function TransactionsPage() {
             </>
           )}
 
-          <Button onClick={() => setIsOpen(true)} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-[10px] h-12 px-8 rounded-2xl w-full sm:w-auto shadow-xl shadow-slate-900/10">
+          <Button onClick={() => setIsOpen(true)} className="gap-2 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-[10px] h-11 px-6 rounded-2xl w-full sm:w-auto shadow-xl shadow-slate-900/10">
             <Send className="h-4 w-4" /> New Transfer
           </Button>
         </div>
@@ -203,10 +203,10 @@ export default function TransactionsPage() {
 
       {/* Transfer Guidance Dialog */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-[480px] glass border-white/40 p-0 overflow-hidden rounded-[2rem]">
-          <div className="h-2 bg-[#ffd100]" />
-          <div className="p-8 space-y-6">
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[480px] glass border-white/40 p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-[#ffd100] shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 space-y-6 overscroll-contain">
+            <DialogHeader className="pr-8">
               <DialogTitle className="text-2xl font-black tracking-tighter flex items-center gap-3 text-slate-900">
                 <div className="h-10 w-10 bg-[#ffd100]/20 rounded-xl flex items-center justify-center border border-[#ffd100]/40">
                   <Send className="h-5 w-5 text-slate-900"/>
@@ -258,18 +258,18 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      <div className="glass border-white/40 rounded-[2.5rem] shadow-2xl overflow-hidden bg-white/40 flex flex-col min-h-[500px]">
+      <div className="glass border-white/40 rounded-3xl shadow-2xl bg-white/40 flex flex-col min-h-[420px]">
         <Table>
           <TableHeader className="bg-slate-50/50">
             <TableRow>
-              <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">TX ID / HASH</TableHead>
+              <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">TX ID / HASH</TableHead>
               {viewMode === 'GLOBAL' && (
-                <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Branch</TableHead>
+                <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Branch</TableHead>
               )}
-              <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Type / Direction</TableHead>
-              <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400">Timestamp</TableHead>
-              <TableHead className="px-8 py-5 font-black text-[10px] uppercase tracking-widest text-slate-400 max-w-xs">Audit Reference</TableHead>
-              <TableHead className="px-8 py-5 text-right font-black text-[10px] uppercase tracking-widest text-slate-400">Capital Value</TableHead>
+              <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Type / Direction</TableHead>
+              <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400">Timestamp</TableHead>
+              <TableHead className="px-4 py-4 font-black text-[10px] uppercase tracking-widest text-slate-400 max-w-xs">Audit Reference</TableHead>
+              <TableHead className="px-4 py-4 text-right font-black text-[10px] uppercase tracking-widest text-slate-400">Capital Value</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-slate-100">
@@ -291,18 +291,18 @@ export default function TransactionsPage() {
               </TableRow>
             ) : (
                 transactions.map((tx) => (
-                  <TableRow key={tx.id} className="group hover:bg-primary/5 transition-all duration-300">
-                    <TableCell className="px-8 py-6 font-black text-slate-900 group-hover:text-primary transition-colors">
+                  <TableRow key={tx.id} className="group hover:bg-amber-50/40 transition-all duration-300">
+                    <TableCell className="px-4 py-4 font-black text-slate-900 group-hover:text-amber-700 transition-colors">
                       {tx.id.substring(0,8).toUpperCase()}
                     </TableCell>
                     {viewMode === 'GLOBAL' && (
-                      <TableCell className="px-8 py-6">
+                      <TableCell className="px-4 py-4">
                         <span className="font-black text-[10px] bg-slate-100 text-slate-600 px-3 py-1 rounded-lg tracking-widest uppercase border border-slate-200">
                           {tx.branch_id || 'HQ'}
                         </span>
                       </TableCell>
                     )}
-                    <TableCell className="px-8 py-6">
+                    <TableCell className="px-4 py-4">
                       <div className="flex items-center gap-3">
                         <div className={cn(
                           "h-2 w-2 rounded-full",
@@ -314,12 +314,12 @@ export default function TransactionsPage() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="px-8 py-6 text-slate-500 font-bold text-xs uppercase tracking-widest">
+                    <TableCell className="px-4 py-4 text-slate-500 font-bold text-xs uppercase tracking-widest">
                       {new Date(tx.timestamp).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </TableCell>
-                    <TableCell className="px-8 py-6 text-slate-600 font-medium max-w-xs truncate text-sm">{tx.description}</TableCell>
+                    <TableCell className="px-4 py-4 text-slate-600 font-medium max-w-xs whitespace-normal break-words text-sm">{tx.description}</TableCell>
                     <TableCell className={cn(
-                      "px-8 py-6 text-right font-black text-sm tracking-tighter",
+                      "px-4 py-4 text-right font-black text-sm tracking-tighter",
                       tx.type === 'TRANSFER' ? 'text-rose-600' : 'text-slate-900'
                     )}>
                       {tx.type === 'TRANSFER' ? `- Rs. ${tx.amount.toLocaleString()}` : `Rs. ${tx.amount.toLocaleString()}`}

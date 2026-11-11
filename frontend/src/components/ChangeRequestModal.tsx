@@ -101,8 +101,8 @@ export default function ChangeRequestModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-lg rounded-2xl p-6 bg-white border border-slate-200 shadow-2xl">
-        <DialogHeader className="space-y-1">
+      <DialogContent className="max-w-lg max-h-[90dvh] rounded-2xl p-6 bg-white border border-slate-200 shadow-2xl overflow-y-auto">
+        <DialogHeader className="space-y-1 pr-8">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border-amber-200">
               Maker-Checker Ticket
@@ -272,7 +272,7 @@ export default function ChangeRequestModal({
             />
           </div>
 
-          <DialogFooter className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100">
+          <DialogFooter className="mx-0 mb-0 rounded-xl bg-transparent px-0 pt-3 pb-0 flex flex-row items-center justify-between gap-2 border-t border-slate-100">
             <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={loading} className="rounded-xl text-xs">
               Cancel
             </Button>

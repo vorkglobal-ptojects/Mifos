@@ -203,7 +203,7 @@ export default function ConsolidatedCashDashboard() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            <div className="w-full">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">

@@ -529,7 +529,7 @@ export default function PacketQrScannerModal({
             </div>
 
             {/* Quick Status Filter Pills for Fast Vault Audits */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+            <div className="flex flex-wrap items-center gap-1.5 pb-0.5">
               <button
                 type="button"
                 onClick={() => setFilterStickerStatus('ALL')}

@@ -123,19 +123,19 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-20">
-      <div className="flex justify-between items-end bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-rose-600 font-black tracking-widest text-xs uppercase mb-2">
             <BarChart4 className="h-4 w-4" /> Portfolio Intelligence
           </div>
-          <h1 className="text-4xl font-black text-slate-900 leading-none">Management Reporting</h1>
+          <h1 className="text-3xl sm:text-4xl font-black text-slate-900 leading-none">Management Reporting</h1>
           <p className="text-slate-500 font-medium tracking-tight">Risk analysis, portfolio aging, and transaction summaries.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <Button onClick={loadReports} variant="outline" className="gap-2 font-bold border-slate-300">
             <RefreshCcw className="h-4 w-4" /> Recalculate Risk
           </Button>
-          <Button onClick={() => downloadFile('/reports/export/master', 'master_export.csv')} className="bg-slate-900 hover:bg-slate-800 font-bold px-6 shadow-lg shadow-slate-100 gap-2">
+          <Button onClick={() => downloadFile('/reports/export/master', 'master_export.csv')} className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 shadow-lg shadow-slate-100 gap-2">
             <Download className="h-4 w-4" /> Master Export
           </Button>
         </div>
@@ -243,11 +243,11 @@ export default function ReportsPage() {
               <p className="text-slate-400 font-medium mb-8 text-sm max-w-[300px]">
                 Generate full forensic audit reports for regulatory compliance.
               </p>
-              <div className="grid grid-cols-2 gap-4">
-                <Button onClick={() => downloadFile('/reports/export/xlsx', 'portfolio_export.xlsx')} className="bg-emerald-600 hover:bg-emerald-700 font-black gap-2 shadow-lg shadow-emerald-900/20">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Button onClick={() => downloadFile('/reports/export/xlsx', 'portfolio_export.xlsx')} className="bg-emerald-600 hover:bg-emerald-700 text-white font-black gap-2 shadow-lg shadow-emerald-900/20">
                   <FileSpreadsheet className="h-4 w-4" /> Download .XLSX
                 </Button>
-                <Button onClick={() => downloadFile('/reports/export/pdf', 'portfolio_report.pdf')} className="bg-rose-600 hover:bg-rose-700 font-black gap-2 shadow-lg shadow-rose-900/20">
+                <Button onClick={() => downloadFile('/reports/export/pdf', 'portfolio_report.pdf')} className="bg-rose-600 hover:bg-rose-700 text-white font-black gap-2 shadow-lg shadow-rose-900/20">
                   <FileText className="h-4 w-4" /> Download .PDF
                 </Button>
               </div>

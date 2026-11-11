@@ -466,7 +466,7 @@ export default function Home() {
           <Button variant="outline" className="h-10 font-black text-xs uppercase tracking-wider px-6 rounded-xl border-slate-200 glass hover:bg-white shadow-xs cursor-pointer">
             History
           </Button>
-          <Button className="h-10 bg-primary hover:bg-primary/90 text-white font-black text-xs uppercase tracking-wider px-6 rounded-xl shadow-md shadow-primary/20 card-hover cursor-pointer" onClick={() => router.push('/loans')}>
+          <Button className="h-10 bg-[#ffd100] hover:bg-[#ffee32] text-[#202020] font-black text-xs uppercase tracking-wider px-6 rounded-xl shadow-md card-hover cursor-pointer" onClick={() => router.push('/loans')}>
             New Pawn <ArrowUpRight className="ml-1 w-3.5 h-3.5" />
           </Button>
         </div>
@@ -478,7 +478,7 @@ export default function Home() {
           const Icon = stat.icon;
           return (
             <Card key={stat.label} className="glass group overflow-hidden border-white/50 shadow-md hover:shadow-lg transition-all duration-350 rounded-2xl relative">
-              <div className="absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-colors" />
+              <div className="absolute top-0 right-0 w-24 h-24 -mr-8 -mt-8 bg-amber-500/5 rounded-full blur-2xl group-hover:bg-amber-500/10 transition-colors" />
               <CardContent className="p-5 relative z-10">
                 <div className="flex items-center justify-between mb-4">
                    <div className={cn(
@@ -486,7 +486,7 @@ export default function Home() {
                         stat.color === 'emerald' ? "bg-emerald-500/10 text-emerald-600" :
                         stat.color === 'blue' ? "bg-blue-500/10 text-blue-600" :
                         stat.color === 'indigo' ? "bg-indigo-500/10 text-indigo-600" :
-                        "bg-primary/10 text-primary"
+                        "bg-amber-500/10 text-amber-700"
                     )}>
                         <Icon className="w-5 h-5" />
                    </div>
@@ -645,7 +645,7 @@ export default function Home() {
                    <Activity className="w-3.5 h-3.5 text-emerald-500" /> Latest activity logs
                 </p>
               </div>
-              <Button variant="outline" className="h-9 border-slate-200 glass font-black text-[10px] uppercase tracking-wider px-6 rounded-xl hover:bg-primary hover:text-white transition-all shadow-xs cursor-pointer">View All History</Button>
+              <Button variant="outline" className="h-9 border-slate-200 glass font-black text-[10px] uppercase tracking-wider px-6 rounded-xl hover:bg-[#ffd100] hover:text-[#202020] hover:border-[#ffd100] transition-all shadow-xs cursor-pointer">View All History</Button>
            </div>
         </CardHeader>
         <CardContent className="p-0">

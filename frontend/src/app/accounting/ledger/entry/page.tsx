@@ -361,7 +361,7 @@ export default function DailyLedgerEntryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 md:p-8 space-y-6">
+    <div className="rounded-3xl bg-slate-900 text-slate-100 p-4 md:p-8 space-y-6">
       {/* Header Bar */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-slate-800/80 backdrop-blur border border-slate-700/60 p-6 rounded-2xl shadow-2xl">
         <div className="flex items-center gap-4">

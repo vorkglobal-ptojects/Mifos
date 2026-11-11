@@ -2984,7 +2984,7 @@ function EndOfDayContent() {
             {/* Left Controls: Filter Toggles & Branch Selector */}
             <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto">
               {/* Filter Toggle Buttons */}
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 w-full sm:w-fit shrink-0 gap-1">
+              <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200 w-full sm:w-fit shrink-0 gap-1">
                 <button 
                   onClick={() => setStockFilter('Active')}
                   className={cn(
@@ -3008,14 +3008,14 @@ function EndOfDayContent() {
                   className={cn(
                     "flex-1 sm:flex-initial px-4 lg:px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap",
                     stockFilter === 'OldData' 
-                      ? "bg-amber-500 text-white shadow-sm shadow-amber-500/20 font-bold" 
+                      ? "bg-[#ffd100] text-[#202020] shadow-sm font-bold" 
                       : "text-amber-800 bg-amber-50/80 hover:bg-amber-100/80 border border-amber-200/50"
                   )}
                 >
                   <span>Old Data</span>
                   <span className={cn(
                     "px-1.5 py-0.5 rounded text-[9px] font-black",
-                    stockFilter === 'OldData' ? "bg-amber-600 text-white" : "bg-amber-200/80 text-amber-900"
+                    stockFilter === 'OldData' ? "bg-slate-900 text-[#ffd100]" : "bg-amber-200/80 text-amber-900"
                   )}>
                     {totalOldCount}
                   </span>
@@ -3250,7 +3250,7 @@ function EndOfDayContent() {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto w-full">
+              <div className="w-full">
                 <Table>
                   <TableHeader className="bg-slate-50/50">
                     <TableRow>
@@ -3416,46 +3416,48 @@ function EndOfDayContent() {
                             </TableCell>
                           </>
                         ) : (
-                          <TableCell className="px-6 py-4 text-right flex items-center justify-end gap-1.5">
-                            <Button 
-                              onClick={() => handlePrintLabel(item)}
-                              disabled={printingLabelId === (item.id || item.bill_no)}
-                              size="sm"
-                              variant="outline"
-                              className="border-blue-200 hover:bg-blue-50 text-blue-700 font-black text-[9px] uppercase tracking-widest h-8 px-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                              title="Print Bluetooth Sticker Label"
-                            >
-                              {printingLabelId === (item.id || item.bill_no) ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <QrCode className="w-3.5 h-3.5 text-blue-600" />
-                              )}
-                              Print Label
-                            </Button>
-                            <Button 
-                              onClick={() => openEditActiveModal(item)}
-                              size="sm"
-                              variant="outline"
-                              className="border-slate-200 hover:bg-slate-50 text-slate-600 font-black text-[9px] uppercase tracking-widest h-8 px-3 rounded-xl transition-all cursor-pointer"
-                            >
-                              Edit
-                            </Button>
-                            <Button 
-                              onClick={() => openWithdrawModal(item)}
-                              size="sm"
-                              className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/50 font-black text-[9px] uppercase tracking-widest h-8 px-3 rounded-xl transition-all cursor-pointer"
-                            >
-                              Withdraw
-                            </Button>
-                            <Button 
-                              onClick={() => handleDeleteStock(item)}
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
-                              title="Delete Record"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                          <TableCell className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button 
+                                onClick={() => handlePrintLabel(item)}
+                                disabled={printingLabelId === (item.id || item.bill_no)}
+                                size="sm"
+                                variant="outline"
+                                className="border-blue-200 hover:bg-blue-50 text-blue-700 font-black text-[9px] uppercase tracking-widest h-8 px-2.5 rounded-xl transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="Print Bluetooth Sticker Label"
+                              >
+                                {printingLabelId === (item.id || item.bill_no) ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <QrCode className="w-3.5 h-3.5 text-blue-600" />
+                                )}
+                                Print Label
+                              </Button>
+                              <Button 
+                                onClick={() => openEditActiveModal(item)}
+                                size="sm"
+                                variant="outline"
+                                className="border-slate-200 hover:bg-slate-50 text-slate-600 font-black text-[9px] uppercase tracking-widest h-8 px-3 rounded-xl transition-all cursor-pointer"
+                              >
+                                Edit
+                              </Button>
+                              <Button 
+                                onClick={() => openWithdrawModal(item)}
+                                size="sm"
+                                className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/50 font-black text-[9px] uppercase tracking-widest h-8 px-3 rounded-xl transition-all cursor-pointer"
+                              >
+                                Withdraw
+                              </Button>
+                              <Button 
+                                onClick={() => handleDeleteStock(item)}
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                                title="Delete Record"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         )}
                       </TableRow>
@@ -3720,9 +3722,9 @@ function EndOfDayContent() {
 
       {/* MODAL: ADD STOCK ITEM */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent className="sm:max-w-[580px] glass p-0 rounded-[2rem] border-white/40 max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogContent className="sm:max-w-[580px] glass p-0 rounded-[2rem] border-white/40 max-h-[90dvh] flex flex-col gap-0 overflow-hidden">
           <div className="h-2 bg-blue-600 shrink-0" />
-          <div className="p-6 pb-2 shrink-0">
+          <div className="p-6 pb-2 pr-12 shrink-0">
             <DialogHeader>
               <DialogTitle className="text-2xl font-black tracking-tighter flex items-center gap-3 text-slate-900">
                 <div className="h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center border border-blue-100 text-blue-600">
@@ -3738,7 +3740,7 @@ function EndOfDayContent() {
             </DialogHeader>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-6 py-2 pb-36 space-y-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-5 overscroll-contain">
             <div className="grid gap-5 pb-4">
               
               {/* Branch Selection (Visible ONLY to Admin) */}
@@ -4233,10 +4235,10 @@ function EndOfDayContent() {
 
       {/* MODAL: BILL CUSTOMER INFO */}
       <Dialog open={showBillCustomerModal} onOpenChange={setShowBillCustomerModal}>
-        <DialogContent className="sm:max-w-[420px] bg-white border border-slate-200 shadow-2xl p-0 overflow-hidden rounded-[2.5rem]">
-          <div className="h-2 bg-blue-600" />
-          <div className="p-8">
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[440px] bg-white border border-slate-200 shadow-2xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-blue-600 shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 sm:p-8 overscroll-contain">
+            <DialogHeader className="pr-8">
               <DialogTitle className="text-xl font-black tracking-tighter text-slate-900">
                 Pawn Bill Details
               </DialogTitle>
@@ -4681,11 +4683,11 @@ function EndOfDayContent() {
 
       {/* MODAL: PAWN ITEM IMAGE VIEW & FULL PREVIEW */}
       <Dialog open={showImagePreviewModal} onOpenChange={setShowImagePreviewModal}>
-        <DialogContent className="sm:max-w-[480px] bg-white border border-slate-200 shadow-2xl p-0 overflow-hidden rounded-[2.5rem]">
-          <div className="h-2 bg-amber-500" />
-          <div className="p-6">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-black tracking-tight text-slate-900 flex items-center justify-between">
+        <DialogContent className="sm:max-w-[480px] bg-white border border-slate-200 shadow-2xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-amber-500 shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 overscroll-contain">
+            <DialogHeader className="pr-10">
+              <DialogTitle className="text-lg font-black tracking-tight text-slate-900 flex flex-wrap items-center justify-between gap-2">
                 <span className="flex items-center gap-2">
                   <ImageIcon className="w-5 h-5 text-amber-600" /> Pawn Item Photo
                 </span>
@@ -4896,10 +4898,10 @@ function EndOfDayContent() {
 
       {/* MODAL: ADD INTEREST FOR BILL */}
       <Dialog open={showAddInterestModal} onOpenChange={setShowAddInterestModal}>
-        <DialogContent className="sm:max-w-[420px] bg-white border border-slate-200 shadow-2xl p-0 overflow-hidden rounded-[2.5rem]">
-          <div className="h-2 bg-emerald-600" />
-          <div className="p-6">
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[440px] bg-white border border-slate-200 shadow-2xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-emerald-600 shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 overscroll-contain">
+            <DialogHeader className="pr-8">
               <DialogTitle className="text-xl font-black tracking-tighter text-slate-900 flex items-center gap-2.5">
                 <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center border border-emerald-100 text-emerald-600">
                   <Percent className="w-5 h-5" />
@@ -5040,10 +5042,10 @@ function EndOfDayContent() {
 
       {/* MODAL: EDIT MATRIX ITEM */}
       <Dialog open={showEditMatrixModal} onOpenChange={setShowEditMatrixModal}>
-        <DialogContent className="sm:max-w-[420px] bg-white border border-slate-200 shadow-2xl p-0 overflow-hidden rounded-[2.5rem]">
-          <div className="h-2 bg-blue-600" />
-          <div className="p-6">
-            <DialogHeader>
+        <DialogContent className="sm:max-w-[440px] bg-white border border-slate-200 shadow-2xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-blue-600 shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 overscroll-contain">
+            <DialogHeader className="pr-8">
               <DialogTitle className="text-xl font-black tracking-tighter text-slate-900 flex items-center gap-2">
                 <Edit className="w-5 h-5 text-blue-600" />
                 Edit Matrix Transaction ({editingMatrixItem?.category})
@@ -5142,9 +5144,9 @@ function EndOfDayContent() {
 
       {/* MODAL: DELETE MATRIX ITEM */}
       <Dialog open={showDeleteMatrixModal} onOpenChange={setShowDeleteMatrixModal}>
-        <DialogContent className="sm:max-w-[420px] bg-white border border-slate-200 shadow-2xl p-0 overflow-hidden rounded-[2.5rem]">
-          <div className="h-2 bg-rose-600" />
-          <div className="p-6 text-center space-y-4">
+        <DialogContent className="sm:max-w-[420px] bg-white border border-slate-200 shadow-2xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden rounded-[2rem]">
+          <div className="h-2 bg-rose-600 shrink-0" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-6 text-center space-y-4 overscroll-contain">
             <div className="w-12 h-12 bg-rose-50 rounded-full border border-rose-100 flex items-center justify-center mx-auto text-rose-600">
               <Trash2 className="w-6 h-6" />
             </div>

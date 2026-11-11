@@ -158,26 +158,26 @@ export default function ExecutiveDashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end glass p-8 rounded-3xl border-white/50 shadow-2xl gap-6">
         <div className="space-y-1">
-          <div className="flex items-center gap-2 text-primary font-black tracking-widest text-[10px] uppercase mb-2">
+          <div className="flex items-center gap-2 text-amber-700 font-black tracking-widest text-[10px] uppercase mb-2">
             <ShieldCheck className="h-4 w-4" /> Head Office Oversight
           </div>
           <h1 className="text-4xl font-black text-slate-900 leading-none tracking-tighter">Executive Dashboard</h1>
           <p className="text-slate-500 font-medium">Consolidated view of all 11 branches in real-time.</p>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
           <Button 
             disabled={refreshing || exporting} 
             onClick={() => loadData(true)} 
             variant="outline" 
             className="flex-1 md:flex-none gap-2 font-black text-[10px] uppercase tracking-widest border-slate-200 glass h-12 px-6"
           >
-            <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin text-primary' : ''}`} /> 
+            <RefreshCcw className={`h-4 w-4 ${refreshing ? 'animate-spin text-amber-600' : ''}`} /> 
             {refreshing ? 'Refreshing...' : 'Refresh Grid'}
           </Button>
           <Button 
             disabled={exporting || refreshing}
             onClick={handleExportPDF}
-            className="flex-1 md:flex-none bg-primary hover:bg-primary/90 text-white font-black text-[10px] uppercase tracking-widest px-8 h-12 shadow-xl shadow-primary/20 rounded-2xl gap-2"
+            className="flex-1 md:flex-none bg-[#ffd100] hover:bg-[#ffee32] text-[#202020] font-black text-[10px] uppercase tracking-widest px-8 h-12 shadow-xl rounded-2xl gap-2"
           >
             {exporting ? (
                <RefreshCcw className="h-4 w-4 animate-spin" />
@@ -194,8 +194,8 @@ export default function ExecutiveDashboard() {
         <Card className="glass border-white/50 hover:shadow-2xl transition-all duration-500 group rounded-3xl overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Total Portfolio</CardTitle>
-            <div className="bg-primary/10 p-2 rounded-xl group-hover:bg-primary transition-colors">
-              <Landmark className="h-5 w-5 text-primary group-hover:text-white" />
+            <div className="bg-amber-500/10 p-2 rounded-xl group-hover:bg-[#ffd100] transition-colors">
+              <Landmark className="h-5 w-5 text-amber-700 group-hover:text-[#202020]" />
             </div>
           </CardHeader>
           <CardContent className="pt-2">
