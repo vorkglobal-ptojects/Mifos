@@ -1,0 +1,185 @@
+name: Daily Supabase Backup to Google Drive
+
+on:
+  schedule:
+    # 14:30 UTC = 20:00 (8:00 PM) Asia/Colombo (IST, UTC+5:30)
+    - cron: '30 14 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mifos-daily-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Export DB, Excel & Images -> Encrypted Zip -> Google Drive
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Verify required GitHub Secrets are configured
+        env:
+          CHECK_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          CHECK_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CHECK_RCLONE_CONF: ${{ secrets.RCLONE_DRIVE_CONF }}
+          CHECK_ZIP_PASSWORD: ${{ secrets.BACKUP_ZIP_PASSWORD }}
+        run: |
+          missing=0
+          for var in CHECK_SUPABASE_URL CHECK_SERVICE_KEY CHECK_RCLONE_CONF CHECK_ZIP_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              secret_name="${var#CHECK_}"
+              case "$secret_name" in
+                SUPABASE_URL) secret_name="NEXT_PUBLIC_SUPABASE_URL" ;;
+                SERVICE_KEY) secret_name="SUPABASE_SERVICE_ROLE_KEY" ;;
+                RCLONE_CONF) secret_name="RCLONE_DRIVE_CONF" ;;
+                ZIP_PASSWORD) secret_name="BACKUP_ZIP_PASSWORD" ;;
+              esac
+              echo "::error::Missing required GitHub Repository Secret: $secret_name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Please add all required secrets under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend backup dependencies
+        run: npm --prefix frontend ci --no-audit --no-fund
+
+      - name: Ensure 7z and rclone are installed
+        run: |
+          if ! command -v 7z >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq p7zip-full || sudo apt-get install -y -qq 7zip
+          fi
+          if ! command -v rclone >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq rclone
+          fi
+
+      - name: Run full Supabase export (SQL + Excel + Storage + DB Images)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_OUT_DIR: /tmp/mifos_backup_stage
+        run: |
+          rm -rf /tmp/mifos_backup_stage
+          mkdir -p /tmp/mifos_backup_stage
+          node frontend/scripts/backup-database.js --out-dir /tmp/mifos_backup_stage
+
+      - name: Optional native pg_dump (if SUPABASE_DB_URL secret is set)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            echo "Running optional native pg_dump via postgres:17-alpine..."
+            docker run --rm -e PG_URL="$SUPABASE_DB_URL" -v /tmp/mifos_backup_stage/database:/out postgres:17-alpine \
+              sh -c 'pg_dump "$PG_URL" --no-owner --no-acl --schema=public --table=auth.users --file=/out/pg_dump_native.sql'
+            echo "Native pg_dump saved cleanly."
+          else
+            echo "SUPABASE_DB_URL not set; using complete OpenAPI + Service Role SQL dump."
+          fi
+
+      - name: Create AES-256 password-protected single ZIP archive
+        id: pack
+        env:
+          BACKUP_ZIP_PASSWORD: ${{ secrets.BACKUP_ZIP_PASSWORD }}
+        run: |
+          FILE_STAMP=$(node -e "const m=require('/tmp/mifos_backup_stage/backup_manifest.json'); console.log(m.fileStamp)")
+          YEAR_MONTH=$(node -e "const m=require('/tmp/mifos_backup_stage/backup_manifest.json'); console.log(m.yearMonth)")
+          ZIP_NAME="mifos_backup_${FILE_STAMP}.zip"
+          ZIP_PATH="/tmp/${ZIP_NAME}"
+          rm -f "$ZIP_PATH"
+
+          cd /tmp/mifos_backup_stage
+          7z a -tzip -mem=AES256 -mx=5 -p"$BACKUP_ZIP_PASSWORD" "$ZIP_PATH" . >/dev/null
+
+          if [ ! -s "$ZIP_PATH" ]; then
+            echo "::error::Encrypted backup ZIP was not created or is empty."
+            exit 1
+          fi
+
+          ZIP_SIZE=$(stat -c%s "$ZIP_PATH")
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "zip_path=$ZIP_PATH" >> "$GITHUB_OUTPUT"
+          echo "year_month=$YEAR_MONTH" >> "$GITHUB_OUTPUT"
+          echo "zip_size=$ZIP_SIZE" >> "$GITHUB_OUTPUT"
+          echo "Created encrypted archive: $ZIP_NAME ($ZIP_SIZE bytes)"
+
+      - name: Upload encrypted backup to personal Google Drive
+        id: upload
+        env:
+          RCLONE_DRIVE_CONF: ${{ secrets.RCLONE_DRIVE_CONF }}
+          GDRIVE_FOLDER: ${{ vars.BACKUP_GDRIVE_FOLDER || 'Mifos-Daily-Backups' }}
+          ZIP_NAME: ${{ steps.pack.outputs.zip_name }}
+          ZIP_PATH: ${{ steps.pack.outputs.zip_path }}
+          YEAR_MONTH: ${{ steps.pack.outputs.year_month }}
+          ZIP_SIZE: ${{ steps.pack.outputs.zip_size }}
+        run: |
+          mkdir -p "$HOME/.config/rclone"
+          printf '%s\n' "$RCLONE_DRIVE_CONF" > "$HOME/.config/rclone/rclone.conf"
+          chmod 600 "$HOME/.config/rclone/rclone.conf"
+
+          REMOTE=$(rclone listremotes | grep -E '^gdrive:$' || rclone listremotes | head -n 1)
+          if [ -z "$REMOTE" ]; then
+            echo "::error::No rclone remote found inside RCLONE_DRIVE_CONF secret."
+            exit 1
+          fi
+
+          DEST_DIR="${REMOTE}${GDRIVE_FOLDER}/${YEAR_MONTH}"
+          DEST_FILE="${DEST_DIR}/${ZIP_NAME}"
+
+          rclone mkdir "$DEST_DIR"
+          rclone copyto "$ZIP_PATH" "$DEST_FILE" --stats-one-line --stats 10s
+
+          REMOTE_SIZE=$(rclone lsjson "$DEST_DIR" --files-only --include "$ZIP_NAME" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d[0]?.Size ?? -1)")
+          if [ "$REMOTE_SIZE" != "$ZIP_SIZE" ]; then
+            echo "::error::Google Drive upload size mismatch (local=$ZIP_SIZE, remote=$REMOTE_SIZE)."
+            exit 1
+          fi
+
+          echo "dest_file=$DEST_FILE" >> "$GITHUB_OUTPUT"
+          echo "Uploaded and verified cleanly on Google Drive: $DEST_FILE ($REMOTE_SIZE bytes)"
+
+      - name: Write workflow summary & cleanup sensitive temporary files
+        if: always()
+        run: |
+          if [ -f /tmp/mifos_backup_stage/backup_manifest.json ]; then
+            node -e '
+              const fs = require("fs");
+              const m = JSON.parse(fs.readFileSync("/tmp/mifos_backup_stage/backup_manifest.json", "utf8"));
+              const zipName = process.env.ZIP_NAME || "";
+              const destFile = process.env.DEST_FILE || "";
+              const zipSizeMb = ((Number(process.env.ZIP_SIZE) || 0) / (1024 * 1024)).toFixed(2);
+              const lines = [
+                "## Mifos Daily Encrypted Backup Summary",
+                `- **IST Timestamp:** ${m.backupTimestampIst}`,
+                `- **Public Tables:** ${m.totalTables}`,
+                `- **Total Rows:** ${m.totalRows}`,
+                `- **Auth Users:** ${m.authUsersCount}`,
+                `- **Storage Files:** ${m.storageFilesCount}`,
+                `- **DB Images Extracted:** ${m.dbExtractedImagesCount}`,
+                `- **Encrypted Archive:** \`${zipName}\` (${zipSizeMb} MB, AES-256)`,
+                `- **Google Drive Destination:** \`${destFile}\``
+              ];
+              fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            '
+          fi
+          rm -rf /tmp/mifos_backup_stage /tmp/mifos_backup_*.zip "$HOME/.config/rclone"
+        env:
+          ZIP_NAME: ${{ steps.pack.outputs.zip_name }}
+          ZIP_SIZE: ${{ steps.pack.outputs.zip_size }}
+          DEST_FILE: ${{ steps.upload.outputs.dest_file }}
