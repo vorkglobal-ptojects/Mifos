@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { getAuthHeaders } from '@/lib/getAuthHeaders';
+import { CANONICAL_BRANCHES } from '@/lib/branch-mapping';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +17,8 @@ import {
   CheckCircle2, XCircle, ShieldAlert, Sparkles, Inbox, RefreshCcw, 
   Landmark, UserCheck, Search, Filter, Eye, AlertTriangle, 
   RotateCcw, Scale, FileText, Camera, User, DollarSign, 
-  Package, Clock, Check, ExternalLink, AlertCircle, ShieldCheck, Building2
+  Package, Clock, Check, ExternalLink, AlertCircle, ShieldCheck, Building2,
+  Pencil, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -78,6 +80,7 @@ export default function ApprovalsPage() {
   // Change Request Tickets State (Maker-Checker)
   const [changeTickets, setChangeTickets] = useState<any[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
+  const [editableProposedData, setEditableProposedData] = useState<Record<string, any>>({});
   const [isTicketActionLoading, setIsTicketActionLoading] = useState(false);
   const [isTicketReviewModalOpen, setIsTicketReviewModalOpen] = useState(false);
   const [ticketReviewNotes, setTicketReviewNotes] = useState('');
@@ -244,14 +247,19 @@ export default function ApprovalsPage() {
     }
   };
 
-  // Helper to execute change ticket decision with automatic multi-endpoint fallback
+  // Helper to execute change ticket decision/edit with automatic multi-endpoint fallback
   const executeTicketDecisionRequest = async (
     ticketId: string,
-    action: 'APPROVE' | 'REJECT',
-    notes: string
+    action: 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
+    notes: string,
+    proposedData?: Record<string, any>
   ) => {
     const headers = getAuthHeaders();
-    const payload = JSON.stringify({ id: ticketId, action, notes });
+    const payloadObj: Record<string, any> = { id: ticketId, action, notes };
+    if (proposedData && Object.keys(proposedData).length > 0) {
+      payloadObj.proposed_data = proposedData;
+    }
+    const payload = JSON.stringify(payloadObj);
 
     // 1. Primary: PATCH /api/change-requests (same serverless bundle as GET /api/change-requests)
     try {
@@ -274,13 +282,16 @@ export default function ApprovalsPage() {
         throw primaryErr;
       }
 
-      // 2. Fallback A: POST /api/change-requests/[id]/approve or /reject
+      // 2. Fallback A: POST sub-route for APPROVE/REJECT or main POST endpoint for UPDATE_PROPOSED
       try {
-        const subRoute = action === 'APPROVE' ? 'approve' : 'reject';
-        const res2 = await fetch(`/api/change-requests/${encodeURIComponent(ticketId)}/${subRoute}`, {
+        const endpoint =
+          action === 'UPDATE_PROPOSED'
+            ? '/api/change-requests'
+            : `/api/change-requests/${encodeURIComponent(ticketId)}/${action === 'APPROVE' ? 'approve' : 'reject'}`;
+        const res2 = await fetch(endpoint, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ notes })
+          body: action === 'UPDATE_PROPOSED' ? payload : JSON.stringify({ notes, ...(proposedData ? { proposed_data: proposedData } : {}) })
         });
         const data2 = await res2.json();
         if (!res2.ok) throw new Error(data2.error || `Request failed (${res2.status})`);
@@ -292,6 +303,9 @@ export default function ApprovalsPage() {
           id: ticketId,
           notes
         });
+        if (proposedData && Object.keys(proposedData).length > 0) {
+          qs.set('proposed_data', JSON.stringify(proposedData));
+        }
         const res3 = await fetch(`/api/change-requests?${qs.toString()}`, {
           method: 'GET',
           headers
@@ -306,19 +320,49 @@ export default function ApprovalsPage() {
   // Maker-Checker Change Request Handlers
   const handleOpenTicketReview = (ticket: any) => {
     setSelectedTicket(ticket);
-    setTicketReviewNotes(ticket.review_notes || '');
+    setEditableProposedData({ ...(ticket?.proposed_data || {}) });
+    setTicketReviewNotes(ticket?.review_notes || '');
     setIsTicketReviewModalOpen(true);
   };
 
-  const handleApproveTicket = async (ticket: any, customNotes?: string) => {
+  const handleSaveTicketProposedEdits = async () => {
+    if (!selectedTicket) return;
+    setIsTicketActionLoading(true);
+    const toastId = toast.loading(`Saving edits to ticket ${selectedTicket.ticket_no}...`);
+    try {
+      const res = await executeTicketDecisionRequest(
+        selectedTicket.id,
+        'UPDATE_PROPOSED',
+        ticketReviewNotes.trim(),
+        editableProposedData
+      );
+      if (res?.ticket) {
+        setSelectedTicket(res.ticket);
+        setEditableProposedData({ ...(res.ticket.proposed_data || {}) });
+      }
+      toast.success(`Ticket ${selectedTicket.ticket_no} proposed values saved!`, { id: toastId });
+      loadDashboardData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save ticket edits', { id: toastId });
+    } finally {
+      setIsTicketActionLoading(false);
+    }
+  };
+
+  const handleApproveTicket = async (
+    ticket: any,
+    customNotes?: string,
+    proposedDataOverride?: Record<string, any>
+  ) => {
     setIsTicketActionLoading(true);
     const toastId = toast.loading(`Approving ticket ${ticket.ticket_no}...`);
     try {
       const finalNotes = (customNotes ?? ticketReviewNotes).trim() || 'Approved by Branch Manager';
-      await executeTicketDecisionRequest(ticket.id, 'APPROVE', finalNotes);
+      await executeTicketDecisionRequest(ticket.id, 'APPROVE', finalNotes, proposedDataOverride);
       toast.success(`Ticket ${ticket.ticket_no} approved and applied to database!`, { id: toastId });
       setIsTicketReviewModalOpen(false);
       setSelectedTicket(null);
+      setEditableProposedData({});
       setTicketReviewNotes('');
       loadDashboardData();
     } catch (err: any) {
@@ -1689,193 +1733,371 @@ export default function ApprovalsPage() {
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={isTicketReviewModalOpen} onOpenChange={setIsTicketReviewModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-slate-200 p-0">
-          {selectedTicket && (
-            <div className="space-y-5 pb-6">
-              {/* Header Banner */}
-              <div className="p-6 bg-slate-900 text-white rounded-t-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2.5 py-0.5 bg-purple-500 text-white font-black text-[10px] uppercase rounded-md">
-                      Maker-Checker Review
+          {selectedTicket && (() => {
+            const userRoleUpper = (user?.role || '').toUpperCase();
+            const canEditProposed =
+              selectedTicket.status === 'PENDING' &&
+              selectedTicket.action_type !== 'DELETE' &&
+              selectedTicket.action_type !== 'VOID_INTEREST' &&
+              (!userRoleUpper || ['ADMIN', 'MANAGER'].includes(userRoleUpper));
+            const activeProposed = canEditProposed
+              ? editableProposedData
+              : (selectedTicket.proposed_data || {});
+            const originalProposed = selectedTicket.proposed_data || {};
+            const hasProposedEdits =
+              canEditProposed &&
+              JSON.stringify(activeProposed) !== JSON.stringify(originalProposed);
+            const numericFieldKeys = new Set([
+              'price', 'weight', 'weight_grams', 'weight_mg', 'disbursed_amount',
+              'appraised_value', 'interest_paid', 'opening_balance', 'closing_balance',
+              'cp_balance', 'opening_capital', 'transfer_in', 'transfer_out',
+              'loan_issued_total', 'redemption_total', 'interest_rec_total',
+              'recovery_total', 'insurance_total', 'expenses_total'
+            ]);
+            const excludedExtraKeys = new Set([
+              'id', 'created_at', 'updated_at', 'withdrawal_date',
+              'withdrawal_notes', 'withdrawal_reason', 'client_id', 'branch_name', 'status'
+            ]);
+            const addableFields = selectedTicket.current_data
+              ? Object.keys(selectedTicket.current_data).filter(
+                  (k) => !excludedExtraKeys.has(k) && !(k in activeProposed)
+                )
+              : [];
+
+            return (
+              <div className="space-y-5 pb-6">
+                {/* Header Banner */}
+                <div className="p-6 bg-slate-900 text-white rounded-t-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 bg-purple-500 text-white font-black text-[10px] uppercase rounded-md">
+                        Maker-Checker Review
+                      </span>
+                      <Badge variant="outline" className="border-slate-700 text-slate-300 text-[10px] font-mono">
+                        Branch: {selectedTicket.branch_id}
+                      </Badge>
+                      <Badge className={`font-black text-[10px] uppercase ${
+                        selectedTicket.status === 'PENDING'
+                          ? 'bg-amber-400 text-slate-950'
+                          : selectedTicket.status === 'APPROVED'
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-rose-500 text-white'
+                      }`}>
+                        {selectedTicket.status}
+                      </Badge>
+                    </div>
+                    <h2 className="text-xl font-black tracking-tight text-white font-mono">
+                      {selectedTicket.ticket_no}
+                    </h2>
+                    <p className="text-xs text-slate-400 font-semibold">
+                      Submitted by {selectedTicket.requested_by_name || selectedTicket.requested_by_email} • {selectedTicket.created_at ? new Date(selectedTicket.created_at).toLocaleString() : 'N/A'}
+                    </p>
+                  </div>
+
+                  <div className="text-right sm:border-l sm:border-slate-800 sm:pl-6">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Target Reference</span>
+                    <div className="text-xl font-black text-amber-400 font-mono">
+                      {selectedTicket.reference_no}
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase">
+                      {selectedTicket.entity_type} • {selectedTicket.action_type}
                     </span>
-                    <Badge variant="outline" className="border-slate-700 text-slate-300 text-[10px] font-mono">
-                      Branch: {selectedTicket.branch_id}
-                    </Badge>
-                    <Badge className={`font-black text-[10px] uppercase ${
-                      selectedTicket.status === 'PENDING'
-                        ? 'bg-amber-400 text-slate-950'
-                        : selectedTicket.status === 'APPROVED'
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-rose-500 text-white'
-                    }`}>
-                      {selectedTicket.status}
-                    </Badge>
                   </div>
-                  <h2 className="text-xl font-black tracking-tight text-white font-mono">
-                    {selectedTicket.ticket_no}
-                  </h2>
-                  <p className="text-xs text-slate-400 font-semibold">
-                    Submitted by {selectedTicket.requested_by_name || selectedTicket.requested_by_email} • {selectedTicket.created_at ? new Date(selectedTicket.created_at).toLocaleString() : 'N/A'}
-                  </p>
                 </div>
 
-                <div className="text-right sm:border-l sm:border-slate-800 sm:pl-6">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Target Reference</span>
-                  <div className="text-xl font-black text-amber-400 font-mono">
-                    {selectedTicket.reference_no}
-                  </div>
-                  <span className="text-[10px] font-bold text-slate-300 uppercase">
-                    {selectedTicket.entity_type} • {selectedTicket.action_type}
-                  </span>
-                </div>
-              </div>
-
-              <div className="px-6 space-y-4">
-                {/* Staff Justification */}
-                <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">
-                    Staff Reason / Justification
-                  </span>
-                  <p className="text-sm font-bold text-slate-900 italic whitespace-pre-wrap break-words leading-relaxed">
-                    {selectedTicket.reason ? `"${selectedTicket.reason}"` : 'No reason provided'}
-                  </p>
-                </div>
-
-                {/* Comparison of Current vs Proposed Values */}
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Proposed Record Modifications
-                    </h4>
-                    <Badge variant="outline" className="text-[10px] font-bold">
-                      {selectedTicket.action_type}
-                    </Badge>
+                <div className="px-6 space-y-4">
+                  {/* Staff Justification */}
+                  <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">
+                      Staff Reason / Justification
+                    </span>
+                    <p className="text-sm font-bold text-slate-900 italic whitespace-pre-wrap break-words leading-relaxed">
+                      {selectedTicket.reason ? `"${selectedTicket.reason}"` : 'No reason provided'}
+                    </p>
                   </div>
 
-                  {selectedTicket.action_type === 'DELETE' || selectedTicket.action_type === 'VOID_INTEREST' ? (
-                    <div className="space-y-3">
-                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs font-bold">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <span>Permanent Deletion Requested for {selectedTicket.entity_type} ({selectedTicket.reference_no})</span>
+                  {/* Comparison of Current vs Proposed Values */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                          Proposed Record Modifications
+                        </h4>
+                        {canEditProposed && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-100 text-purple-800 border border-purple-200">
+                            <Pencil className="w-2.5 h-2.5" /> Admin / Manager Editable
+                          </span>
+                        )}
                       </div>
-                      {selectedTicket.current_data && Object.keys(selectedTicket.current_data).length > 0 && (
-                        <div className="grid grid-cols-2 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200">
-                          {Object.entries(selectedTicket.current_data)
-                            .filter(([k]) => !['id', 'created_at', 'updated_at', 'withdrawal_date', 'withdrawal_notes', 'withdrawal_reason'].includes(k))
-                            .map(([k, v]: any) => (
-                              <div key={k} className="flex justify-between border-b border-slate-100 py-1">
-                                <span className="text-slate-500 font-semibold capitalize">{k.replace(/_/g, ' ')}:</span>
-                                <span className="font-mono font-bold text-slate-900">{String(v ?? '—')}</span>
-                              </div>
-                            ))}
+                      <div className="flex items-center gap-2">
+                        {hasProposedEdits && (
+                          <button
+                            type="button"
+                            onClick={() => setEditableProposedData({ ...(selectedTicket.proposed_data || {}) })}
+                            className="text-[10px] font-bold text-slate-600 hover:text-slate-900 underline cursor-pointer"
+                          >
+                            Reset Edits
+                          </button>
+                        )}
+                        <Badge variant="outline" className="text-[10px] font-bold">
+                          {selectedTicket.action_type}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {selectedTicket.edited_by_name && (
+                      <div className="px-3 py-2 bg-purple-50 border border-purple-200/80 rounded-xl text-[11px] font-semibold text-purple-900 flex items-center justify-between gap-2">
+                        <span>
+                          Adjusted by <strong>{selectedTicket.edited_by_name}</strong> ({selectedTicket.edited_by_role || 'MANAGER'})
+                        </span>
+                        {selectedTicket.edited_at && (
+                          <span className="text-[10px] text-purple-600 font-mono">
+                            {new Date(selectedTicket.edited_at).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {selectedTicket.action_type === 'DELETE' || selectedTicket.action_type === 'VOID_INTEREST' ? (
+                      <div className="space-y-3">
+                        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-700 text-xs font-bold">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>Permanent Deletion Requested for {selectedTicket.entity_type} ({selectedTicket.reference_no})</span>
                         </div>
-                      )}
+                        {selectedTicket.current_data && Object.keys(selectedTicket.current_data).length > 0 && (
+                          <div className="grid grid-cols-2 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200">
+                            {Object.entries(selectedTicket.current_data)
+                              .filter(([k]) => !['id', 'created_at', 'updated_at', 'withdrawal_date', 'withdrawal_notes', 'withdrawal_reason'].includes(k))
+                              .map(([k, v]: any) => (
+                                <div key={k} className="flex justify-between border-b border-slate-100 py-1">
+                                  <span className="text-slate-500 font-semibold capitalize">{k.replace(/_/g, ' ')}:</span>
+                                  <span className="font-mono font-bold text-slate-900">{String(v ?? '—')}</span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                          <table className="w-full text-xs border-collapse">
+                            <thead>
+                              <tr className="border-b border-slate-200 bg-slate-100/80 text-slate-500 uppercase text-[10px] font-black">
+                                <th className="py-2 px-3 text-left">Field</th>
+                                <th className="py-2 px-3 text-left">Current Value</th>
+                                <th className="py-2 px-3 text-left">
+                                  {canEditProposed ? 'Proposed / Approved Value (Edit Here)' : 'Proposed New Value'}
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 bg-white">
+                              {Object.entries(activeProposed).map(([key, val]: any) => {
+                                const curr = selectedTicket.current_data?.[key];
+                                const isChanged = String(curr ?? '') !== String(val ?? '');
+                                const isModifiedFromTeller =
+                                  canEditProposed &&
+                                  String(originalProposed[key] ?? '') !== String(val ?? '');
+                                const strVal = val !== undefined && val !== null ? String(val) : '';
+
+                                return (
+                                  <tr key={key} className={isModifiedFromTeller ? 'bg-purple-50/40' : isChanged ? 'bg-emerald-50/40' : ''}>
+                                    <td className="py-2.5 px-3 font-bold text-slate-700 capitalize whitespace-nowrap">
+                                      {key.replace(/_/g, ' ')}
+                                    </td>
+                                    <td className={`py-2.5 px-3 font-mono whitespace-nowrap ${isChanged ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
+                                      {curr !== undefined && curr !== null ? String(curr) : '—'}
+                                    </td>
+                                    <td className="py-2 px-3 font-mono font-bold">
+                                      {canEditProposed ? (
+                                        <div className="flex items-center gap-2">
+                                          {key === 'branch_id' ? (
+                                            <select
+                                              value={strVal}
+                                              onChange={(e) =>
+                                                setEditableProposedData((prev) => ({
+                                                  ...prev,
+                                                  [key]: e.target.value
+                                                }))
+                                              }
+                                              className="w-full min-w-[140px] px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                                            >
+                                              {strVal && !CANONICAL_BRANCHES.some((b) => b.id === strVal) && (
+                                                <option value={strVal}>{strVal}</option>
+                                              )}
+                                              {CANONICAL_BRANCHES.map((b) => (
+                                                <option key={b.id} value={b.id}>
+                                                  {b.id} - {b.name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          ) : (
+                                            <input
+                                              type={
+                                                key === 'date' || key === 'ledger_date'
+                                                  ? 'date'
+                                                  : numericFieldKeys.has(key)
+                                                  ? 'number'
+                                                  : 'text'
+                                              }
+                                              step={numericFieldKeys.has(key) ? 'any' : undefined}
+                                              value={strVal}
+                                              onChange={(e) =>
+                                                setEditableProposedData((prev) => ({
+                                                  ...prev,
+                                                  [key]: e.target.value
+                                                }))
+                                              }
+                                              placeholder="Enter value..."
+                                              className={`w-full min-w-[140px] px-2.5 py-1.5 bg-white border rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-2 transition-all ${
+                                                isModifiedFromTeller
+                                                  ? 'border-purple-400 text-purple-900 focus:ring-purple-500/20 focus:border-purple-600'
+                                                  : isChanged
+                                                  ? 'border-emerald-400 text-emerald-800 focus:ring-emerald-500/20 focus:border-emerald-600'
+                                                  : 'border-slate-300 text-slate-800 focus:ring-purple-500/20 focus:border-purple-500'
+                                              }`}
+                                            />
+                                          )}
+                                          {isModifiedFromTeller ? (
+                                            <span className="shrink-0 px-1.5 py-0.5 text-[9px] bg-purple-100 text-purple-800 rounded uppercase font-sans font-black">
+                                              Edited
+                                            </span>
+                                          ) : isChanged ? (
+                                            <span className="shrink-0 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 rounded uppercase font-sans font-black">
+                                              Changed
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      ) : (
+                                        <span className="text-emerald-700 font-black">
+                                          {String(val)}
+                                          {isChanged && (
+                                            <span className="ml-2 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 rounded uppercase font-sans">
+                                              Changed
+                                            </span>
+                                          )}
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {canEditProposed && addableFields.length > 0 && (
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <span className="text-[11px] font-bold text-slate-500">
+                              Need to adjust another field?
+                            </span>
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                const field = e.target.value;
+                                if (!field) return;
+                                setEditableProposedData((prev) => ({
+                                  ...prev,
+                                  [field]: selectedTicket.current_data?.[field] ?? ''
+                                }));
+                              }}
+                              className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer focus:outline-none focus:border-purple-500"
+                            >
+                              <option value="">+ Add Field from Record...</option>
+                              {addableFields.map((fieldKey) => (
+                                <option key={fieldKey} value={fieldKey}>
+                                  {fieldKey.replace(/_/g, ' ')}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Manager Review Notes */}
+                  {selectedTicket.status === 'PENDING' ? (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-black uppercase text-slate-700">
+                        Manager Review Note (Optional for Approval)
+                      </label>
+                      <input
+                        type="text"
+                        value={ticketReviewNotes}
+                        onChange={(e) => setTicketReviewNotes(e.target.value)}
+                        placeholder="e.g. Verified against branch physical bill & approved..."
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                      />
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black">
-                            <th className="py-2 px-3 text-left">Field</th>
-                            <th className="py-2 px-3 text-left">Current Value</th>
-                            <th className="py-2 px-3 text-left">Proposed New Value</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 bg-white">
-                          {Object.entries(selectedTicket.proposed_data || {}).map(([key, val]: any) => {
-                            const curr = selectedTicket.current_data?.[key];
-                            const isChanged = String(curr ?? '') !== String(val ?? '');
-                            return (
-                              <tr key={key} className={isChanged ? 'bg-emerald-50/40' : ''}>
-                                <td className="py-2.5 px-3 font-bold text-slate-700 capitalize">
-                                  {key.replace(/_/g, ' ')}
-                                </td>
-                                <td className="py-2.5 px-3 font-mono text-slate-500 line-through">
-                                  {curr !== undefined && curr !== null ? String(curr) : '—'}
-                                </td>
-                                <td className="py-2.5 px-3 font-mono font-black text-emerald-700">
-                                  {String(val)}
-                                  {isChanged && (
-                                    <span className="ml-2 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 rounded uppercase font-sans">
-                                      Changed
-                                    </span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                    <div className="p-3 bg-slate-100 rounded-xl text-xs space-y-1">
+                      <div className="font-bold text-slate-700">
+                        Reviewed by: <strong className="text-slate-900">{selectedTicket.reviewed_by_name || 'Manager'}</strong> ({selectedTicket.reviewed_at ? new Date(selectedTicket.reviewed_at).toLocaleString() : ''})
+                      </div>
+                      {selectedTicket.review_notes && (
+                        <div className="text-slate-600 italic">Note: "{selectedTicket.review_notes}"</div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Manager Review Notes */}
-                {selectedTicket.status === 'PENDING' ? (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-black uppercase text-slate-700">
-                      Manager Review Note (Optional for Approval)
-                    </label>
-                    <input
-                      type="text"
-                      value={ticketReviewNotes}
-                      onChange={(e) => setTicketReviewNotes(e.target.value)}
-                      placeholder="e.g. Verified against branch physical bill & approved..."
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
-                    />
-                  </div>
-                ) : (
-                  <div className="p-3 bg-slate-100 rounded-xl text-xs space-y-1">
-                    <div className="font-bold text-slate-700">
-                      Reviewed by: <strong className="text-slate-900">{selectedTicket.reviewed_by_name || 'Manager'}</strong> ({selectedTicket.reviewed_at ? new Date(selectedTicket.reviewed_at).toLocaleString() : ''})
-                    </div>
-                    {selectedTicket.review_notes && (
-                      <div className="text-slate-600 italic">Note: "{selectedTicket.review_notes}"</div>
-                    )}
-                  </div>
-                )}
-              </div>
+                {/* Footer Actions */}
+                <div className="px-6 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsTicketReviewModalOpen(false)}
+                    className="w-full sm:w-auto rounded-xl font-bold"
+                  >
+                    Close
+                  </Button>
 
-              {/* Footer Actions */}
-              <div className="px-6 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsTicketReviewModalOpen(false)}
-                  className="w-full sm:w-auto rounded-xl font-bold"
-                >
-                  Close
-                </Button>
-
-                {selectedTicket.status === 'PENDING' && (
-                  <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                    <Button
-                      variant="outline"
-                      disabled={isTicketActionLoading}
-                      onClick={() => {
-                        setTicketRejectReason('');
-                        setIsRejectTicketModalOpen(true);
-                      }}
-                      className="border-rose-300 text-rose-700 hover:bg-rose-50 font-black text-xs uppercase tracking-wider rounded-xl px-4 h-10 cursor-pointer"
-                    >
-                      <XCircle className="w-4 h-4 mr-1.5" /> Reject Ticket
-                    </Button>
-                    <Button
-                      disabled={isTicketActionLoading}
-                      onClick={() => handleApproveTicket(selectedTicket, ticketReviewNotes)}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl px-5 h-10 cursor-pointer shadow-md"
-                    >
-                      {isTicketActionLoading ? (
-                        <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                  {selectedTicket.status === 'PENDING' && (
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                      {hasProposedEdits && (
+                        <Button
+                          variant="outline"
+                          disabled={isTicketActionLoading}
+                          onClick={handleSaveTicketProposedEdits}
+                          className="border-purple-300 text-purple-700 hover:bg-purple-50 font-black text-xs uppercase tracking-wider rounded-xl px-3.5 h-10 cursor-pointer"
+                        >
+                          <Save className="w-4 h-4 mr-1.5" /> Save Edits
+                        </Button>
                       )}
-                      Approve & Apply Changes
-                    </Button>
-                  </div>
-                )}
+                      <Button
+                        variant="outline"
+                        disabled={isTicketActionLoading}
+                        onClick={() => {
+                          setTicketRejectReason('');
+                          setIsRejectTicketModalOpen(true);
+                        }}
+                        className="border-rose-300 text-rose-700 hover:bg-rose-50 font-black text-xs uppercase tracking-wider rounded-xl px-4 h-10 cursor-pointer"
+                      >
+                        <XCircle className="w-4 h-4 mr-1.5" /> Reject Ticket
+                      </Button>
+                      <Button
+                        disabled={isTicketActionLoading}
+                        onClick={() =>
+                          handleApproveTicket(
+                            selectedTicket,
+                            ticketReviewNotes,
+                            canEditProposed ? editableProposedData : undefined
+                          )
+                        }
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl px-5 h-10 cursor-pointer shadow-md"
+                      >
+                        {isTicketActionLoading ? (
+                          <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                        )}
+                        {hasProposedEdits ? 'Approve & Apply Edited Changes' : 'Approve & Apply Changes'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

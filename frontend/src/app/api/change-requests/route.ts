@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
-import { generateTicketNo, applyApprovedChange, ChangeRequestTicket } from '@/lib/change-requests';
+import { generateTicketNo, executeChangeTicketAction, ChangeRequestTicket } from '@/lib/change-requests';
 import { normalizeBranchId } from '@/lib/branch-mapping';
 
 export const dynamic = 'force-dynamic';
@@ -8,103 +8,15 @@ export const dynamic = 'force-dynamic';
 async function processTicketDecision(
   session: any,
   ticketId: string,
-  decision: 'APPROVE' | 'REJECT',
-  rawNotes?: string
+  decision: 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
+  rawNotes?: string,
+  proposedData?: Record<string, any>
 ) {
-  const userRole = (session.role || '').toUpperCase();
-  if (userRole !== 'ADMIN' && userRole !== 'MANAGER') {
-    return NextResponse.json(
-      { error: `Forbidden. Only Managers and Admins can ${decision.toLowerCase()} change request tickets.` },
-      { status: 403 }
-    );
-  }
-
-  const { data: auditRow, error: fetchErr } = await adminSupabase
-    .from('audit_logs')
-    .select('*')
-    .eq('id', ticketId)
-    .eq('action', 'CHANGE_REQUEST')
-    .maybeSingle();
-
-  if (fetchErr || !auditRow) {
-    return NextResponse.json({ error: 'Change request ticket not found' }, { status: 404 });
-  }
-
-  const ticket: ChangeRequestTicket = auditRow.details;
-  if (ticket.status !== 'PENDING') {
-    return NextResponse.json(
-      { error: `Ticket already ${ticket.status}. Cannot modify.` },
-      { status: 400 }
-    );
-  }
-
-  const nowIso = new Date().toISOString();
-  const managerEmail = session.user?.email || session.profile?.email || 'manager@branch';
-  const managerName =
-    session.user?.name ||
-    session.user?.user_metadata?.name ||
-    session.profile?.first_name ||
-    managerEmail.split('@')[0] ||
-    'Manager';
-
-  if (decision === 'APPROVE') {
-    const reviewNotes = (rawNotes || 'Approved by Manager').trim();
-    await applyApprovedChange(ticket, {
-      name: managerName,
-      email: managerEmail
-    });
-
-    const updatedTicket: ChangeRequestTicket = {
-      ...ticket,
-      id: auditRow.id,
-      status: 'APPROVED',
-      reviewed_by_user_id: session.user?.id,
-      reviewed_by_name: managerName,
-      reviewed_by_role: userRole,
-      reviewed_at: nowIso,
-      review_notes: reviewNotes,
-      updated_at: nowIso
-    };
-
-    const { error: updErr } = await adminSupabase
-      .from('audit_logs')
-      .update({ details: updatedTicket })
-      .eq('id', auditRow.id);
-
-    if (updErr) throw updErr;
-
-    return NextResponse.json({
-      success: true,
-      message: `Ticket ${ticket.ticket_no} approved and changes applied successfully.`,
-      ticket: updatedTicket
-    });
-  } else {
-    const reviewNotes = (rawNotes || 'Rejected by Manager').trim();
-    const updatedTicket: ChangeRequestTicket = {
-      ...ticket,
-      id: auditRow.id,
-      status: 'REJECTED',
-      reviewed_by_user_id: session.user?.id,
-      reviewed_by_name: managerName,
-      reviewed_by_role: userRole,
-      reviewed_at: nowIso,
-      review_notes: reviewNotes,
-      updated_at: nowIso
-    };
-
-    const { error: updErr } = await adminSupabase
-      .from('audit_logs')
-      .update({ details: updatedTicket })
-      .eq('id', auditRow.id);
-
-    if (updErr) throw updErr;
-
-    return NextResponse.json({
-      success: true,
-      message: `Ticket ${ticket.ticket_no} marked as REJECTED.`,
-      ticket: updatedTicket
-    });
-  }
+  const result = await executeChangeTicketAction(session, ticketId, decision, {
+    notes: rawNotes,
+    proposedData
+  });
+  return NextResponse.json(result.body, { status: result.status });
 }
 
 export async function GET(request: Request) {
@@ -119,9 +31,20 @@ export async function GET(request: Request) {
     // Fallback action handler via GET query params in case POST/PATCH is blocked by client proxy/network
     const actionParam = (searchParams.get('action') || '').toUpperCase();
     const ticketIdParam = searchParams.get('id') || '';
-    if ((actionParam === 'APPROVE' || actionParam === 'REJECT') && ticketIdParam) {
+    if ((actionParam === 'APPROVE' || actionParam === 'REJECT' || actionParam === 'UPDATE_PROPOSED') && ticketIdParam) {
       const notesParam = searchParams.get('notes') || '';
-      return await processTicketDecision(session, ticketIdParam, actionParam as 'APPROVE' | 'REJECT', notesParam);
+      const rawProposed = searchParams.get('proposed_data');
+      let parsedProposed: Record<string, any> | undefined;
+      if (rawProposed) {
+        try { parsedProposed = JSON.parse(rawProposed); } catch { /* ignore malformed fallback */ }
+      }
+      return await processTicketDecision(
+        session,
+        ticketIdParam,
+        actionParam as 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
+        notesParam,
+        parsedProposed
+      );
     }
 
     const branchParam = searchParams.get('branch');
@@ -193,12 +116,22 @@ export async function PATCH(request: Request) {
     const ticketId = body.id || body.ticket_id;
     const action = (body.action || '').toUpperCase();
     const notes = body.notes || body.reason || '';
+    const proposedData = body.proposed_data || body.proposedData;
 
-    if (!ticketId || (action !== 'APPROVE' && action !== 'REJECT')) {
-      return NextResponse.json({ error: 'Valid ticket id and action (APPROVE or REJECT) are required' }, { status: 400 });
+    if (!ticketId || !['APPROVE', 'REJECT', 'UPDATE_PROPOSED'].includes(action)) {
+      return NextResponse.json(
+        { error: 'Valid ticket id and action (APPROVE, REJECT, or UPDATE_PROPOSED) are required' },
+        { status: 400 }
+      );
     }
 
-    return await processTicketDecision(session, ticketId, action as 'APPROVE' | 'REJECT', notes);
+    return await processTicketDecision(
+      session,
+      ticketId,
+      action as 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
+      notes,
+      proposedData
+    );
   } catch (err: any) {
     console.error('Error in PATCH /api/change-requests:', err);
     return NextResponse.json({ error: err.message || 'Failed to process change request decision' }, { status: 500 });
@@ -214,11 +147,17 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // Allow POST decision payload ({ id, action: 'APPROVE' | 'REJECT', notes }) on main endpoint
+    // Allow POST decision/edit payload on main endpoint
     const decisionAction = (body.action || '').toUpperCase();
     const decisionId = body.id || body.ticket_id;
-    if ((decisionAction === 'APPROVE' || decisionAction === 'REJECT') && decisionId) {
-      return await processTicketDecision(session, decisionId, decisionAction as 'APPROVE' | 'REJECT', body.notes || body.reason || '');
+    if (['APPROVE', 'REJECT', 'UPDATE_PROPOSED'].includes(decisionAction) && decisionId) {
+      return await processTicketDecision(
+        session,
+        decisionId,
+        decisionAction as 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
+        body.notes || body.reason || '',
+        body.proposed_data || body.proposedData
+      );
     }
 
     const {
