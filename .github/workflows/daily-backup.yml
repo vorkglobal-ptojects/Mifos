@@ -46,18 +46,24 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout backup script
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+          sparse-checkout: frontend/scripts
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
 
-      - name: Install frontend backup dependencies
-        run: npm --prefix frontend ci --no-audit --no-fund
+      - name: Install minimal backup dependencies
+        run: |
+          rm -rf /tmp/backup_runner
+          mkdir -p /tmp/backup_runner
+          cp frontend/scripts/backup-database.js /tmp/backup_runner/backup-database.js
+          npm --prefix /tmp/backup_runner install --no-save --no-audit --no-fund @supabase/supabase-js xlsx dotenv
 
       - name: Ensure 7z and rclone are installed
         run: |
@@ -78,7 +84,7 @@ jobs:
         run: |
           rm -rf /tmp/mifos_backup_stage
           mkdir -p /tmp/mifos_backup_stage
-          node frontend/scripts/backup-database.js --out-dir /tmp/mifos_backup_stage
+          node /tmp/backup_runner/backup-database.js --out-dir /tmp/mifos_backup_stage
 
       - name: Optional native pg_dump (if SUPABASE_DB_URL secret is set)
         env:
@@ -130,7 +136,7 @@ jobs:
           ZIP_SIZE: ${{ steps.pack.outputs.zip_size }}
         run: |
           mkdir -p "$HOME/.config/rclone"
-          printf '%s\n' "$RCLONE_DRIVE_CONF" > "$HOME/.config/rclone/rclone.conf"
+          printf '%s\n' "$RCLONE_DRIVE_CONF" | tr -d '\r' > "$HOME/.config/rclone/rclone.conf"
           chmod 600 "$HOME/.config/rclone/rclone.conf"
 
           REMOTE=$(rclone listremotes | grep -E '^gdrive:$' || rclone listremotes | head -n 1)
@@ -178,7 +184,7 @@ jobs:
               fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
             '
           fi
-          rm -rf /tmp/mifos_backup_stage /tmp/mifos_backup_*.zip "$HOME/.config/rclone"
+          rm -rf /tmp/backup_runner /tmp/mifos_backup_stage /tmp/mifos_backup_*.zip "$HOME/.config/rclone"
         env:
           ZIP_NAME: ${{ steps.pack.outputs.zip_name }}
           ZIP_SIZE: ${{ steps.pack.outputs.zip_size }}
