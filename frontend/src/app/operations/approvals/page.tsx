@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getAuthHeaders } from '@/lib/getAuthHeaders';
 import { CANONICAL_BRANCHES } from '@/lib/branch-mapping';
+import type { ChangeRequestTicket, ChangeRecordData } from '@/lib/change-requests';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,13 +14,75 @@ import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter 
 } from '@/components/ui/dialog';
 import { 
-  CheckCircle2, XCircle, ShieldAlert, Sparkles, Inbox, RefreshCcw, 
-  Landmark, UserCheck, Search, Filter, Eye, AlertTriangle, 
-  RotateCcw, Scale, FileText, Camera, User, DollarSign, 
-  Package, Clock, Check, ExternalLink, AlertCircle, ShieldCheck, Building2,
+  CheckCircle2, XCircle, ShieldAlert, Inbox, RefreshCcw, 
+  Search, Eye, AlertTriangle, 
+  RotateCcw, FileText, Camera, User, DollarSign, 
+  Package, Clock, Check, ShieldCheck, Building2,
   Pencil, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface PawnItem {
+  id: string;
+  item_type?: string;
+  purity?: string;
+  weight_mg?: number;
+  weight_grams?: number;
+  appraised_value?: number;
+}
+
+interface AuditorChecklist {
+  physicalExists?: boolean;
+  itemMatches?: boolean;
+  weightMatches?: boolean;
+  karatMatches?: boolean;
+  observedWeight?: number | string;
+  observedKarat?: string;
+  stockVerified?: boolean;
+  cashVerified?: boolean;
+}
+
+interface AuditTrailLog {
+  id?: string;
+  action: string;
+  resource?: string;
+  user_email?: string;
+  created_at?: string;
+  details?: {
+    bill_no?: string;
+    status?: string;
+    notes?: string;
+    note?: string;
+    reason?: string;
+    auditor_email?: string;
+    confirmed_at?: string;
+    checklist?: AuditorChecklist | null;
+  };
+}
+
+interface StockVerificationItem {
+  id: string;
+  bill_no: string;
+  item_type?: string;
+  weight_mg?: number;
+  weight?: string | number;
+}
+
+interface EvaluationEvidence {
+  air_weight?: number | string;
+  water_weight?: number | string;
+  air_weight_photo_url?: string;
+  water_weight_photo_url?: string;
+}
+
+interface ApprovalsUser {
+  id?: string;
+  email?: string;
+  role?: string;
+  name?: string;
+  firstName?: string;
+  branchId?: string;
+}
 
 interface PawnTransaction {
   id: string;
@@ -36,6 +98,7 @@ interface PawnTransaction {
     address?: string;
     photo_url?: string;
     nic_image?: string;
+    signature_image?: string;
   };
   disbursed_amount: number;
   appraised_value: number;
@@ -52,7 +115,16 @@ interface PawnTransaction {
   description?: string;
   air_weight_photo_url?: string;
   water_weight_photo_url?: string;
-  items?: any[];
+  items?: PawnItem[];
+}
+
+interface PawnDossier {
+  pawn?: PawnTransaction;
+  client?: PawnTransaction['clients'];
+  items?: PawnItem[];
+  evaluationEvidence?: EvaluationEvidence | null;
+  stockItems?: StockVerificationItem[];
+  auditHistory?: AuditTrailLog[];
 }
 
 interface AuditRecord {
@@ -63,14 +135,18 @@ interface AuditRecord {
   notes: string;
   auditor_email: string;
   audited_at: string;
-  checklist?: any;
+  checklist?: AuditorChecklist | null;
+}
+
+function getErrMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
 }
 
 export default function ApprovalsPage() {
   const [pawns, setPawns] = useState<PawnTransaction[]>([]);
   const [auditMap, setAuditMap] = useState<Record<string, AuditRecord>>({});
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<ApprovalsUser | null>(null);
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,9 +154,9 @@ export default function ApprovalsPage() {
   const [filterTab, setFilterTab] = useState<'AUDITED' | 'RECHECK' | 'APPROVED' | 'ALL' | 'CHANGE_REQUESTS'>('AUDITED');
 
   // Change Request Tickets State (Maker-Checker)
-  const [changeTickets, setChangeTickets] = useState<any[]>([]);
-  const [selectedTicket, setSelectedTicket] = useState<any>(null);
-  const [editableProposedData, setEditableProposedData] = useState<Record<string, any>>({});
+  const [changeTickets, setChangeTickets] = useState<ChangeRequestTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<ChangeRequestTicket | null>(null);
+  const [editableProposedData, setEditableProposedData] = useState<ChangeRecordData>({});
   const [isTicketActionLoading, setIsTicketActionLoading] = useState(false);
   const [isTicketReviewModalOpen, setIsTicketReviewModalOpen] = useState(false);
   const [ticketReviewNotes, setTicketReviewNotes] = useState('');
@@ -91,7 +167,7 @@ export default function ApprovalsPage() {
   const [selectedPawnId, setSelectedPawnId] = useState<string | null>(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [dossierLoading, setDossierLoading] = useState(false);
-  const [dossier, setDossier] = useState<any>(null);
+  const [dossier, setDossier] = useState<PawnDossier | null>(null);
 
   // Action Dialogs
   const [isApproveConfirmOpen, setIsApproveConfirmOpen] = useState(false);
@@ -104,13 +180,13 @@ export default function ApprovalsPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // 1. Load User, Pawns, and Branch Audit Logs
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     setLoading(true);
     try {
       const stored = localStorage.getItem('user');
-      let currentUser: any = null;
+      let currentUser: ApprovalsUser | null = null;
       if (stored) {
-        currentUser = JSON.parse(stored);
+        currentUser = JSON.parse(stored) as ApprovalsUser;
         setUser(currentUser);
       }
 
@@ -137,10 +213,10 @@ export default function ApprovalsPage() {
       const logsRes = await fetch(`/api/audit-logs?${logParams}`, { headers: getAuthHeaders() });
       if (logsRes.ok) {
         const logsJson = await logsRes.json();
-        const logs = logsJson.logs || [];
+        const logs: AuditTrailLog[] = Array.isArray(logsJson.logs) ? logsJson.logs : [];
         const newMap: Record<string, AuditRecord> = {};
 
-        logs.forEach((log: any) => {
+        logs.forEach((log) => {
           const bill = log.resource || log.details?.bill_no;
           if (bill && (!newMap[bill] || log.action === 'AUDITOR_APPROVED')) {
             newMap[bill] = {
@@ -166,7 +242,7 @@ export default function ApprovalsPage() {
         const tRes = await fetch(`/api/change-requests?${ticketParams}`, { headers: getAuthHeaders() });
         if (tRes.ok) {
           const tJson = await tRes.json();
-          setChangeTickets(tJson.tickets || []);
+          setChangeTickets(Array.isArray(tJson.tickets) ? tJson.tickets : []);
         }
       } catch (tErr) {
         console.warn('Error fetching change tickets:', tErr);
@@ -177,11 +253,11 @@ export default function ApprovalsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedBranch]);
 
   useEffect(() => {
     loadDashboardData();
-  }, [selectedBranch]);
+  }, [loadDashboardData]);
 
   // 2. Load Complete Transaction Dossier for Independent Review
   const handleOpenReview = async (pawnId: string) => {
@@ -196,10 +272,10 @@ export default function ApprovalsPage() {
         const err = await res.json();
         throw new Error(err.error || 'Failed to load transaction dossier');
       }
-      const data = await res.json();
+      const data: PawnDossier = await res.json();
       setDossier(data);
-    } catch (err: any) {
-      toast.error('Error loading review details', { description: err.message });
+    } catch (err: unknown) {
+      toast.error('Error loading review details', { description: getErrMessage(err, 'Failed to load review details') });
       setIsReviewModalOpen(false);
     } finally {
       setDossierLoading(false);
@@ -240,8 +316,8 @@ export default function ApprovalsPage() {
       setIsApproveConfirmOpen(false);
       setIsReviewModalOpen(false);
       loadDashboardData();
-    } catch (err: any) {
-      toast.error('Final Approval Failed', { description: err.message, id: toastId });
+    } catch (err: unknown) {
+      toast.error('Final Approval Failed', { description: getErrMessage(err, 'Final approval failed'), id: toastId });
     } finally {
       setIsSubmittingAction(false);
     }
@@ -252,10 +328,10 @@ export default function ApprovalsPage() {
     ticketId: string,
     action: 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
     notes: string,
-    proposedData?: Record<string, any>
+    proposedData?: ChangeRecordData
   ) => {
     const headers = getAuthHeaders();
-    const payloadObj: Record<string, any> = { id: ticketId, action, notes };
+    const payloadObj: ChangeRecordData = { id: ticketId, action, notes };
     if (proposedData && Object.keys(proposedData).length > 0) {
       payloadObj.proposed_data = proposedData;
     }
@@ -271,12 +347,13 @@ export default function ApprovalsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       return data;
-    } catch (primaryErr: any) {
+    } catch (primaryErr: unknown) {
+      const errMsg = primaryErr instanceof Error ? primaryErr.message : '';
       const isNetworkErr =
-        !primaryErr?.message ||
-        primaryErr.message.includes('Failed to fetch') ||
-        primaryErr.message.includes('NetworkError') ||
-        primaryErr.message.includes('Load failed');
+        !errMsg ||
+        errMsg.includes('Failed to fetch') ||
+        errMsg.includes('NetworkError') ||
+        errMsg.includes('Load failed');
 
       if (!isNetworkErr) {
         throw primaryErr;
@@ -296,7 +373,7 @@ export default function ApprovalsPage() {
         const data2 = await res2.json();
         if (!res2.ok) throw new Error(data2.error || `Request failed (${res2.status})`);
         return data2;
-      } catch (secondaryErr: any) {
+      } catch {
         // 3. Fallback B: GET /api/change-requests?action=...&id=...
         const qs = new URLSearchParams({
           action: action.toLowerCase(),
@@ -318,7 +395,7 @@ export default function ApprovalsPage() {
   };
 
   // Maker-Checker Change Request Handlers
-  const handleOpenTicketReview = (ticket: any) => {
+  const handleOpenTicketReview = (ticket: ChangeRequestTicket) => {
     setSelectedTicket(ticket);
     setEditableProposedData({ ...(ticket?.proposed_data || {}) });
     setTicketReviewNotes(ticket?.review_notes || '');
@@ -342,17 +419,17 @@ export default function ApprovalsPage() {
       }
       toast.success(`Ticket ${selectedTicket.ticket_no} proposed values saved!`, { id: toastId });
       loadDashboardData();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to save ticket edits', { id: toastId });
+    } catch (err: unknown) {
+      toast.error(getErrMessage(err, 'Failed to save ticket edits'), { id: toastId });
     } finally {
       setIsTicketActionLoading(false);
     }
   };
 
   const handleApproveTicket = async (
-    ticket: any,
+    ticket: ChangeRequestTicket,
     customNotes?: string,
-    proposedDataOverride?: Record<string, any>
+    proposedDataOverride?: ChangeRecordData
   ) => {
     setIsTicketActionLoading(true);
     const toastId = toast.loading(`Approving ticket ${ticket.ticket_no}...`);
@@ -365,8 +442,8 @@ export default function ApprovalsPage() {
       setEditableProposedData({});
       setTicketReviewNotes('');
       loadDashboardData();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to approve ticket', { id: toastId });
+    } catch (err: unknown) {
+      toast.error(getErrMessage(err, 'Failed to approve ticket'), { id: toastId });
     } finally {
       setIsTicketActionLoading(false);
     }
@@ -388,8 +465,8 @@ export default function ApprovalsPage() {
       setTicketRejectReason('');
       setSelectedTicket(null);
       loadDashboardData();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to reject ticket', { id: toastId });
+    } catch (err: unknown) {
+      toast.error(getErrMessage(err, 'Failed to reject ticket'), { id: toastId });
     } finally {
       setIsTicketActionLoading(false);
     }
@@ -430,8 +507,8 @@ export default function ApprovalsPage() {
       setIsReviewModalOpen(false);
       setReturnReason('');
       loadDashboardData();
-    } catch (err: any) {
-      toast.error('Return Failed', { description: err.message, id: toastId });
+    } catch (err: unknown) {
+      toast.error('Return Failed', { description: getErrMessage(err, 'Failed to return transaction'), id: toastId });
     } finally {
       setIsSubmittingAction(false);
     }
@@ -520,9 +597,8 @@ export default function ApprovalsPage() {
   const items = dossier?.items || [];
   const evalEv = dossier?.evaluationEvidence;
   const stockItems = dossier?.stockItems || [];
-  const transactions = dossier?.transactions || [];
   const auditLogs = dossier?.auditHistory || [];
-  const auditorApprovedLog = auditLogs.find((l: any) => l.action === 'AUDITOR_APPROVED');
+  const auditorApprovedLog = auditLogs.find((l) => l.action === 'AUDITOR_APPROVED');
   const auditorChecklist = auditorApprovedLog?.details?.checklist || null;
 
   // Safely parse KYC customer pictures
@@ -763,7 +839,7 @@ export default function ApprovalsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {changeTickets.map((t: any) => {
+                {changeTickets.map((t) => {
                   const isPending = t.status === 'PENDING';
                   const isDelete = t.action_type === 'DELETE' || t.action_type === 'VOID_INTEREST';
                   return (
@@ -810,7 +886,7 @@ export default function ApprovalsPage() {
                           </div>
                         ) : (
                           <div className="space-y-1.5 text-xs">
-                            {Object.entries(t.proposed_data || {}).map(([key, val]: any) => {
+                            {Object.entries(t.proposed_data || {}).map(([key, val]) => {
                               const curr = t.current_data?.[key];
                               return (
                                 <div key={key} className="flex flex-wrap items-center gap-1 text-[11px] leading-snug break-words">
@@ -871,7 +947,7 @@ export default function ApprovalsPage() {
                             </Button>
                             <div className="text-[11px] text-slate-500 text-right max-w-[180px] whitespace-normal break-words leading-snug">
                               Reviewed by: <strong className="text-slate-800">{t.reviewed_by_name || 'Manager'}</strong>
-                              {t.review_notes && <div className="text-[10px] text-slate-400 italic mt-0.5">"{t.review_notes}"</div>}
+                              {t.review_notes && <div className="text-[10px] text-slate-400 italic mt-0.5">&ldquo;{t.review_notes}&rdquo;</div>}
                             </div>
                           </div>
                         )}
@@ -1185,7 +1261,7 @@ export default function ApprovalsPage() {
                     <div className="p-3 bg-white rounded-2xl border border-emerald-200 text-xs space-y-1">
                       <span className="text-[10px] font-black uppercase text-slate-400">Auditor Observation Notes:</span>
                       <p className="font-bold text-slate-800 italic">
-                        "{auditorApprovedLog.details.notes}"
+                        &ldquo;{auditorApprovedLog.details.notes}&rdquo;
                       </p>
                     </div>
                   )}
@@ -1269,7 +1345,7 @@ export default function ApprovalsPage() {
                       <div className="pt-2 border-t border-slate-100 space-y-1">
                         <span className="text-[10px] font-black uppercase text-slate-400">Pawn Items Breakdown:</span>
                         <div className="space-y-1 max-h-24 overflow-y-auto">
-                          {items.map((it: any) => (
+                          {items.map((it) => (
                             <div key={it.id} className="flex justify-between text-[11px] font-semibold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg">
                               <span>{it.item_type || 'Gold'} ({it.purity || '22K'})</span>
                               <span className="font-mono">{it.weight_mg ? `${it.weight_mg.toLocaleString()} mg` : `${Math.round((it.weight_grams || 0) * 1000).toLocaleString()} mg`} • Rs. {(it.appraised_value || 0).toLocaleString()}</span>
@@ -1477,10 +1553,10 @@ export default function ApprovalsPage() {
                     </div>
                     {stockItems.length > 0 ? (
                       <div className="space-y-1.5 text-xs">
-                        {stockItems.map((stk: any) => (
+                        {stockItems.map((stk) => (
                           <div key={stk.id} className="p-2.5 bg-white rounded-xl border border-slate-200 flex justify-between font-semibold">
                             <span>Sub-bill: <strong className="font-mono text-slate-900">{stk.bill_no}</strong> ({stk.item_type})</span>
-                            <span className="font-mono font-black">{stk.weight_mg ? `${stk.weight_mg} mg` : `${Math.round((parseFloat(stk.weight) || 0) * 1000)} mg`}</span>
+                            <span className="font-mono font-black">{stk.weight_mg ? `${stk.weight_mg} mg` : `${Math.round((parseFloat(String(stk.weight ?? 0)) || 0) * 1000)} mg`}</span>
                           </div>
                         ))}
                       </div>
@@ -1528,7 +1604,7 @@ export default function ApprovalsPage() {
 
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {auditLogs.length > 0 ? (
-                      auditLogs.map((log: any, idx: number) => {
+                      auditLogs.map((log, idx) => {
                         const isIssue = log.action === 'AUDIT_ISSUE_RAISED';
                         const isReturn = log.action === 'MANAGER_RETURNED';
                         const isApproval = log.action === 'AUDITOR_APPROVED' || log.action === 'MANAGER_APPROVED';
@@ -1868,7 +1944,7 @@ export default function ApprovalsPage() {
                           <div className="grid grid-cols-2 gap-2 text-xs bg-white p-3 rounded-xl border border-slate-200">
                             {Object.entries(selectedTicket.current_data)
                               .filter(([k]) => !['id', 'created_at', 'updated_at', 'withdrawal_date', 'withdrawal_notes', 'withdrawal_reason'].includes(k))
-                              .map(([k, v]: any) => (
+                              .map(([k, v]) => (
                                 <div key={k} className="flex justify-between border-b border-slate-100 py-1">
                                   <span className="text-slate-500 font-semibold capitalize">{k.replace(/_/g, ' ')}:</span>
                                   <span className="font-mono font-bold text-slate-900">{String(v ?? '—')}</span>
@@ -1891,7 +1967,7 @@ export default function ApprovalsPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 bg-white">
-                              {Object.entries(activeProposed).map(([key, val]: any) => {
+                              {Object.entries(activeProposed).map(([key, val]) => {
                                 const curr = selectedTicket.current_data?.[key];
                                 const isChanged = String(curr ?? '') !== String(val ?? '');
                                 const isModifiedFromTeller =
@@ -2035,7 +2111,7 @@ export default function ApprovalsPage() {
                         Reviewed by: <strong className="text-slate-900">{selectedTicket.reviewed_by_name || 'Manager'}</strong> ({selectedTicket.reviewed_at ? new Date(selectedTicket.reviewed_at).toLocaleString() : ''})
                       </div>
                       {selectedTicket.review_notes && (
-                        <div className="text-slate-600 italic">Note: "{selectedTicket.review_notes}"</div>
+                        <div className="text-slate-600 italic">Note: &ldquo;{selectedTicket.review_notes}&rdquo;</div>
                       )}
                     </div>
                   )}

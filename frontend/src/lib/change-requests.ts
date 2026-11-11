@@ -1,10 +1,16 @@
-import { adminSupabase } from './auth-server';
+import { adminSupabase, AuthSession } from './auth-server';
 import { normalizeBranchId, stripBranchPrefix } from './branch-mapping';
 import { invalidateBranchInventoryCache } from './redis';
 
 export type ChangeEntityType = 'PAWN' | 'STOCK' | 'DAILY_LEDGER' | 'INTEREST' | 'CLIENT';
 export type ChangeActionType = 'UPDATE' | 'DELETE' | 'RESTORE' | 'LEDGER_ADJUST' | 'VOID_INTEREST';
 export type ChangeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ChangeRecordData = Record<string, unknown>;
+
+export interface ChangeReviewer {
+  name?: string;
+  email?: string;
+}
 
 export interface ChangeRequestTicket {
   id: string;
@@ -19,9 +25,9 @@ export interface ChangeRequestTicket {
   requested_by_email: string;
   requested_by_role: string;
   reason: string;
-  current_data: Record<string, any>;
-  proposed_data: Record<string, any>;
-  original_proposed_data?: Record<string, any>;
+  current_data: ChangeRecordData;
+  proposed_data: ChangeRecordData;
+  original_proposed_data?: ChangeRecordData;
   edited_by_user_id?: string;
   edited_by_name?: string;
   edited_by_role?: string;
@@ -46,7 +52,7 @@ export function generateTicketNo(branchId: string, entityType: string): string {
   return `CR-${prefix}-${normBranch}-${datePart}-${randomPart}`;
 }
 
-function parseFiniteNumber(val: any): number | undefined {
+function parseFiniteNumber(val: unknown): number | undefined {
   if (val === undefined || val === null || String(val).trim() === '') return undefined;
   const parsed = parseFloat(String(val));
   return isNaN(parsed) ? undefined : parsed;
@@ -54,11 +60,11 @@ function parseFiniteNumber(val: any): number | undefined {
 
 function normalizeProposedPayload(
   entityType: ChangeEntityType,
-  existing: Record<string, any> = {},
-  incoming?: Record<string, any>
-): Record<string, any> {
+  existing: ChangeRecordData = {},
+  incoming?: ChangeRecordData
+): ChangeRecordData {
   if (!incoming || typeof incoming !== 'object') return { ...existing };
-  const merged: Record<string, any> = { ...existing, ...incoming };
+  const merged: ChangeRecordData = { ...existing, ...incoming };
   if (merged.branch_id !== undefined && String(merged.branch_id).trim() !== '') {
     merged.branch_id = normalizeBranchId(String(merged.branch_id));
   }
@@ -69,9 +75,9 @@ function normalizeProposedPayload(
 }
 
 // Apply approved changes to live database
-export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer: any) {
+export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer: ChangeReviewer) {
   const { entity_type, action_type, entity_id, proposed_data, current_data, branch_id } = ticket;
-  const sourceBranch = normalizeBranchId(current_data?.branch_id || branch_id || 'HQ');
+  const sourceBranch = normalizeBranchId(String(current_data?.branch_id || branch_id || 'HQ'));
 
   if (entity_type === 'PAWN') {
     if (action_type === 'DELETE') {
@@ -83,7 +89,7 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       }
       await invalidateBranchInventoryCache(sourceBranch);
     } else if (action_type === 'UPDATE') {
-      const pawnUpdate: Record<string, any> = {};
+      const pawnUpdate: ChangeRecordData = {};
       const disbursed = parseFiniteNumber(proposed_data.disbursed_amount);
       const appraised = parseFiniteNumber(proposed_data.appraised_value);
       const weightGrams = parseFiniteNumber(proposed_data.weight_grams);
@@ -116,13 +122,13 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       }
 
       // Sync stock_items if weight or price or bill changed
-      const billToMatch = stripBranchPrefix(current_data?.bill_no || ticket.reference_no || '');
-      const targetBranch = pawnUpdate.branch_id || sourceBranch;
+      const billToMatch = stripBranchPrefix(String(current_data?.bill_no || ticket.reference_no || ''));
+      const targetBranch = typeof pawnUpdate.branch_id === 'string' ? pawnUpdate.branch_id : sourceBranch;
       if (billToMatch) {
-        const stockUpdate: Record<string, any> = {};
+        const stockUpdate: ChangeRecordData = {};
         if (pawnUpdate.disbursed_amount !== undefined) stockUpdate.price = pawnUpdate.disbursed_amount;
         else if (pawnUpdate.appraised_value !== undefined) stockUpdate.price = pawnUpdate.appraised_value;
-        if (pawnUpdate.bill_no !== undefined) stockUpdate.bill_no = stripBranchPrefix(pawnUpdate.bill_no);
+        if (typeof pawnUpdate.bill_no === 'string') stockUpdate.bill_no = stripBranchPrefix(pawnUpdate.bill_no);
         if (pawnUpdate.weight_grams !== undefined) stockUpdate.weight = pawnUpdate.weight_grams;
         if (pawnUpdate.branch_id !== undefined) stockUpdate.branch_id = pawnUpdate.branch_id;
 
@@ -142,8 +148,8 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       await invalidateBranchInventoryCache(sourceBranch);
     } else if (action_type === 'RESTORE') {
       const todayStr = new Date().toISOString().split('T')[0];
-      const interestVal = parseFloat(proposed_data.interest_paid) || 0;
-      const cleanNotes = (proposed_data.notes || '').trim();
+      const interestVal = parseFloat(String(proposed_data.interest_paid ?? 0)) || 0;
+      const cleanNotes = String(proposed_data.notes || '').trim();
       const restoreLine = `[APPROVED RESTORE TO SAFE on ${todayStr} by ${reviewer.name || reviewer.email}] Interest: Rs. ${interestVal}${cleanNotes ? ' | ' + cleanNotes : ''}`;
       
       const { data: currentStock } = await adminSupabase.from('stock_items').select('withdrawal_notes, bill_no').eq('id', entity_id).single();
@@ -162,7 +168,7 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       }
       await invalidateBranchInventoryCache(sourceBranch);
     } else if (action_type === 'UPDATE') {
-      const stockUpdate: Record<string, any> = {};
+      const stockUpdate: ChangeRecordData = {};
       const parsedPrice = parseFiniteNumber(proposed_data.price);
       const parsedWeight = parseFiniteNumber(proposed_data.weight);
 
@@ -185,14 +191,14 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       }
 
       // Sync corresponding pawn record if price, weight, bill_no, or branch_id changed
-      const billToMatch = stripBranchPrefix(current_data?.bill_no || ticket.reference_no || '');
-      const targetBranch = stockUpdate.branch_id || sourceBranch;
+      const billToMatch = stripBranchPrefix(String(current_data?.bill_no || ticket.reference_no || ''));
+      const targetBranch = typeof stockUpdate.branch_id === 'string' ? stockUpdate.branch_id : sourceBranch;
       if (billToMatch) {
-        const pawnUpdate: Record<string, any> = {};
-        if (stockUpdate.price !== undefined) {
+        const pawnUpdate: ChangeRecordData = {};
+        if (typeof stockUpdate.price === 'number') {
           pawnUpdate.disbursed_amount = stockUpdate.price;
         }
-        if (stockUpdate.weight !== undefined) {
+        if (typeof stockUpdate.weight === 'number') {
           pawnUpdate.weight_grams = stockUpdate.weight;
           pawnUpdate.weight_mg = Math.round(stockUpdate.weight * 1000);
         }
@@ -217,8 +223,10 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       }
     }
   } else if (entity_type === 'DAILY_LEDGER') {
-    const { id: _id, created_at: _c, ...safePayload } = proposed_data || {};
-    const ledgerPayload: Record<string, any> = { ...safePayload, updated_at: new Date().toISOString() };
+    const safePayload: ChangeRecordData = { ...(proposed_data || {}) };
+    delete safePayload.id;
+    delete safePayload.created_at;
+    const ledgerPayload: ChangeRecordData = { ...safePayload, updated_at: new Date().toISOString() };
     await adminSupabase
       .from('daily_ledgers')
       .upsert(ledgerPayload, { onConflict: 'branch_id,ledger_date' });
@@ -231,7 +239,10 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
     if (action_type === 'DELETE') {
       await adminSupabase.from('clients').delete().eq('id', entity_id);
     } else if (action_type === 'UPDATE') {
-      const { id: _id, created_at: _c, updated_at: _u, ...safeClient } = proposed_data || {};
+      const safeClient: ChangeRecordData = { ...(proposed_data || {}) };
+      delete safeClient.id;
+      delete safeClient.created_at;
+      delete safeClient.updated_at;
       if (Object.keys(safeClient).length > 0) {
         await adminSupabase.from('clients').update(safeClient).eq('id', entity_id);
       }
@@ -240,11 +251,11 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
 }
 
 export async function executeChangeTicketAction(
-  session: any,
+  session: AuthSession,
   ticketId: string,
   action: 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
-  options?: { notes?: string; proposedData?: Record<string, any> }
-): Promise<{ status: number; body: Record<string, any> }> {
+  options?: { notes?: string; proposedData?: ChangeRecordData }
+): Promise<{ status: number; body: Record<string, unknown> }> {
   const userRole = (session?.role || '').toUpperCase();
   if (userRole !== 'ADMIN' && userRole !== 'MANAGER') {
     return {
@@ -311,7 +322,7 @@ export async function executeChangeTicketAction(
     const { error: updErr } = await adminSupabase
       .from('audit_logs')
       .update({
-        branch_id: nextProposed?.branch_id || auditRow.branch_id,
+        branch_id: nextProposed?.branch_id ? String(nextProposed.branch_id) : auditRow.branch_id,
         details: updatedTicket
       })
       .eq('id', auditRow.id);
@@ -355,7 +366,7 @@ export async function executeChangeTicketAction(
     const { error: updErr } = await adminSupabase
       .from('audit_logs')
       .update({
-        branch_id: nextProposed?.branch_id || auditRow.branch_id,
+        branch_id: nextProposed?.branch_id ? String(nextProposed.branch_id) : auditRow.branch_id,
         details: updatedTicket
       })
       .eq('id', auditRow.id);

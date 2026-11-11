@@ -4,7 +4,10 @@ import { executeChangeTicketAction } from '@/lib/change-requests';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request, context: any) {
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
@@ -22,8 +25,9 @@ export async function POST(request: Request, context: any) {
     });
 
     return NextResponse.json(result.body, { status: result.status });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error approving change request:', err);
-    return NextResponse.json({ error: err.message || 'Failed to approve change request' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Failed to approve change request';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

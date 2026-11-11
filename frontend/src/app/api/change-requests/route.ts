@@ -1,16 +1,32 @@
 import { NextResponse } from 'next/server';
-import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
-import { generateTicketNo, executeChangeTicketAction, ChangeRequestTicket } from '@/lib/change-requests';
+import { getAuthenticatedUser, adminSupabase, AuthSession } from '@/lib/auth-server';
+import {
+  generateTicketNo,
+  executeChangeTicketAction,
+  ChangeRequestTicket,
+  ChangeRecordData
+} from '@/lib/change-requests';
 import { normalizeBranchId } from '@/lib/branch-mapping';
 
 export const dynamic = 'force-dynamic';
 
+interface AuditLogTicketRow {
+  id: string;
+  branch_id?: string | null;
+  created_at?: string | null;
+  details?: Partial<ChangeRequestTicket> | null;
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
 async function processTicketDecision(
-  session: any,
+  session: AuthSession,
   ticketId: string,
   decision: 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
   rawNotes?: string,
-  proposedData?: Record<string, any>
+  proposedData?: ChangeRecordData
 ) {
   const result = await executeChangeTicketAction(session, ticketId, decision, {
     notes: rawNotes,
@@ -34,9 +50,9 @@ export async function GET(request: Request) {
     if ((actionParam === 'APPROVE' || actionParam === 'REJECT' || actionParam === 'UPDATE_PROPOSED') && ticketIdParam) {
       const notesParam = searchParams.get('notes') || '';
       const rawProposed = searchParams.get('proposed_data');
-      let parsedProposed: Record<string, any> | undefined;
+      let parsedProposed: ChangeRecordData | undefined;
       if (rawProposed) {
-        try { parsedProposed = JSON.parse(rawProposed); } catch { /* ignore malformed fallback */ }
+        try { parsedProposed = JSON.parse(rawProposed) as ChangeRecordData; } catch { /* ignore malformed fallback */ }
       }
       return await processTicketDecision(
         session,
@@ -69,13 +85,13 @@ export async function GET(request: Request) {
     const { data: logs, error } = await query;
     if (error) throw error;
 
-    let tickets: ChangeRequestTicket[] = (logs || [])
-      .map((l: any) => ({
-        ...l.details,
+    let tickets: ChangeRequestTicket[] = ((logs || []) as AuditLogTicketRow[])
+      .map((l) => ({
+        ...(l.details || {}),
         id: l.id,
-        branch_id: l.branch_id || l.details?.branch_id,
-        created_at: l.created_at || l.details?.created_at
-      }))
+        branch_id: l.branch_id || l.details?.branch_id || 'HQ',
+        created_at: l.created_at || l.details?.created_at || ''
+      } as ChangeRequestTicket))
       .filter((t: ChangeRequestTicket) => {
         const ref = t.reference_no || '';
         const rsn = t.reason || '';
@@ -99,9 +115,9 @@ export async function GET(request: Request) {
       count: tickets.length,
       tickets
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error in GET /api/change-requests:', err);
-    return NextResponse.json({ error: err.message || 'Failed to fetch change requests' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(err, 'Failed to fetch change requests') }, { status: 500 });
   }
 }
 
@@ -132,9 +148,9 @@ export async function PATCH(request: Request) {
       notes,
       proposedData
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error in PATCH /api/change-requests:', err);
-    return NextResponse.json({ error: err.message || 'Failed to process change request decision' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(err, 'Failed to process change request decision') }, { status: 500 });
   }
 }
 
@@ -212,7 +228,7 @@ export async function POST(request: Request) {
       created_at: nowIso
     };
 
-    const { data, error } = await adminSupabase
+    const { error } = await adminSupabase
       .from('audit_logs')
       .insert([auditRow])
       .select()
@@ -225,8 +241,8 @@ export async function POST(request: Request) {
       message: `Change request ticket ${ticketNo} successfully submitted for Manager/Admin review.`,
       ticket: ticketPayload
     }, { status: 201 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error in POST /api/change-requests:', err);
-    return NextResponse.json({ error: err.message || 'Failed to submit change request' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(err, 'Failed to submit change request') }, { status: 500 });
   }
 }
