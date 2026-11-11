@@ -111,6 +111,7 @@ model Pawn {
   redeemInterest  Decimal? @map("redeem_interest")
   redeemedBy      String?  @map("redeemed_by")
   packetQr        String?  @map("packet_qr")
+  uniqueTag       String?  @map("unique_tag")
   createdAt       TimestamptzString @default(now()) @map("created_at")
 
   client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)

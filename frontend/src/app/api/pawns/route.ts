@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { sendFreeSms, buildPawnReceiptSms } from '@/lib/sms';
-import { normalizeBranchId, getBranchSearchTerms, isNationalId, normalizeNationalId, formatBranchScopedId, formatBranchScopedBillNo, stripBranchPrefix, extractNumericBillNo, isSameNumericBill } from '@/lib/branch-mapping';
+import { normalizeBranchId, getBranchSearchTerms, isNationalId, normalizeNationalId, formatBranchScopedId, formatBranchScopedBillNo, stripBranchPrefix, extractNumericBillNo, isSameNumericBill, generateUniqueOrderTag } from '@/lib/branch-mapping';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { invalidateClientsCache } from '@/app/api/clients/route';
 import { getSriLankaDate } from '@/lib/date-utils';
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
       const cleanQ = rawQ.replace(/[,()"]/g, ' ').trim();
       if (cleanQ) {
         const strippedQ = stripBranchPrefix(cleanQ);
-        query = query.or(`bill_no.ilike.%${cleanQ}%,bill_no.ilike.%${strippedQ}%,description.ilike.%${cleanQ}%`);
+        query = query.or(`bill_no.ilike.%${cleanQ}%,bill_no.ilike.%${strippedQ}%,description.ilike.%${cleanQ}%,unique_tag.ilike.%${cleanQ}%`);
       }
     }
 
@@ -311,7 +311,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { clientId, clientName, customerName, phone: clientPhone, address: clientAddress, description, appraisedValue, trueValue, disbursedAmount, branchId, createdByUserId, billNo, weight, weightGrams, weightMg, interestRate, periodMonths, itemType, items, date, airWeightPhoto, waterWeightPhoto, waterWeight, specificGravity, estimatedKarat } = body;
+    const { clientId, clientName, customerName, phone: clientPhone, address: clientAddress, description, appraisedValue, trueValue, disbursedAmount, branchId, createdByUserId, billNo, weight, weightGrams, weightMg, interestRate, periodMonths, itemType, items, date, airWeightPhoto, waterWeightPhoto, waterWeight, specificGravity, estimatedKarat, unique_tag, uniqueTag } = body;
 
     if (!clientId || !disbursedAmount || !billNo || String(billNo).trim() === '') {
       return NextResponse.json({ error: 'Missing required fields: Customer, Disbursed Amount, and Bill Number (billNo)' }, { status: 400 });
@@ -515,6 +515,10 @@ export async function POST(request: Request) {
     // Format bill_no with branch prefix behind the scenes (e.g. "KDW-3R 14543")
     const scopedBillNo = formatBranchScopedBillNo(billNo, targetBranchId);
 
+    // Auto-generate or preserve Unique Order Tag (Pattern C: RC-[Branch]-[NIC Part]-[Bill #])
+    const effectiveNic = fullClientObj?.national_id || fullClientObj?.nationalId || (isNationalId(clientId) ? clientId : '');
+    const finalUniqueTag = (unique_tag || uniqueTag || '').trim() || generateUniqueOrderTag(targetBranchId, effectiveNic, scopedBillNo || billNo);
+
     // 2. Insert pawn ticket into DB
     const pawnPayload: any = {
       id: pawnId,
@@ -527,6 +531,7 @@ export async function POST(request: Request) {
       status: initialStatus,
       created_at: pawnCreatedAt,
       bill_no: scopedBillNo || null,
+      unique_tag: finalUniqueTag,
       weight_grams: finalWeightGrams,
       weight_mg: finalWeightMg,
       interest_rate: finalInterestRate,

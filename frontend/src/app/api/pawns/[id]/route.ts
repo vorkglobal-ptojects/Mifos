@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
-import { normalizeBranchId, formatBranchScopedBillNo, stripBranchPrefix, getBranchSearchTerms, extractNumericBillNo, isSameNumericBill } from '@/lib/branch-mapping';
+import { normalizeBranchId, formatBranchScopedBillNo, stripBranchPrefix, getBranchSearchTerms, extractNumericBillNo, isSameNumericBill, generateUniqueOrderTag } from '@/lib/branch-mapping';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
@@ -294,6 +294,14 @@ export async function PATCH(request: Request, context: any) {
         }
       }
       updateObj.bill_no = formatBranchScopedBillNo(String(billNo).trim(), existingPawn.branch_id);
+    }
+
+    if (body.unique_tag !== undefined || body.uniqueTag !== undefined) {
+      updateObj.unique_tag = body.unique_tag || body.uniqueTag;
+    } else if (updateObj.bill_no || updateObj.client_id) {
+      const effClient = targetClientId || existingPawn.client_id;
+      const effBill = updateObj.bill_no || existingPawn.bill_no;
+      updateObj.unique_tag = generateUniqueOrderTag(existingPawn.branch_id, effClient, effBill);
     }
 
     const { data, error } = await adminSupabase.from('pawns').update(updateObj).eq('id', id).select().single();

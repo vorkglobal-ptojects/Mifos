@@ -280,3 +280,38 @@ export function isSameNumericBill(billA: string | null | undefined, billB: strin
   const normB = numB.replace(/^0+/, '') || '0';
   return normA === normB;
 }
+
+/**
+ * Generates an auto-generated Unique Order Tag for a pawn ticket (Pattern C).
+ * Format: RC-[Branch]-[NIC Part]-[Bill #]
+ * Example: RC-HMG-8565-20743 or RC-HQ-8565-20743
+ *
+ * @param branchId - Target branch identifier (e.g. 'HMG', 'HQ', 'DHW')
+ * @param nic - Borrower's NIC or client identifier
+ * @param billNo - Book bill number (e.g. '20743', '1R 20743')
+ * @param isPlaceholder - If true and billNo is empty, returns preview with '.....'
+ */
+export function generateUniqueOrderTag(
+  branchId: string | null | undefined,
+  nic: string | null | undefined,
+  billNo: string | null | undefined,
+  isPlaceholder: boolean = false
+): string {
+  // 1. Prefix: Rupasingha Capital
+  const prefix = 'RC';
+
+  // 2. Branch Code: normalized uppercase (e.g. HMG, HQ, KDW, DHW)
+  const normBranch = (normalizeBranchId(branchId) || 'HQ').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+  // 3. Customer NIC Part: first 4 alphanumeric characters of clean national ID
+  const cleanNic = stripBranchPrefix(nic || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const nicPart = cleanNic.length >= 4 ? cleanNic.slice(0, 4) : (cleanNic ? cleanNic.padEnd(4, '0') : '0000');
+
+  // 4. Bill Number Part: extracted numeric bill number
+  const numPart = extractNumericBillNo(billNo);
+  const cleanBill = numPart || stripBranchPrefix(billNo || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const billPart = cleanBill || (isPlaceholder ? '.....' : '00000');
+
+  return `${prefix}-${normBranch}-${nicPart}-${billPart}`;
+}
+
