@@ -72,8 +72,7 @@ jobs:
             sudo apt-get install -y -qq p7zip-full || sudo apt-get install -y -qq 7zip
           fi
           if ! command -v rclone >/dev/null 2>&1; then
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq rclone
+            (curl -fsSL https://rclone.org/install.sh | sudo bash) || (sudo apt-get update -qq && sudo apt-get install -y -qq rclone)
           fi
 
       - name: Run full Supabase export (SQL + Excel + Storage + DB Images)
@@ -136,22 +135,34 @@ jobs:
           ZIP_SIZE: ${{ steps.pack.outputs.zip_size }}
         run: |
           mkdir -p "$HOME/.config/rclone"
-          printf '%s\n' "$RCLONE_DRIVE_CONF" | tr -d '\r' > "$HOME/.config/rclone/rclone.conf"
-          chmod 600 "$HOME/.config/rclone/rclone.conf"
+          export RCLONE_CONF_PATH="$HOME/.config/rclone/rclone.conf"
+          node -e '
+            const fs = require("fs");
+            let text = String(process.env.RCLONE_DRIVE_CONF || "").replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").trim();
+            if (!text) process.exit(1);
+            if (text.startsWith("{")) {
+              text = `[gdrive]\ntype = drive\nscope = drive\ntoken = ${text}`;
+            } else if (!/^\s*\[[^\]]+\]\s*$/m.test(text)) {
+              const hasType = /^\s*type\s*=/m.test(text);
+              text = (hasType ? "[gdrive]\n" : "[gdrive]\ntype = drive\nscope = drive\n") + text;
+            }
+            fs.writeFileSync(process.env.RCLONE_CONF_PATH, text + "\n", { mode: 0o600 });
+          '
+          chmod 600 "$RCLONE_CONF_PATH"
 
-          REMOTE=$(rclone listremotes | grep -E '^gdrive:$' || rclone listremotes | head -n 1)
+          REMOTE=$(rclone listremotes --config "$RCLONE_CONF_PATH" | grep -E '^gdrive:$' || rclone listremotes --config "$RCLONE_CONF_PATH" | grep -v '^DEFAULT:$' | head -n 1 || true)
           if [ -z "$REMOTE" ]; then
-            echo "::error::No rclone remote found inside RCLONE_DRIVE_CONF secret."
+            echo "::error::No valid rclone remote section found inside RCLONE_DRIVE_CONF secret."
             exit 1
           fi
 
           DEST_DIR="${REMOTE}${GDRIVE_FOLDER}/${YEAR_MONTH}"
           DEST_FILE="${DEST_DIR}/${ZIP_NAME}"
 
-          rclone mkdir "$DEST_DIR"
-          rclone copyto "$ZIP_PATH" "$DEST_FILE" --stats-one-line --stats 10s
+          rclone mkdir "$DEST_DIR" --config "$RCLONE_CONF_PATH"
+          rclone copyto "$ZIP_PATH" "$DEST_FILE" --config "$RCLONE_CONF_PATH" --stats-one-line --stats 10s
 
-          REMOTE_SIZE=$(rclone lsjson "$DEST_DIR" --files-only --include "$ZIP_NAME" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d[0]?.Size ?? -1)")
+          REMOTE_SIZE=$(rclone lsjson "$DEST_DIR" --config "$RCLONE_CONF_PATH" --files-only --include "$ZIP_NAME" | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d[0]?.Size ?? -1)")
           if [ "$REMOTE_SIZE" != "$ZIP_SIZE" ]; then
             echo "::error::Google Drive upload size mismatch (local=$ZIP_SIZE, remote=$REMOTE_SIZE)."
             exit 1
