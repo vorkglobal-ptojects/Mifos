@@ -34,6 +34,14 @@ export default function LoginPage() {
       const p = new URLSearchParams(window.location.search);
       if (p.get('expired') === 'true') setExpiredAlert(true);
 
+      // Strict Anti-Autofill: ensure inputs always start blank regardless of browser password manager cache
+      setEmail('');
+      setPassword('');
+      const clearTimer = setTimeout(() => {
+        setEmail('');
+        setPassword('');
+      }, 50);
+
       // Clean up any stale or dead tokens on login screen to prevent Supabase AuthApiError
       if (p.get('expired') === 'true' || p.get('redirect') || !localStorage.getItem('user')) {
         localStorage.removeItem('auth_token');
@@ -60,7 +68,10 @@ export default function LoginPage() {
           setSuccess('Verification successful! Please enter your new password.');
         }
       });
-      return () => subscription.unsubscribe();
+      return () => {
+        clearTimeout(clearTimer);
+        subscription.unsubscribe();
+      };
     }
   }, []);
 
@@ -665,15 +676,31 @@ export default function LoginPage() {
                   )}
                   {success && <div className="alert-success">✓ {success}</div>}
 
-                  <form className="form" onSubmit={handleLogin} autoComplete="off">
+                  <form className="form" onSubmit={handleLogin} autoComplete="off" data-lpignore="true" data-form-type="other">
+                    {/* Invisible decoy inputs to capture browser autofill heuristics */}
+                    <input type="text" name="prevent_autofill_user" style={{ position: 'absolute', opacity: 0, height: 0, width: 0, zIndex: -1, pointerEvents: 'none' }} tabIndex={-1} aria-hidden="true" readOnly />
+                    <input type="password" name="prevent_autofill_pwd" style={{ position: 'absolute', opacity: 0, height: 0, width: 0, zIndex: -1, pointerEvents: 'none' }} tabIndex={-1} aria-hidden="true" readOnly />
 
                     {/* Email */}
                     <div className="field">
                       <label className="field-label" htmlFor="l-email">Email address</label>
                       <div className="inp-wrap">
                         <span className="inp-icon"><Mail size={16} /></span>
-                        <input id="l-email" type="text" className="inp" placeholder="you@example.com"
-                          value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username" />
+                        <input
+                          id="l-email"
+                          name="rc_auth_usr"
+                          type="text"
+                          className="inp"
+                          placeholder="you@example.com"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
+                          required
+                          autoComplete="off"
+                          autoCapitalize="none"
+                          spellCheck="false"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                        />
                       </div>
                     </div>
 
@@ -682,10 +709,19 @@ export default function LoginPage() {
                       <label className="field-label" htmlFor="l-password">Password</label>
                       <div className="inp-wrap">
                         <span className="inp-icon"><Lock size={16} /></span>
-                        <input id="l-password" type={showPw ? 'text' : 'password'}
-                          className="inp inp-pw-pad" placeholder="••••••••••••"
-                          value={password} onChange={e => setPassword(e.target.value)}
-                          required autoComplete="current-password" />
+                        <input
+                          id="l-password"
+                          name="rc_auth_sec"
+                          type={showPw ? 'text' : 'password'}
+                          className="inp inp-pw-pad"
+                          placeholder="••••••••••••"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          required
+                          autoComplete="new-password"
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                        />
                         <button type="button" className="eye-btn" tabIndex={-1}
                           onClick={() => setShowPw(v => !v)} aria-label="Toggle password">
                           {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
