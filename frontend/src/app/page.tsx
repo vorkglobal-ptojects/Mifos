@@ -42,6 +42,8 @@ import { cn } from "@/lib/utils";
 import { normalizeBranchId, getBranchSearchTerms, CANONICAL_BRANCHES } from "@/lib/branch-mapping";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
 
+import { EntryHistoryModal } from "@/components/EntryHistoryModal";
+
 const statsTemplate = [
   { label: "Total Disbursed Portfolio", value: "Rs. 0", change: "+0.0%", trend: "up", icon: DollarSign, color: "emerald" },
   { label: "Active Pawn Tickets", value: "0", change: "+0.0%", trend: "up", icon: CreditCard, color: "blue" },
@@ -79,6 +81,8 @@ export default function Home() {
   const [monthlyGrowth, setMonthlyGrowth] = useState<any[]>(revenueData);
   const [loanTypesDistribution, setLoanTypesDistribution] = useState<any[]>(loanDistribution);
   const [activeLoanPercentage, setActiveLoanPercentage] = useState<number>(92);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [userRole, setUserRole] = useState('ADMIN');
 
   const getFirstName = (u: any): string => {
     if (!u) return 'User';
@@ -173,6 +177,7 @@ export default function Home() {
 
     const rawRole = localStorage.getItem('user_role') || parsedUser?.role || 'TELLER';
     const upperRole = rawRole.toUpperCase().trim();
+    setUserRole(upperRole);
 
     if (upperRole === 'TELLER' || upperRole === 'AUTHENTICATED') {
       router.replace('/loans');
@@ -463,7 +468,11 @@ export default function Home() {
             <Power className="w-3.5 h-3.5" />
             {status === 'OPEN' ? "Branch Open" : "Branch Closed"}
           </Button>
-          <Button variant="outline" className="h-10 font-black text-xs uppercase tracking-wider px-6 rounded-xl border-slate-200 glass hover:bg-white shadow-xs cursor-pointer">
+          <Button 
+            variant="outline" 
+            onClick={() => setIsHistoryModalOpen(true)}
+            className="h-10 font-black text-xs uppercase tracking-wider px-6 rounded-xl border-slate-200 glass hover:bg-white shadow-xs cursor-pointer"
+          >
             History
           </Button>
           <Button className="h-10 bg-[#ffd100] hover:bg-[#ffee32] text-[#202020] font-black text-xs uppercase tracking-wider px-6 rounded-xl shadow-md card-hover cursor-pointer" onClick={() => router.push('/loans')}>
@@ -700,6 +709,14 @@ export default function Home() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Entry & Audit History Modal */}
+      <EntryHistoryModal
+        isOpen={isHistoryModalOpen}
+        onOpenChange={setIsHistoryModalOpen}
+        currentBranchId={branchId}
+        userRole={userRole}
+      />
     </div>
   );
 }
