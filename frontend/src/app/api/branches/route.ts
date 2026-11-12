@@ -3,8 +3,13 @@ import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+
     const { data, error } = await adminSupabase
       .from('branches')
       .select('*')
@@ -25,7 +30,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
-    if (session && session.role !== 'ADMIN') {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Admin privileges required to create branches.' }, { status: 403 });
     }
 

@@ -7,8 +7,10 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
-    
-    if (session && session.role !== 'ADMIN') {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Only Admins can modify SMS Gateway settings.' }, { status: 403 });
     }
 

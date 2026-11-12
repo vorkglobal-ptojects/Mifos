@@ -99,13 +99,27 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const body = await request.json();
 
     const { action, resource, details, label_no, bill_no, branch_id } = body;
+    const requestedAction = String(action || 'PRINT_PAWN_LABEL').toUpperCase();
+    const PROTECTED_WORKFLOW_ACTIONS = new Set([
+      'CHANGE_REQUEST',
+      'AUDITOR_APPROVED',
+      'MANAGER_APPROVED',
+      'AUDIT_ISSUE_RAISED',
+      'MANAGER_REJECTED'
+    ]);
+    if (PROTECTED_WORKFLOW_ACTIONS.has(requestedAction)) {
+      return NextResponse.json({ error: 'Forbidden. Workflow audit events cannot be forged via /api/audit-logs.' }, { status: 403 });
+    }
 
-    const userEmail = session?.user?.email || body.userEmail || 'system';
-    const role = session?.role || body.role || 'TELLER';
-    const branchId = branch_id || session?.branchId || body.branchId || 'HQ';
+    const userEmail = session.user?.email || 'system';
+    const role = session.role || 'TELLER';
+    const branchId = (session.role === 'ADMIN' || session.branchId === 'HQ') ? (branch_id || session.branchId || 'HQ') : session.branchId;
 
     const payloadDetails = {
       ...(details || {}),

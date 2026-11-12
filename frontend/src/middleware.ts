@@ -29,8 +29,7 @@ function isTokenValid(token?: string): boolean {
     }
     return true;
   } catch {
-    // If payload decoding fails, basic structural check ensures tellers are not locked out
-    return parts[1].length > 10;
+    return false;
   }
 }
 
@@ -54,9 +53,10 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Check for authentication token in cookies
+  // 2. Check for authentication token or active refresh cookie
   const authToken = request.cookies.get('sb-access-token')?.value || request.cookies.get('auth_token')?.value;
-  const hasValidToken = isTokenValid(authToken);
+  const refreshCookie = request.cookies.get('sb-refresh-token')?.value || request.cookies.get('refresh_token')?.value || '';
+  const hasValidToken = isTokenValid(authToken) || refreshCookie.trim().length >= 8;
 
   const isLoginPage = pathname === '/login';
 

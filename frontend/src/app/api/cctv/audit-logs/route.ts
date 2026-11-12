@@ -31,6 +31,9 @@ const DEMO_AUDIT_LOGS = [
 export async function GET(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { data, error } = await adminSupabase
       .from('cctv_audit_logs')
       .select('*')
@@ -58,6 +61,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const body = await req.json();
     const { action, camera_id, recording_id, metadata } = body;
 

@@ -80,7 +80,7 @@ export default function CctvSettingsPage() {
     try {
       const res = await fetch('/api/cctv/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(settings)
       });
       const data = await res.json();
@@ -138,13 +138,13 @@ export default function CctvSettingsPage() {
       if (editingCam) {
         res = await fetch(`/api/cctv/cameras/${editingCam.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload)
         });
       } else {
         res = await fetch('/api/cctv/cameras', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload)
         });
       }
@@ -162,7 +162,7 @@ export default function CctvSettingsPage() {
   const handleDeleteCam = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to remove camera "${name}"?`)) return;
     try {
-      const res = await fetch(`/api/cctv/cameras/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/cctv/cameras/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || 'Delete failed');
       toast.success(`Camera ${name} deleted.`);

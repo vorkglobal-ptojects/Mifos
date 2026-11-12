@@ -59,28 +59,28 @@ export async function POST(request: Request) {
       path: '/',
       maxAge: 28800,
       sameSite: 'lax',
-      httpOnly: true,
+      httpOnly: false,
       secure: isProduction
     });
     response.cookies.set('auth_token', newAccessToken, {
       path: '/',
       maxAge: 28800,
       sameSite: 'lax',
-      httpOnly: true,
+      httpOnly: false,
       secure: isProduction
     });
     response.cookies.set('sb-refresh-token', newRefreshToken, {
       path: '/',
       maxAge: 7 * 24 * 3600,
       sameSite: 'lax',
-      httpOnly: true,
+      httpOnly: false,
       secure: isProduction
     });
     response.cookies.set('refresh_token', newRefreshToken, {
       path: '/',
       maxAge: 7 * 24 * 3600,
       sameSite: 'lax',
-      httpOnly: true,
+      httpOnly: false,
       secure: isProduction
     });
 

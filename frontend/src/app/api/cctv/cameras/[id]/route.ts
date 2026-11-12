@@ -5,6 +5,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request, context: any) {
   try {
+    const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { id } = await context.params;
     const { data: camera, error } = await adminSupabase
       .from('cctv_cameras')
@@ -25,7 +29,10 @@ export async function GET(req: Request, context: any) {
 export async function PUT(req: Request, context: any) {
   try {
     const session = await getAuthenticatedUser(req);
-    if (session && session.role !== 'ADMIN') {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Admin privileges required.' }, { status: 403 });
     }
 
@@ -51,7 +58,10 @@ export async function PUT(req: Request, context: any) {
 export async function DELETE(req: Request, context: any) {
   try {
     const session = await getAuthenticatedUser(req);
-    if (session && session.role !== 'ADMIN') {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Admin privileges required.' }, { status: 403 });
     }
 

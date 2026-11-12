@@ -9,7 +9,10 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
-    if (!session || session.role !== 'ADMIN') {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Admin privileges required.' }, { status: 403 });
     }
 
@@ -132,7 +135,10 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
-    if (!session || session.role !== 'ADMIN') {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Admin privileges required.' }, { status: 403 });
     }
 

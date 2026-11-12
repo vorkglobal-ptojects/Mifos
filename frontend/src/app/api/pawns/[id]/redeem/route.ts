@@ -14,6 +14,9 @@ export async function POST(
 ) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { id } = await params;
     const body = await request.json();
     const { insurance = 50, days = 1, approvedBy } = body;

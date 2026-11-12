@@ -11,6 +11,9 @@ export async function PUT(req: Request) {
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
     }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot modify matrix transactions.' }, { status: 403 });
+    }
 
     const body = await req.json();
     const { id, category, bill_no, date, amount, branch, notes, remarks, user_id } = body;
@@ -104,6 +107,15 @@ export async function PUT(req: Request) {
 // DELETE: Delete an item from Daily Matrix
 export async function DELETE(req: Request) {
   try {
+    const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role === 'TELLER' || session.role === 'AUDITOR') {
+      return NextResponse.json({
+        error: 'Direct matrix item deletion is strictly prohibited for this role. Please submit a Change Request Ticket.'
+      }, { status: 403 });
+    }
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     const category = searchParams.get('category');

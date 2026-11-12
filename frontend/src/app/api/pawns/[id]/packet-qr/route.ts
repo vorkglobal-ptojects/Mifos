@@ -215,6 +215,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const branch_id = searchParams.get('branch_id');

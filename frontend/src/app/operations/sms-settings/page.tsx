@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { buildPawnReceiptSms } from "@/lib/sms";
+import { getAuthHeaders } from "@/lib/getAuthHeaders";
 
 export default function SmsSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -45,7 +46,7 @@ export default function SmsSettingsPage() {
   const loadSettingsAndLogs = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/notifications/sms');
+      const res = await fetch('/api/notifications/sms', { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setIsAdmin(data.isAdmin !== false);
@@ -93,7 +94,7 @@ export default function SmsSettingsPage() {
     setSelectedBranchId(newBranchId);
     const targetBranch = branches.find(b => b.id === newBranchId);
 
-    fetch('/api/notifications/sms')
+    fetch('/api/notifications/sms', { headers: getAuthHeaders() })
       .then(res => res.json())
       .then(data => {
         const config = data.config || {};
@@ -130,7 +131,7 @@ export default function SmsSettingsPage() {
     try {
       const res = await fetch('/api/settings/sms-gateway', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           branchId: selectedBranchId === 'GLOBAL' ? undefined : selectedBranchId,
           branchName: selectedBranchObj?.name || selectedBranchId,
@@ -165,7 +166,7 @@ export default function SmsSettingsPage() {
     try {
       const res = await fetch('/api/notifications/sms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           phone: testPhone,
           message: testMessage,

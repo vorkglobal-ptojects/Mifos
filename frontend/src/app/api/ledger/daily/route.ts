@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const requestedBranch = searchParams.get('branch_id') || searchParams.get('branch');
     const date = searchParams.get('date');
@@ -95,6 +98,9 @@ export async function POST(request: Request) {
     const session = await getAuthenticatedUser(request);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot modify daily ledgers.' }, { status: 403 });
     }
     const body = await request.json();
     let { branch_id, created_by = 'System User' } = body;
@@ -351,6 +357,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Daily ledger not found' }, { status: 404 });
     }
 
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot delete daily ledgers.' }, { status: 403 });
+    }
     if (session.role === 'TELLER') {
       const isTellerHq = !session.branchId || normalizeBranchId(session.branchId) === 'HQ';
       if (!isTellerHq && normalizeBranchId(ledger.branch_id) !== normalizeBranchId(session.branchId)) {
@@ -380,6 +389,9 @@ export async function PATCH(request: Request) {
     const { id, is_flag_ignored } = await request.json();
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot override daily ledger flags.' }, { status: 403 });
+    }
     if (session.role === 'TELLER') {
       const { data: ledger } = await adminSupabase.from('daily_ledgers').select('branch_id').eq('id', id).single();
       const isTellerHq = !session.branchId || normalizeBranchId(session.branchId) === 'HQ';

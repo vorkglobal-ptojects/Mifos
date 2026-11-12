@@ -6,6 +6,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const url = new URL(req.url);
     const pawnId = url.searchParams.get('pawn_id');
     const branchId = url.searchParams.get('branch_id');
@@ -46,6 +49,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const body = await req.json();
 
     const {

@@ -21,6 +21,10 @@ const DEFAULT_SETTINGS = {
 
 export async function GET(req: Request) {
   try {
+    const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { data, error } = await adminSupabase
       .from('cctv_settings')
       .select('*')
@@ -40,7 +44,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
-    if (session && session.role !== 'ADMIN') {
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Forbidden. Admin privileges required.' }, { status: 403 });
     }
 

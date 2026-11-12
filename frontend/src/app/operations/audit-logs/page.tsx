@@ -11,6 +11,7 @@ import {
   Eye, X, Terminal, Laptop, Globe, CheckCircle2, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
+import { getAuthHeaders } from "@/lib/getAuthHeaders";
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
@@ -64,7 +65,7 @@ export default function AuditLogsPage() {
 
   const loadBranches = async () => {
     try {
-      const res = await fetch('/api/branches');
+      const res = await fetch('/api/branches', { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setBranches([{ id: 'ALL', name: 'All Branches' }, ...data]);
@@ -101,7 +102,7 @@ export default function AuditLogsPage() {
         params.append('startDate', d.toISOString().split('T')[0]);
       }
 
-      const res = await fetch(`/api/audit-logs?${params}`);
+      const res = await fetch(`/api/audit-logs?${params}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {

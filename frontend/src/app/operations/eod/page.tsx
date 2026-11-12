@@ -426,7 +426,7 @@ function EndOfDayContent() {
       // Record Print Event in Audit Logs
       fetch('/api/audit-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'PRINT_PAWN_LABEL',
           resource: billNoStr,
@@ -1095,7 +1095,9 @@ function EndOfDayContent() {
   const fetchDailyMatrix = async (dDate = matrixDate, dBranch = matrixBranch) => {
     setLoadingMatrix(true);
     try {
-      const res = await fetch(`/api/stock/daily-matrix?date=${dDate}&branch=${dBranch}`);
+      const res = await fetch(`/api/stock/daily-matrix?date=${dDate}&branch=${dBranch}`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const json = await res.json();
         setMatrixResponse(json);
@@ -1128,7 +1130,7 @@ function EndOfDayContent() {
     try {
       const res = await fetch('/api/stock/daily-matrix/item', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           id: editingMatrixItem.id,
           category: editingMatrixItem.category,
@@ -1166,7 +1168,8 @@ function EndOfDayContent() {
     setIsDeletingMatrixItem(true);
     try {
       const res = await fetch(`/api/stock/daily-matrix/item?id=${deletingMatrixItem.id}&category=${deletingMatrixItem.category}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -1577,7 +1580,9 @@ function EndOfDayContent() {
       let hasMore = true;
 
       while (hasMore) {
-        const res = await fetch(`/api/stock/old?type=items&page=${page}&pageSize=${pageSize}`);
+        const res = await fetch(`/api/stock/old?type=items&page=${page}&pageSize=${pageSize}`, {
+          headers: getAuthHeaders()
+        });
         if (!res.ok) throw new Error('Failed to load legacy stock');
         const json = await res.json();
         const data = json.items || [];
@@ -1609,7 +1614,9 @@ function EndOfDayContent() {
 
   const loadOldCustomerData = async () => {
     try {
-      const res = await fetch('/api/stock/old?type=customers');
+      const res = await fetch('/api/stock/old?type=customers', {
+        headers: getAuthHeaders()
+      });
       if (!res.ok) throw new Error('Failed to load legacy customers');
       const json = await res.json();
       setOldStockCustomers(json.customers || []);
@@ -1618,9 +1625,9 @@ function EndOfDayContent() {
     }
   };
 
-  // Load stock when tab, branch or search query changes
+  // Load stock when tab, branch or search query changes (wait until currentUser hydrates to avoid race loading ALL)
   useEffect(() => {
-    if (activeTab === 'stock') {
+    if (activeTab === 'stock' && currentUser) {
       loadStockData();
       loadOldStockData();
     }
@@ -1628,7 +1635,7 @@ function EndOfDayContent() {
 
   // Load customer registry only when tab or branch filter changes
   useEffect(() => {
-    if (activeTab === 'stock') {
+    if (activeTab === 'stock' && currentUser) {
       loadCustomerData();
       loadOldCustomerData();
     }
@@ -1731,21 +1738,21 @@ function EndOfDayContent() {
     const finalBillNo = stripBranchPrefix(formatBillNo(billPrefix, billNo)).trim();
     console.log("[DEBUG] generated finalBillNo (strictly clean):", finalBillNo);
 
-    // Duplicate numeric bill number validation within current branch
+    // Duplicate numeric bill number validation strictly within the modal's target branch
+    const modalTargetBranch = normalizeBranchId(targetBranch);
     const isChangingNumeric = !isEditingActive || !selectedActiveItem || !isSameNumericBill(selectedActiveItem.bill_no, finalBillNo);
     if (isChangingNumeric) {
       const numericPart = extractNumericBillNo(finalBillNo);
-      if (numericPart) {
-        const targetBranch = normalizeBranchId(selectedBranch || 'HQ');
+      if (numericPart && modalTargetBranch && modalTargetBranch !== 'ALL') {
         const duplicateItem = stockItems.find(item => {
           if (isEditingActive && item.id === selectedActiveItem?.id) return false;
           const iBranch = normalizeBranchId(item.branch_id || item.branch || '');
-          if (targetBranch !== 'ALL' && iBranch && iBranch !== targetBranch) return false;
+          if (!iBranch || iBranch !== modalTargetBranch) return false;
           return isSameNumericBill(item.bill_no, finalBillNo);
         });
 
         if (duplicateItem) {
-          toast.error(`Duplicate Bill Number: Bill number ${numericPart} already exists in ${targetBranch} branch.`);
+          toast.error(`Duplicate Bill Number: Bill number ${numericPart} already exists in ${modalTargetBranch} branch.`);
           return;
         }
       }
@@ -2130,7 +2137,7 @@ function EndOfDayContent() {
       if (isUsingSupabase) {
         const res = await fetch('/api/stock/restore', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             id: selectedItemForRestore.id,
             restoreDate,
@@ -2208,7 +2215,7 @@ function EndOfDayContent() {
       if (isUsingSupabase) {
         const res = await fetch('/api/stock/delete', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ 
             id: item.id, 
             bill_no: item.bill_no, 
@@ -3804,10 +3811,16 @@ function EndOfDayContent() {
                       (() => {
                         const numPart = extractNumericBillNo(billNo);
                         const isChanging = !isEditingActive || !selectedActiveItem || !isSameNumericBill(selectedActiveItem.bill_no, billNo);
-                        return isChanging && numPart && stockItems.some(item => 
-                          (!isEditingActive || item.id !== selectedActiveItem?.id) &&
-                          isSameNumericBill(item.bill_no, billNo)
-                        ) ? "border-rose-500 focus:ring-rose-500" : "";
+                        const rawModalBranch = isEditingActive
+                          ? (selectedActiveItem?.branch_id || selectedAddBranch)
+                          : (currentUser?.role === 'ADMIN' ? selectedAddBranch : (currentUser?.branchId || selectedBranch || ''));
+                        if (!isChanging || !numPart || !rawModalBranch || rawModalBranch === 'ALL') return "";
+                        const modalTargetBranch = normalizeBranchId(rawModalBranch);
+                        return stockItems.some(item => {
+                          if (isEditingActive && item.id === selectedActiveItem?.id) return false;
+                          const iBranch = normalizeBranchId(item.branch_id || item.branch || '');
+                          return iBranch === modalTargetBranch && isSameNumericBill(item.bill_no, billNo);
+                        }) ? "border-rose-500 focus:ring-rose-500" : "";
                       })()
                     )}
                   />
@@ -3816,15 +3829,20 @@ function EndOfDayContent() {
                   const isChanging = !isEditingActive || !selectedActiveItem || !isSameNumericBill(selectedActiveItem.bill_no, billNo);
                   if (!isChanging) return null;
                   const numPart = extractNumericBillNo(billNo);
-                  if (!numPart) return null;
-                  const duplicateItem = stockItems.find(item => 
-                    (!isEditingActive || item.id !== selectedActiveItem?.id) &&
-                    isSameNumericBill(item.bill_no, billNo)
-                  );
+                  const rawModalBranch = isEditingActive
+                    ? (selectedActiveItem?.branch_id || selectedAddBranch)
+                    : (currentUser?.role === 'ADMIN' ? selectedAddBranch : (currentUser?.branchId || selectedBranch || ''));
+                  if (!numPart || !rawModalBranch || rawModalBranch === 'ALL') return null;
+                  const modalTargetBranch = normalizeBranchId(rawModalBranch);
+                  const duplicateItem = stockItems.find(item => {
+                    if (isEditingActive && item.id === selectedActiveItem?.id) return false;
+                    const iBranch = normalizeBranchId(item.branch_id || item.branch || '');
+                    return iBranch === modalTargetBranch && isSameNumericBill(item.bill_no, billNo);
+                  });
                   if (duplicateItem) {
                     return (
                       <p className="text-rose-600 font-bold text-xs flex items-center gap-1 mt-1">
-                        <AlertCircle className="w-3.5 h-3.5" /> Duplicate Bill Number: Bill number {numPart} already exists in the system.
+                        <AlertCircle className="w-3.5 h-3.5" /> Duplicate Bill Number: Bill number {numPart} already exists in {modalTargetBranch} branch.
                       </p>
                     );
                   }

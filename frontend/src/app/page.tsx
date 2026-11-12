@@ -213,7 +213,7 @@ export default function Home() {
 
   const fetchStatus = async (bid: string) => {
     try {
-      const res = await fetch('/api/branch-status');
+      const res = await fetch('/api/branch-status', { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         if (data[bid]) setStatus(data[bid]);
@@ -230,7 +230,7 @@ export default function Home() {
     try {
       const res = await fetch('/api/branch-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ branchId, status: newStatus })
       });
       if (res.ok) {

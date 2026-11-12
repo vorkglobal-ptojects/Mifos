@@ -7,6 +7,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 
@@ -32,6 +35,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot initiate vault transfers.' }, { status: 403 });
+    }
     const body = await request.json();
     const { toVault, amount, currency, notes } = body;
     let { fromVault, initiatedBy } = body;
@@ -82,6 +91,12 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot modify vault transfers.' }, { status: 403 });
+    }
     const body = await request.json();
     const { id, status, approvedBy } = body;
 

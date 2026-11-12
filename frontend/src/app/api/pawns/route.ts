@@ -327,7 +327,11 @@ export async function POST(request: Request) {
 
     if (session.role === 'ADMIN') {
       if (branchId) {
-        targetBranchId = normalizeBranchId(branchId);
+        const cleanReqBranch = String(branchId).trim();
+        if (cleanReqBranch.toUpperCase() === 'ALL' || cleanReqBranch.includes(',')) {
+          return NextResponse.json({ error: 'Please select a valid single target branch.' }, { status: 400 });
+        }
+        targetBranchId = normalizeBranchId(cleanReqBranch);
       }
     } else {
       // TELLER or MANAGER: strictly bound to session branch
@@ -482,9 +486,10 @@ export async function POST(request: Request) {
         .select('id, bill_no, description, branch_id')
         .in('branch_id', branchTerms)
         .ilike('bill_no', `%${numericPart}%`)
-        .limit(20);
+        .limit(100);
 
       const hasDuplicatePawn = (existingPawns || []).some((p: any) => 
+        normalizeBranchId(p.branch_id) === targetBranchId &&
         isSameNumericBill(p.bill_no || p.description, billNo)
       );
 
@@ -499,9 +504,10 @@ export async function POST(request: Request) {
         .select('id, bill_no, branch_id')
         .in('branch_id', branchTerms)
         .ilike('bill_no', `%${numericPart}%`)
-        .limit(20);
+        .limit(100);
 
       const hasDuplicateStock = (existingStock || []).some((s: any) => 
+        normalizeBranchId(s.branch_id) === targetBranchId &&
         isSameNumericBill(s.bill_no, billNo)
       );
 

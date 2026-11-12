@@ -11,6 +11,12 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot dispatch SMS alerts.' }, { status: 403 });
+    }
     const body = await req.json();
     const { phone, message, ticketNo, amount, type } = body;
 
@@ -48,6 +54,9 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
 
     const { data: logs } = await adminSupabase
       .from('sms_logs')
@@ -66,20 +75,27 @@ export async function GET(req: Request) {
       .select('*')
       .order('name', { ascending: true });
 
+    const isAdmin = session.role === 'ADMIN';
+    const rawConfig = settingsData?.value || {
+      enabled: true,
+      provider: 'TEXTBEE',
+      deviceId: '6aa2895cccb6c72709fa5556',
+      apiKey: 'txb_SQX87S1btDchmgxYURa40D3I3WEjxSqg',
+      gatewayUrl: 'https://api.textbee.dev/api/v1/gateway/devices/6aa2895cccb6c72709fa5556/send-sms',
+      simSlot: 1,
+      branches: {}
+    };
+
+    const safeConfig = isAdmin
+      ? rawConfig
+      : { ...rawConfig, apiKey: rawConfig.apiKey ? '***REDACTED***' : '', branches: {} };
+
     return NextResponse.json({
       logs: logs || [],
-      isAdmin: session?.role === 'ADMIN',
-      userBranchId: session?.branchId || 'HQ',
+      isAdmin,
+      userBranchId: session.branchId || 'HQ',
       branches: branchesData || [{ id: 'HQ', name: 'Head Office' }],
-      config: settingsData?.value || {
-        enabled: true,
-        provider: 'TEXTBEE',
-        deviceId: '6aa2895cccb6c72709fa5556',
-        apiKey: 'txb_SQX87S1btDchmgxYURa40D3I3WEjxSqg',
-        gatewayUrl: 'https://api.textbee.dev/api/v1/gateway/devices/6aa2895cccb6c72709fa5556/send-sms',
-        simSlot: 1,
-        branches: {}
-      }
+      config: safeConfig
     });
   } catch (err: any) {
     return NextResponse.json({ logs: [], config: {}, branches: [], isAdmin: false });

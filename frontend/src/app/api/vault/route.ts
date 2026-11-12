@@ -6,6 +6,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const branchId = searchParams.get('branchId') || (session?.role === 'TELLER' ? session.branchId : 'ALL');
 

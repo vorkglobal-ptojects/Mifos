@@ -9,6 +9,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
     const { searchParams } = new URL(req.url);
     const dateParam = searchParams.get('date') || getSriLankaDate();
     const branchParam = searchParams.get('branch') || '';

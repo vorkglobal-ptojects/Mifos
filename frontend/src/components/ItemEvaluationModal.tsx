@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Camera, AlertCircle, RefreshCw, Activity, PackageSearch, CheckCircle2, ZoomIn, Eye } from 'lucide-react';
 import { WebcamCapture } from './WebcamCapture';
+import { getAuthHeaders } from '@/lib/getAuthHeaders';
 
 export interface EvaluationResult {
   airWeight: number;
@@ -152,7 +153,7 @@ export function ItemEvaluationModal({ isOpen, onOpenChange, onAccept }: ItemEval
       // Save rejection record and captured images into the database
       const res = await fetch('/api/evaluations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           airWeight: parseFloat(airWeight) || 0,
           waterWeight: parseFloat(waterWeight) || 0,
@@ -188,7 +189,7 @@ export function ItemEvaluationModal({ isOpen, onOpenChange, onAccept }: ItemEval
       // Store evaluation and captured air/water weight photos in the database
       const res = await fetch('/api/evaluations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           airWeight: parseFloat(airWeight) || 0,
           waterWeight: parseFloat(waterWeight) || 0,

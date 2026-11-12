@@ -1,5 +1,6 @@
+import crypto from 'crypto';
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type User } from '@supabase/supabase-js';
 import { normalizeBranchId } from './branch-mapping';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ielkaetihagxgnrrasch.supabase.co';
@@ -10,7 +11,8 @@ export const adminSupabase = createClient(supabaseUrl, supabaseServiceKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 });
 
-export type UserRole = 'ADMIN' | 'TELLER' | 'AUDITOR' | 'MANAGER';
+export type UserRole = 'ADMIN' | 'TELLER' | 'AUDITOR' | 'MANAGER' | 'EVALUATOR';
+const VALID_ROLES = new Set<UserRole>(['ADMIN', 'TELLER', 'AUDITOR', 'MANAGER', 'EVALUATOR']);
 
 export interface AuthSession {
   user: any;
@@ -22,82 +24,104 @@ export interface AuthSession {
   isAuthorized: boolean;
 }
 
+const REFRESH_CACHE_TTL_MS = 20_000;
+const refreshCache = new Map<string, { promise: Promise<User | null>; expiresAt: number }>();
+
+function extractCookieValue(cookieHeader: string, names: string[]): string {
+  if (!cookieHeader) return '';
+  for (const part of cookieHeader.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const key = part.slice(0, idx).trim();
+    if (names.includes(key)) {
+      return decodeURIComponent(part.slice(idx + 1).trim());
+    }
+  }
+  return '';
+}
+
 /**
- * Extracts and verifies the authenticated user session server-side from request headers or tokens.
+ * Cryptographically verifies and exchanges an active refresh token with Supabase Auth.
+ * Deduplicates concurrent requests per token hash so shift dashboards do not race rotation.
+ */
+async function verifyViaRefreshToken(refreshToken: string): Promise<User | null> {
+  if (!refreshToken || refreshToken.length < 8) return null;
+  const key = crypto.createHash('sha256').update(refreshToken).digest('hex');
+  const now = Date.now();
+
+  const cached = refreshCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = (async (): Promise<User | null> => {
+    try {
+      const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+      const { data, error } = await authSupabase.auth.refreshSession({ refresh_token: refreshToken });
+      if (error || !data?.session?.user) {
+        return null;
+      }
+      return data.session.user;
+    } catch (err) {
+      console.warn('[auth-server] Verified refresh token fallback failed:', err);
+      return null;
+    }
+  })();
+
+  refreshCache.set(key, { promise, expiresAt: now + REFRESH_CACHE_TTL_MS });
+  if (refreshCache.size > 200) {
+    for (const [k, v] of refreshCache.entries()) {
+      if (v.expiresAt <= now) refreshCache.delete(k);
+    }
+  }
+
+  const resolvedUser = await promise;
+  if (!resolvedUser) {
+    refreshCache.delete(key);
+  }
+  return resolvedUser;
+}
+
+/**
+ * Extracts and cryptographically verifies the authenticated user session server-side.
+ * Never trusts unverified JWT claims; expired access tokens recover strictly via Supabase refresh_token verification.
  */
 export async function getAuthenticatedUser(request: Request): Promise<AuthSession | null> {
   try {
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
     const xAuthToken = request.headers.get('x-auth-token');
-    
+    const cookieHeader = request.headers.get('cookie') || '';
+
     let token = '';
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7).trim();
     } else if (xAuthToken) {
       token = xAuthToken.trim();
+    } else {
+      token = extractCookieValue(cookieHeader, ['sb-access-token', 'auth_token']);
     }
 
-    if (!token) {
-      // Check cookies if header is absent
-      const cookieHeader = request.headers.get('cookie') || '';
-      const tokenCookie = cookieHeader.split(';').find(c => c.trim().startsWith('sb-access-token=') || c.trim().startsWith('auth_token='));
-      if (tokenCookie) {
-        token = tokenCookie.split('=')[1]?.trim() || '';
-      }
+    const refreshToken =
+      request.headers.get('x-refresh-token')?.trim() ||
+      extractCookieValue(cookieHeader, ['sb-refresh-token', 'refresh_token']);
 
-      // Check refresh token fallback if access token cookie is missing
-      if (!token) {
-        const refreshCookie = cookieHeader.split(';').find(c => c.trim().startsWith('sb-refresh-token=') || c.trim().startsWith('refresh_token='));
-        const refreshToken = refreshCookie ? refreshCookie.split('=')[1]?.trim() : '';
-        if (refreshToken) {
-          try {
-            const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-              auth: { autoRefreshToken: false, persistSession: false }
-            });
-            const { data: refreshedSession } = await authSupabase.auth.refreshSession({ refresh_token: refreshToken });
-            if (refreshedSession?.session?.access_token) {
-              token = refreshedSession.session.access_token;
-            }
-          } catch (rErr) {
-            console.warn('[auth-server] Refresh token recovery failed:', rErr);
-          }
-        }
-      }
-    }
-
-    if (!token) {
+    if (!token && !refreshToken) {
       return null;
     }
 
-    // Verify token with Supabase Auth
-    let user: any = null;
-    const { data: authData, error: userError } = await adminSupabase.auth.getUser(token);
-    if (!userError && authData?.user) {
-      user = authData.user;
-    } else {
-      // Graceful recovery for tokens expired during active shifts (24-hour shift grace window)
-      try {
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          const payloadJson = Buffer.from(parts[1], 'base64').toString('utf8');
-          const payload = JSON.parse(payloadJson);
-          const userId = payload.sub;
-          const exp = payload.exp;
-
-          const nowSec = Math.floor(Date.now() / 1000);
-          // Allow 24 hours of shift window past token expiration
-          const isWithinShiftGrace = exp && (nowSec - exp < 24 * 3600);
-
-          if (userId && isWithinShiftGrace) {
-            const { data: adminUser } = await adminSupabase.auth.admin.getUserById(userId);
-            if (adminUser?.user) {
-              user = adminUser.user;
-            }
-          }
-        }
-      } catch (recoveryErr) {
-        console.warn('[auth-server] Expired JWT recovery attempt failed:', recoveryErr);
+    let user: User | null = null;
+    if (token) {
+      const { data: authData, error: userError } = await adminSupabase.auth.getUser(token);
+      if (!userError && authData?.user) {
+        user = authData.user;
       }
+    }
+
+    // Safe mid-shift recovery: exchange valid refresh_token with Supabase Auth (no unverified JWT decode)
+    if (!user && refreshToken) {
+      user = await verifyViaRefreshToken(refreshToken);
     }
 
     if (!user) {
@@ -118,29 +142,31 @@ export async function getAuthenticatedUser(request: Request): Promise<AuthSessio
       branch_id: user.user_metadata?.branch_id || 'HQ',
       branch_name: user.user_metadata?.branch_name || 'Head Office'
     };
-    const role = (profile?.role || user.user_metadata?.role || 'TELLER').toUpperCase() as UserRole;
+    const rawRole = String(profile?.role || user.user_metadata?.role || 'TELLER').toUpperCase() as UserRole;
+    const role: UserRole = VALID_ROLES.has(rawRole) ? rawRole : 'TELLER';
     const trustedBranchId = normalizeBranchId(profile?.branch_id || 'HQ');
     let branchId = trustedBranchId;
     const branchName = profile?.branch_name || '';
 
-    // Branch identification: Only ADMIN or HQ users can switch target branch via header
+    // Branch identification: ADMIN/HQ Auditors can switch branch via header; HQ relieving Tellers can select a non-HQ branch
     const selectedBranch =
       request.headers.get('x-branch-id') ||
       request.headers.get('X-Branch-Id') ||
       request.headers.get('X-BRANCH-ID');
-    
-    if (role === 'ADMIN' || (role === 'AUDITOR' && normalizeBranchId(profile?.branch_id || 'HQ') === 'HQ')) {
+
+    if (role === 'ADMIN' || (role === 'AUDITOR' && trustedBranchId === 'HQ')) {
       if (selectedBranch && selectedBranch.trim() !== '') {
         branchId = normalizeBranchId(selectedBranch.trim());
       }
     } else if (role === 'TELLER' && (trustedBranchId === 'HQ' || !trustedBranchId)) {
-      // Tellers assigned to HQ can operate in whichever branch was selected at login/header
       if (selectedBranch && selectedBranch.trim() !== '') {
-        branchId = normalizeBranchId(selectedBranch.trim());
+        const normalizedSel = normalizeBranchId(selectedBranch.trim());
+        if (normalizedSel && normalizedSel !== 'HQ') {
+          branchId = normalizedSel;
+        }
       }
     } else {
-      // Non-admin staff assigned to a branch are bound to their assigned branch
-      branchId = normalizeBranchId(profile?.branch_id || 'HQ');
+      branchId = trustedBranchId;
     }
 
     if (!branchId) {
@@ -210,8 +236,8 @@ export function validateBranchAccess(session: AuthSession | null, targetBranchId
   if (session.role === 'ADMIN') return true;
 
   const isHead = !session.branchId || normalizeBranchId(session.branchId) === 'HQ' || session.branchId === 'HEAD OFFICE';
-  // Users operating from Head Office (except TELLER) have cross-branch visibility
-  if (isHead && session.role !== 'TELLER') return true;
+  // Users operating from Head Office (excluding TELLER and EVALUATOR) have cross-branch visibility
+  if (isHead && session.role !== 'TELLER' && session.role !== 'EVALUATOR') return true;
 
   // Branch user is strictly bound to their assigned / selected branch
   if (!targetBranchId || targetBranchId === 'ALL' || targetBranchId === 'HQ') {

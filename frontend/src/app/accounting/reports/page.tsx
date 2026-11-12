@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, Printer, Download, TrendingUp, TrendingDown, Scale, DollarSign, Filter, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
+import { getAuthHeaders } from "@/lib/getAuthHeaders";
 
 export default function FinancialReportsPage() {
   const [data, setData] = useState<any>(null);
@@ -17,7 +18,7 @@ export default function FinancialReportsPage() {
 
   const loadBranches = async () => {
     try {
-      const res = await fetch('/api/branches');
+      const res = await fetch('/api/branches', { headers: getAuthHeaders() });
       if (res.ok) {
         const b = await res.json();
         setBranches([{ id: 'ALL', name: 'All Branches' }, ...b]);
@@ -36,7 +37,7 @@ export default function FinancialReportsPage() {
         branchId: (u?.role === 'ADMIN' || u?.role === 'AUDITOR') ? filterBranch : (u?.branchId || 'HQ')
       });
 
-      const res = await fetch(`/api/reports/financials?${params}`);
+      const res = await fetch(`/api/reports/financials?${params}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const result = await res.json();
         setData(result);

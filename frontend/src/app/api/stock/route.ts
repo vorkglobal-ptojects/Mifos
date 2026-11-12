@@ -9,12 +9,7 @@ export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -23,7 +18,12 @@ export async function GET(request: Request) {
     const statusParam = searchParams.get('status');
 
     const headerBranch = request.headers.get('x-branch-id') || request.headers.get('X-Branch-Id');
-    const activeBranch = branchParam || headerBranch || session?.branchId || 'ALL';
+    let activeBranch = branchParam || headerBranch || session?.branchId || 'ALL';
+    if (session.role === 'TELLER' || session.role === 'EVALUATOR') {
+      if (session.branchId && session.branchId !== 'HQ' && session.branchId !== 'ALL') {
+        activeBranch = session.branchId;
+      }
+    }
 
     // Paginated fetch to bypass PostgREST's 1000-row default limit
     let allItems: any[] = [];
@@ -94,12 +94,10 @@ export async function POST(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot create stock items.' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -119,9 +117,10 @@ export async function POST(request: Request) {
         .select('id, bill_no, branch_id')
         .in('branch_id', branchTerms)
         .ilike('bill_no', `%${numericPart}%`)
-        .limit(20);
+        .limit(100);
 
       const hasDuplicateStock = (existingStock || []).some((s: any) => 
+        normalizeBranchId(s.branch_id) === normBranch &&
         isSameNumericBill(s.bill_no, bill_no)
       );
 
@@ -136,9 +135,10 @@ export async function POST(request: Request) {
         .select('id, bill_no, description, branch_id')
         .in('branch_id', branchTerms)
         .ilike('bill_no', `%${numericPart}%`)
-        .limit(20);
+        .limit(100);
 
       const hasDuplicatePawn = (existingPawns || []).some((p: any) => 
+        normalizeBranchId(p.branch_id) === normBranch &&
         isSameNumericBill(p.bill_no || p.description, bill_no)
       );
 
@@ -186,12 +186,10 @@ export async function PUT(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot modify or withdraw stock items.' }, { status: 403 });
     }
 
     const body = await request.json();
@@ -264,9 +262,10 @@ export async function PUT(request: Request) {
             .neq('id', id)
             .in('branch_id', branchTerms)
             .ilike('bill_no', `%${numericPart}%`)
-            .limit(20);
+            .limit(100);
 
           const hasDuplicateStock = (existingStock || []).some((s: any) => 
+            normalizeBranchId(s.branch_id) === targetBranch &&
             isSameNumericBill(s.bill_no, bill_no)
           );
 
@@ -281,9 +280,10 @@ export async function PUT(request: Request) {
             .select('id, bill_no, description, branch_id')
             .in('branch_id', branchTerms)
             .ilike('bill_no', `%${numericPart}%`)
-            .limit(20);
+            .limit(100);
 
           const hasDuplicatePawn = (existingPawns || []).some((p: any) => 
+            normalizeBranchId(p.branch_id) === targetBranch &&
             !isSameNumericBill(p.bill_no || p.description, currentStockItem.bill_no) &&
             isSameNumericBill(p.bill_no || p.description, bill_no)
           );

@@ -9,19 +9,20 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN' && session.role !== 'MANAGER') {
+      return NextResponse.json({
+        error: 'Direct stock restore to safe is prohibited for this role. Please submit a Change Request Ticket for Manager approval.'
+      }, { status: 403 });
+    }
 
     const body = await req.json();
     const { id, restoreDate, interestPaid, notes } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Item ID is required' }, { status: 400 });
-    }
-
-    // Direct restore prohibited for TELLER
-    if (session && session.role === 'TELLER') {
-      return NextResponse.json({ 
-        error: 'Direct stock restore to safe is prohibited for Tellers. Please submit a Change Request Ticket for Manager approval.' 
-      }, { status: 403 });
     }
 
     // 1. Fetch item from stock_items

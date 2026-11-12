@@ -31,7 +31,7 @@ export default function ExecutiveDashboard() {
   useEffect(() => {
     const loadBranches = async () => {
       try {
-        const res = await fetch('/api/branches');
+        const res = await fetch('/api/branches', { headers: getAuthHeaders() });
         if (res.ok) setBranches(await res.json());
       } catch (e) {
         console.error('Failed to load branches');

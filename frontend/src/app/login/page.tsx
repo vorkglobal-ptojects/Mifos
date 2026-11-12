@@ -177,9 +177,10 @@ export default function LoginPage() {
         if (res.ok && resData.success) {
           authUser = resData.user;
           tok = resData.token || '';
+          refTok = resData.refreshToken || '';
           const cleanRole = (r?: string) => {
             const upper = (r || '').toUpperCase().trim();
-            if (['ADMIN', 'MANAGER', 'AUDITOR'].includes(upper)) return upper;
+            if (['ADMIN', 'MANAGER', 'AUDITOR', 'EVALUATOR'].includes(upper)) return upper;
             return 'TELLER';
           };
           userRole = cleanRole(resData.user?.role);
@@ -211,23 +212,26 @@ export default function LoginPage() {
         refTok = data.session?.refresh_token || '';
         const cleanRole = (r?: string) => {
           const upper = (r || '').toUpperCase().trim();
-          if (['ADMIN', 'MANAGER', 'AUDITOR'].includes(upper)) return upper;
+          if (['ADMIN', 'MANAGER', 'AUDITOR', 'EVALUATOR'].includes(upper)) return upper;
           return 'TELLER';
         };
         userRole = cleanRole(profile?.role || data.user.user_metadata?.role);
       }
 
       const effectiveBranch = normalizeBranchId(authUser?.branchId || effectiveBranchInput);
+      const secureCookieAttr = typeof window !== 'undefined' && window.location.protocol === 'https:' ? '; Secure' : '';
 
       if (tok) {
         localStorage.setItem('auth_token', tok);
-        document.cookie = `sb-access-token=${tok}; path=/; max-age=28800; SameSite=Lax`;
-        document.cookie = `auth_token=${tok}; path=/; max-age=28800; SameSite=Lax`;
+        localStorage.setItem('sb-access-token', tok);
+        document.cookie = `sb-access-token=${encodeURIComponent(tok)}; path=/; max-age=28800; SameSite=Lax${secureCookieAttr}`;
+        document.cookie = `auth_token=${encodeURIComponent(tok)}; path=/; max-age=28800; SameSite=Lax${secureCookieAttr}`;
       }
       if (refTok) {
         localStorage.setItem('refresh_token', refTok);
-        document.cookie = `sb-refresh-token=${refTok}; path=/; max-age=604800; SameSite=Lax`;
-        document.cookie = `refresh_token=${refTok}; path=/; max-age=604800; SameSite=Lax`;
+        localStorage.setItem('sb-refresh-token', refTok);
+        document.cookie = `sb-refresh-token=${encodeURIComponent(refTok)}; path=/; max-age=604800; SameSite=Lax${secureCookieAttr}`;
+        document.cookie = `refresh_token=${encodeURIComponent(refTok)}; path=/; max-age=604800; SameSite=Lax${secureCookieAttr}`;
       }
       if (tok && refTok) {
         try {

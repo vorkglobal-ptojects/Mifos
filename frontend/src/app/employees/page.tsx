@@ -69,7 +69,7 @@ export default function StaffPage() {
 
   const loadBranches = async () => {
     try {
-      const res = await fetch('/api/branches');
+      const res = await fetch('/api/branches', { headers: getAuthHeaders() });
       if (res.ok) {
         setBranches(await res.json());
       }
@@ -234,7 +234,7 @@ export default function StaffPage() {
         console.log('Creating new branch:', { newBranchId, newBranchName });
         const bRes = await fetch('/api/branches', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ id: newBranchId, name: newBranchName }),
         });
         if (!bRes.ok) {
@@ -261,7 +261,7 @@ export default function StaffPage() {
       console.log('Saving staff member:', body);
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body),
       });
 
@@ -288,7 +288,7 @@ export default function StaffPage() {
     if (!confirm(`Permanently delete "${user.email}"?\n\nThis will remove their login access immediately.`)) return;
     const toastId = toast.loading('Removing user account...');
     try {
-      const res = await fetch(`/api/staff/${user.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/staff/${user.id}`, { method: 'DELETE', headers: getAuthHeaders() });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error);

@@ -44,7 +44,7 @@ export default function CctvLivePage() {
     try {
       await fetch('/api/cctv/audit-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'PTZ_CONTROL',
           camera_id: selectedCam.id,
@@ -62,7 +62,7 @@ export default function CctvLivePage() {
     try {
       await fetch('/api/cctv/audit-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'SNAPSHOT',
           camera_id: selectedCam.id

@@ -170,7 +170,7 @@ export default function PawnesPage() {
     const cleanBill = getBillNo(pawn);
     if (!air && !water && cleanBill) {
       try {
-        const res = await fetch(`/api/evaluations?billNo=${encodeURIComponent(cleanBill)}`);
+        const res = await fetch(`/api/evaluations?billNo=${encodeURIComponent(cleanBill)}`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.evaluations && json.evaluations.length > 0) {
           const ev = json.evaluations[0];
@@ -467,7 +467,7 @@ export default function PawnesPage() {
 
   const loadBranches = async () => {
     try {
-      const res = await fetch('/api/branches');
+      const res = await fetch('/api/branches', { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setBranches([{ id: 'ALL', name: 'All Branches' }, ...data]);
@@ -1004,8 +1004,12 @@ export default function PawnesPage() {
 
   const openAdd = () => { 
     resetForm(); 
-    if (userRole === 'ADMIN' && filterBranch && filterBranch !== 'ALL') {
-      setBranchId(filterBranch);
+    if (userRole === 'ADMIN') {
+      if (selectedBranches.length === 1 && selectedBranches[0] !== 'ALL') {
+        setBranchId(normalizeBranchId(selectedBranches[0]));
+      } else {
+        setBranchId('');
+      }
     }
     loadClients(); 
     setIsOpen(true); 
@@ -1122,16 +1126,25 @@ export default function PawnesPage() {
         }
       }
 
-      // Duplicate numeric bill number validation within current branch
+      // Validate single target branch before duplicate check or submission
+      const rawTargetBranch = String(editingPawn?.branch_id || editingPawn?.branchId || branchId || '').trim();
+      if (!rawTargetBranch || rawTargetBranch.toUpperCase() === 'ALL' || rawTargetBranch.includes(',')) {
+        toast.dismiss(toastId);
+        toast.error('Please select a valid target branch before saving.');
+        setIsSaving(false);
+        return;
+      }
+      const effectiveTargetBranch = normalizeBranchId(rawTargetBranch);
+
+      // Duplicate numeric bill number validation strictly within the same branch
       const isChangingNumeric = !editingPawn || !isSameNumericBill(editingPawn.bill_no || editingPawn.display_bill_no || editingPawn.description, finalBillNo);
       if (isChangingNumeric) {
         const numericPart = extractNumericBillNo(finalBillNo);
         if (numericPart) {
-          const effectiveTargetBranch = normalizeBranchId(editingPawn?.branch_id || editingPawn?.branchId || branchId || 'HQ');
           const dupPawn = (pawns || []).find((p: any) => {
             if (editingPawn && p.id === editingPawn.id) return false;
             const pBranch = normalizeBranchId(p.branch_id || p.branchId || '');
-            if (effectiveTargetBranch !== 'ALL' && pBranch && pBranch !== effectiveTargetBranch) return false;
+            if (!pBranch || pBranch !== effectiveTargetBranch) return false;
             return isSameNumericBill(p.bill_no || p.display_bill_no || p.description, finalBillNo);
           });
 
@@ -1440,7 +1453,7 @@ export default function PawnesPage() {
     try {
       const res = await fetch('/api/notifications/sms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           phone: custPhone,
           message: reminderMsg,
@@ -1617,8 +1630,12 @@ export default function PawnesPage() {
         onAccept={(data) => {
           setEvaluationData(data);
           resetForm();
-          if (userRole === 'ADMIN' && filterBranch && filterBranch !== 'ALL') {
-            setBranchId(filterBranch);
+          if (userRole === 'ADMIN') {
+            if (selectedBranches.length === 1 && selectedBranches[0] !== 'ALL') {
+              setBranchId(normalizeBranchId(selectedBranches[0]));
+            } else {
+              setBranchId('');
+            }
           }
           loadClients();
           // Set initial form values based on evaluation (display Customer Asking amount in Pawning UI; True Value stays in evaluationData for DB storage)
@@ -2251,10 +2268,14 @@ export default function PawnesPage() {
                           (() => {
                             const numPart = extractNumericBillNo(billNo);
                             const isChanging = !editingPawn || !isSameNumericBill(editingPawn.bill_no || editingPawn.display_bill_no || editingPawn.description, billNo);
-                            return isChanging && numPart && (pawns || []).some((p: any) => 
-                              (!editingPawn || p.id !== editingPawn.id) &&
-                              isSameNumericBill(p.bill_no || p.display_bill_no || p.description, billNo)
-                            ) ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : '';
+                            const rawTarget = String(editingPawn?.branch_id || editingPawn?.branchId || branchId || '').trim();
+                            if (!isChanging || !numPart || !rawTarget || rawTarget.toUpperCase() === 'ALL' || rawTarget.includes(',')) return '';
+                            const targetBranch = normalizeBranchId(rawTarget);
+                            return (pawns || []).some((p: any) => {
+                              if (editingPawn && p.id === editingPawn.id) return false;
+                              const pBranch = normalizeBranchId(p.branch_id || p.branchId || '');
+                              return pBranch === targetBranch && isSameNumericBill(p.bill_no || p.display_bill_no || p.description, billNo);
+                            }) ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : '';
                           })()
                         }`}
                       />
@@ -2263,12 +2284,13 @@ export default function PawnesPage() {
                       const isChanging = !editingPawn || !isSameNumericBill(editingPawn.bill_no || editingPawn.display_bill_no || editingPawn.description, billNo);
                       if (!isChanging) return null;
                       const numPart = extractNumericBillNo(billNo);
-                      if (!numPart) return null;
-                      const targetBranch = normalizeBranchId(editingPawn?.branch_id || editingPawn?.branchId || branchId || 'HQ');
+                      const rawTarget = String(editingPawn?.branch_id || editingPawn?.branchId || branchId || '').trim();
+                      if (!numPart || !rawTarget || rawTarget.toUpperCase() === 'ALL' || rawTarget.includes(',')) return null;
+                      const targetBranch = normalizeBranchId(rawTarget);
                       const dupPawn = (pawns || []).find((p: any) => {
                         if (editingPawn && p.id === editingPawn.id) return false;
                         const pBranch = normalizeBranchId(p.branch_id || p.branchId || '');
-                        if (targetBranch !== 'ALL' && pBranch && pBranch !== targetBranch) return false;
+                        if (!pBranch || pBranch !== targetBranch) return false;
                         return isSameNumericBill(p.bill_no || p.display_bill_no || p.description, billNo);
                       });
                       if (dupPawn) {

@@ -10,6 +10,9 @@ const isUUID = (str: string) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 export async function GET(request: Request, context: any) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
     const { id } = await context.params;
 
     // 1. Fetch pawn details (support UUID, raw bill_no, or branch-scoped bill_no)
@@ -140,6 +143,12 @@ export async function GET(request: Request, context: any) {
 export async function PATCH(request: Request, context: any) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot directly edit pawn records.' }, { status: 403 });
+    }
     const { id } = await context.params;
     const body = await request.json();
     const { clientId, description, appraisedValue, disbursedAmount, billNo, weight, weightGrams, weightMg, itemType, items, clientPhone, clientAddress } = body;
@@ -262,9 +271,10 @@ export async function PATCH(request: Request, context: any) {
             .neq('id', id)
             .in('branch_id', branchTerms)
             .ilike('bill_no', `%${numericPart}%`)
-            .limit(20);
+            .limit(100);
 
           const hasDuplicatePawn = (existingPawns || []).some((p: any) => 
+            normalizeBranchId(p.branch_id) === targetBranch &&
             isSameNumericBill(p.bill_no || p.description, billNo)
           );
 
@@ -279,9 +289,10 @@ export async function PATCH(request: Request, context: any) {
             .select('id, bill_no, branch_id')
             .in('branch_id', branchTerms)
             .ilike('bill_no', `%${numericPart}%`)
-            .limit(20);
+            .limit(100);
 
           const hasDuplicateStock = (existingStock || []).some((s: any) => 
+            normalizeBranchId(s.branch_id) === targetBranch &&
             !isSameNumericBill(s.bill_no, existingPawn.bill_no || existingPawn.description) &&
             isSameNumericBill(s.bill_no, billNo)
           );
@@ -391,11 +402,14 @@ export async function PATCH(request: Request, context: any) {
 export async function DELETE(request: Request, context: any) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
     const { id } = await context.params;
 
-    if (session && session.role === 'TELLER') {
+    if (session.role === 'TELLER' || session.role === 'AUDITOR') {
       return NextResponse.json({ 
-        error: 'Direct pawn deletion is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin review.' 
+        error: 'Direct pawn deletion is strictly prohibited for this role. Please submit a Change Request Ticket for Manager/Admin review.' 
       }, { status: 403 });
     }
 

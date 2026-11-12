@@ -6,6 +6,9 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
 
     const { data: entries, error } = await adminSupabase
       .from('journal_entry')
@@ -24,6 +27,9 @@ export async function POST(request: Request) {
     const session = await getAuthenticatedUser(request);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot post general ledger entries.' }, { status: 403 });
     }
 
     const body = await request.json();

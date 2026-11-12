@@ -20,12 +20,7 @@ export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
     }
 
     // 1. Paginated fetch of ALL stock_customers using adminSupabase (PostgREST caps single select at 1000)
@@ -209,12 +204,10 @@ export async function POST(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot modify stock customer records.' }, { status: 403 });
     }
 
     const body = await request.json();

@@ -43,7 +43,7 @@ export default function CctvRecordingsPage() {
     try {
       await fetch('/api/cctv/audit-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'PLAYBACK',
           recording_id: rec.id,
@@ -60,7 +60,7 @@ export default function CctvRecordingsPage() {
     try {
       await fetch('/api/cctv/audit-logs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'DOWNLOAD',
           recording_id: rec.id,

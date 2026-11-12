@@ -8,6 +8,10 @@ export const dynamic = 'force-dynamic';
 // GET: Fetch interest records for a specific bill, branch, item, or all bills
 export async function GET(req: Request) {
   try {
+    const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
     const { searchParams } = new URL(req.url);
     const billNo = searchParams.get('bill_no');
     const branch = searchParams.get('branch');
@@ -97,6 +101,9 @@ export async function POST(req: Request) {
     const session = await getAuthenticatedUser(req);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot record stock interest.' }, { status: 403 });
     }
     const body = await req.json();
     const { bill_no, item_id, date, interest_value, branch, notes } = body;
@@ -273,9 +280,9 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Missing required param: id' }, { status: 400 });
     }
 
-    if (session && session.role === 'TELLER') {
+    if (session.role === 'TELLER' || session.role === 'AUDITOR') {
       return NextResponse.json({ 
-        error: 'Direct deletion of interest payment records is prohibited for Tellers. Please request Manager/Admin authorization.' 
+        error: 'Direct deletion of interest payment records is prohibited for this role. Please request Manager/Admin authorization.' 
       }, { status: 403 });
     }
 

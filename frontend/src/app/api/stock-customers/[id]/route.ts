@@ -20,12 +20,10 @@ export async function DELETE(request: Request, context: any) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot delete customer records.' }, { status: 403 });
     }
 
     const { id } = await context.params;
@@ -57,12 +55,10 @@ async function handleUpdate(request: Request, context: any) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot modify customer records.' }, { status: 403 });
     }
 
     const { id } = await context.params;

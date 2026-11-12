@@ -1609,7 +1609,7 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
 
                           if (needsFetch && client.id) {
                             try {
-                              const res = await fetch(`/api/clients/${client.id}`);
+                              const res = await fetch(`/api/clients/${client.id}`, { headers: getAuthHeaders() });
                               if (res.ok) {
                                 const full = await res.json();
                                 let fFront: string | null = null;

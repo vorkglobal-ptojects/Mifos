@@ -12,6 +12,7 @@ import { Search, Send, FileText, ArrowRightLeft, Building2 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
 import { normalizeBranchId, getBranchSearchTerms } from "@/lib/branch-mapping"
+import { getAuthHeaders } from "@/lib/getAuthHeaders"
 
 // Branches are fetched dynamically from /api/branches
 
@@ -71,7 +72,7 @@ export default function TransactionsPage() {
 
   const loadBranches = async () => {
     try {
-      const res = await fetch('/api/branches');
+      const res = await fetch('/api/branches', { headers: getAuthHeaders() });
       if (res.ok) setBranches(await res.json());
     } catch (e) {
       console.error('Failed to load branches');

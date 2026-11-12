@@ -21,12 +21,7 @@ export async function GET(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
-      const cookieHeader = request.headers.get('cookie') || '';
-      const hasAuthCookie = cookieHeader.includes('sb-') || cookieHeader.includes('auth_');
-      const hasBranchHeader = Boolean(request.headers.get('x-branch-id') || request.headers.get('authorization'));
-      if (!hasAuthCookie && !hasBranchHeader) {
-        return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
-      }
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
     }
     const { searchParams } = new URL(request.url);
     const requestedBranch = searchParams.get('branchId');
@@ -187,6 +182,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot create or overwrite customer records.' }, { status: 403 });
+    }
+
     const body = await request.json();
     const nic = body.nic || body.nationalId || body.national_id;
     const firstName = body.firstName || body.first_name || (body.name ? body.name.split(' ')[0] : '');
@@ -196,31 +198,7 @@ export async function POST(request: Request) {
     const nicImage = body.nicImage || body.nic_image;
     const signatureImage = body.signatureImage || body.signature_image;
     const branchId = body.branchId || body.branch_id;
-    const createdByUserId = body.createdByUserId || body.created_by_user_id;
-
-    let effectiveUserId = session?.user?.id;
-    if (!effectiveUserId) {
-      // Fallback: If session couldn't be parsed from JWT but request is from legitimate branch client
-      const headerBranch = request.headers.get('x-branch-id') || request.headers.get('X-Branch-Id');
-      const reqBranch = normalizeBranchId(branchId || headerBranch || 'HQ');
-      const { data: branchStaff } = await adminSupabase
-        .from('profiles')
-        .select('id')
-        .eq('branch_id', reqBranch)
-        .limit(1)
-        .maybeSingle();
-
-      if (branchStaff?.id) {
-        effectiveUserId = branchStaff.id;
-      } else {
-        const { data: anyAdmin } = await adminSupabase
-          .from('profiles')
-          .select('id')
-          .limit(1)
-          .maybeSingle();
-        effectiveUserId = anyAdmin?.id;
-      }
-    }
+    const effectiveUserId = session.user?.id;
 
     if (!effectiveUserId) {
       return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });

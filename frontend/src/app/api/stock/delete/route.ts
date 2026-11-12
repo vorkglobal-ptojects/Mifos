@@ -9,6 +9,14 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const session = await getAuthenticatedUser(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Authentication required.' }, { status: 401 });
+    }
+    if (session.role !== 'ADMIN' && session.role !== 'MANAGER') {
+      return NextResponse.json({
+        error: 'Direct stock deletion is strictly prohibited for this role. Please submit a Change Request Ticket for Manager/Admin approval.'
+      }, { status: 403 });
+    }
 
     const { id, bill_no, isOld } = await req.json();
     if (!id && !bill_no) {
@@ -26,12 +34,6 @@ export async function POST(req: Request) {
     }
     const { data: existingItems } = await query;
     const existingItem = existingItems && existingItems.length > 0 ? existingItems[0] : null;
-
-    if (session && session.role === 'TELLER') {
-      return NextResponse.json({ 
-        error: 'Direct stock deletion is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager/Admin approval.' 
-      }, { status: 403 });
-    }
 
     // 2. Perform deletion from stock_items by ID first, then by bill_no fallback
     let deleteResult;

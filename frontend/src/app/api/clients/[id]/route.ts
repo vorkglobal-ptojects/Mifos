@@ -6,6 +6,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, context: any) {
   try {
+    const session = await getAuthenticatedUser(request);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
+    }
     const { id } = await context.params;
     let query = adminSupabase.from('clients').select('*');
     if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id)) {
@@ -28,6 +32,9 @@ export async function PATCH(request: Request, context: any) {
     const session = await getAuthenticatedUser(request);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (session.role === 'AUDITOR') {
+      return NextResponse.json({ error: 'Forbidden. Auditors cannot modify customer records.' }, { status: 403 });
     }
 
     const { id } = await context.params;
@@ -120,9 +127,9 @@ export async function DELETE(request: Request, context: any) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (session && session.role === 'TELLER') {
+    if (session.role === 'TELLER' || session.role === 'AUDITOR') {
       return NextResponse.json({ 
-        error: 'Direct customer deletion is strictly prohibited for Tellers. Please submit a Change Request Ticket.' 
+        error: 'Direct customer deletion is strictly prohibited for this role. Please submit a Change Request Ticket.' 
       }, { status: 403 });
     }
 

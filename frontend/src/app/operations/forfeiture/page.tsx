@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { CANONICAL_BRANCHES } from '@/lib/branch-mapping';
+import { getAuthHeaders } from '@/lib/getAuthHeaders';
 
 export default function ForfeitureManagementPage() {
   const router = useRouter();
@@ -91,7 +92,7 @@ export default function ForfeitureManagementPage() {
       if (filterInterestStatus !== 'ALL') params.set('interestStatus', filterInterestStatus);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
 
-      const res = await fetch(`/api/stock/forfeiture?${params.toString()}`);
+      const res = await fetch(`/api/stock/forfeiture?${params.toString()}`, { headers: getAuthHeaders() });
       if (!res.ok) {
         if (res.status === 403) {
           toast.error('Access Denied: Only Administrators can view Forfeited Stock.');
@@ -226,7 +227,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
     try {
       const res = await fetch('/api/stock/forfeiture', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'SEND_SMS',
           itemId: smsModalItem.id,
@@ -286,7 +287,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
 
       const res = await fetch('/api/stock/forfeiture', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'BULK_SEND_SMS',
           items: payload,
@@ -318,7 +319,7 @@ Please settle immediately to avoid collateral forfeiture/auction.
     try {
       const res = await fetch('/api/stock/forfeiture', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           action: 'MARK_FORFEITED',
           itemId: forfeitModalItem.id,
