@@ -43,26 +43,6 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-
-    // Fallback action handler via GET query params in case POST/PATCH is blocked by client proxy/network
-    const actionParam = (searchParams.get('action') || '').toUpperCase();
-    const ticketIdParam = searchParams.get('id') || '';
-    if ((actionParam === 'APPROVE' || actionParam === 'REJECT' || actionParam === 'UPDATE_PROPOSED') && ticketIdParam) {
-      const notesParam = searchParams.get('notes') || '';
-      const rawProposed = searchParams.get('proposed_data');
-      let parsedProposed: ChangeRecordData | undefined;
-      if (rawProposed) {
-        try { parsedProposed = JSON.parse(rawProposed) as ChangeRecordData; } catch { /* ignore malformed fallback */ }
-      }
-      return await processTicketDecision(
-        session,
-        ticketIdParam,
-        actionParam as 'APPROVE' | 'REJECT' | 'UPDATE_PROPOSED',
-        notesParam,
-        parsedProposed
-      );
-    }
-
     const branchParam = searchParams.get('branch');
     const statusParam = searchParams.get('status') || 'ALL';
     const entityParam = searchParams.get('entity') || 'ALL';

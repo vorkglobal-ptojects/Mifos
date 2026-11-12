@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { sendFreeSms, buildForfeitureWarningSms } from '@/lib/sms';
-import { getBranchSearchTerms, normalizeBranchId, extractNumericBillNo } from '@/lib/branch-mapping';
+import { getBranchSearchTerms, normalizeBranchId, extractNumericBillNo, stripBranchPrefix, isSameNumericBill } from '@/lib/branch-mapping';
+import { invalidateBranchInventoryCache } from '@/lib/redis';
 
 export const dynamic = 'force-dynamic';
 
@@ -580,44 +581,88 @@ export async function POST(request: Request) {
       if (!itemId && !billNo) {
         return NextResponse.json({ error: 'itemId or billNo is required.' }, { status: 400 });
       }
+      if (!itemId && !branchId) {
+        return NextResponse.json({ error: 'branchId is required when forfeiting by billNo without itemId.' }, { status: 400 });
+      }
 
       const finalNotes = notes || 'F/S (Forfeited Collateral transferred to auction due to expired period)';
       const nowIso = new Date().toISOString();
 
+      // Lookup target stock item first to get authoritative branch_id & bill_no
+      let stockLookup = adminSupabase.from('stock_items').select('id, bill_no, branch_id');
+      if (itemId) {
+        stockLookup = stockLookup.eq('id', itemId);
+      } else {
+        stockLookup = stockLookup.eq('bill_no', billNo).in('branch_id', getBranchSearchTerms(String(branchId)));
+      }
+      const { data: targetStockRows, error: lookupErr } = await stockLookup.limit(2);
+      if (lookupErr) throw lookupErr;
+      if (!targetStockRows || targetStockRows.length === 0) {
+        return NextResponse.json({ error: 'Stock item not found for forfeiture.' }, { status: 404 });
+      }
+      const targetStock = targetStockRows[0];
+      const effectiveBranch = normalizeBranchId(String(targetStock.branch_id || branchId || ''));
+      const effectiveBillNo = String(targetStock.bill_no || billNo || '').trim();
+
       // 1. Update stock_items status to Withdrawn with reason F/S
-      let stockQuery = adminSupabase
+      const { error: stockErr } = await adminSupabase
         .from('stock_items')
         .update({
           status: 'Withdrawn',
           withdrawal_reason: 'F/S',
           withdrawal_date: nowIso.split('T')[0],
           withdrawal_notes: finalNotes
-        });
-
-      if (itemId) stockQuery = stockQuery.eq('id', itemId);
-      else if (billNo) stockQuery = stockQuery.eq('bill_no', billNo);
-
-      const { error: stockErr } = await stockQuery;
+        })
+        .eq('id', targetStock.id);
       if (stockErr) throw stockErr;
 
-      // 2. If pawn exists, update pawn status to FORFEITED
-      if (billNo) {
-        await adminSupabase
+      // 2. If pawn exists in the SAME branch, update matching pawn status to FORFEITED
+      if (effectiveBillNo && effectiveBranch) {
+        const branchTerms = getBranchSearchTerms(effectiveBranch);
+        const numericBill = extractNumericBillNo(effectiveBillNo);
+        const { data: candidatePawns, error: pFetchErr } = await adminSupabase
           .from('pawns')
-          .update({
-            status: 'FORFEITED',
-            description: `${finalNotes}`
-          })
-          .ilike('bill_no', `%${extractNumericBillNo(billNo)}%`);
+          .select('id, bill_no, description, branch_id')
+          .in('branch_id', branchTerms)
+          .ilike('bill_no', `%${numericBill || stripBranchPrefix(effectiveBillNo)}%`)
+          .limit(50);
+
+        if (pFetchErr) {
+          console.warn('Forfeiture pawn lookup warning:', pFetchErr.message);
+        } else {
+          const matchingPawnIds = (candidatePawns || [])
+            .filter((p: any) =>
+              normalizeBranchId(p.branch_id) === effectiveBranch &&
+              isSameNumericBill(p.bill_no || p.description, effectiveBillNo)
+            )
+            .map((p: any) => p.id);
+
+          if (matchingPawnIds.length > 0) {
+            const { error: pUpdErr } = await adminSupabase
+              .from('pawns')
+              .update({
+                status: 'FORFEITED',
+                description: `${finalNotes}`
+              })
+              .in('id', matchingPawnIds);
+            if (pUpdErr) {
+              console.warn('Forfeiture pawn update warning:', pUpdErr.message);
+            }
+          }
+        }
+      }
+
+      if (effectiveBranch) {
+        await invalidateBranchInventoryCache(effectiveBranch).catch(() => {});
       }
 
       await recordAuditLog(session, {
         action: 'STOCK_WITHDRAW',
-        resource: `stock:${billNo || itemId}`,
+        resource: `stock:${effectiveBillNo || targetStock.id}`,
         details: {
-          itemId,
-          billNo,
-          branchId,
+          itemId: targetStock.id,
+          billNo: effectiveBillNo,
+          branchId: effectiveBranch || branchId,
           reason: 'F/S',
           notes: finalNotes
         }
@@ -625,7 +670,7 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: `Item #${billNo || itemId} marked as Forfeited (F/S) successfully.`
+        message: `Item #${effectiveBillNo || targetStock.id} marked as Forfeited (F/S) successfully.`
       });
     }
 

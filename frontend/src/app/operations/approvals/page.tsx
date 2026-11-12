@@ -173,8 +173,21 @@ export default function ApprovalsPage() {
   const [isApproveConfirmOpen, setIsApproveConfirmOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
+  const [resubmitNote, setResubmitNote] = useState('');
   const [managerCertified, setManagerCertified] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+
+  const isOwnChangeTicket = (ticket: ChangeRequestTicket | null | undefined) => {
+    if (!ticket || !user) return false;
+    if (ticket.requested_by_user_id && user.id) {
+      return String(ticket.requested_by_user_id) === String(user.id);
+    }
+    if (ticket.requested_by_email && user.email) {
+      return ticket.requested_by_email.toLowerCase() === user.email.toLowerCase();
+    }
+    return false;
+  };
 
   // Image Zoom Lightbox
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -359,38 +372,19 @@ export default function ApprovalsPage() {
         throw primaryErr;
       }
 
-      // 2. Fallback A: POST sub-route for APPROVE/REJECT or main POST endpoint for UPDATE_PROPOSED
-      try {
-        const endpoint =
-          action === 'UPDATE_PROPOSED'
-            ? '/api/change-requests'
-            : `/api/change-requests/${encodeURIComponent(ticketId)}/${action === 'APPROVE' ? 'approve' : 'reject'}`;
-        const res2 = await fetch(endpoint, {
-          method: 'POST',
-          headers,
-          body: action === 'UPDATE_PROPOSED' ? payload : JSON.stringify({ notes, ...(proposedData ? { proposed_data: proposedData } : {}) })
-        });
-        const data2 = await res2.json();
-        if (!res2.ok) throw new Error(data2.error || `Request failed (${res2.status})`);
-        return data2;
-      } catch {
-        // 3. Fallback B: GET /api/change-requests?action=...&id=...
-        const qs = new URLSearchParams({
-          action: action.toLowerCase(),
-          id: ticketId,
-          notes
-        });
-        if (proposedData && Object.keys(proposedData).length > 0) {
-          qs.set('proposed_data', JSON.stringify(proposedData));
-        }
-        const res3 = await fetch(`/api/change-requests?${qs.toString()}`, {
-          method: 'GET',
-          headers
-        });
-        const data3 = await res3.json();
-        if (!res3.ok) throw new Error(data3.error || `Request failed (${res3.status})`);
-        return data3;
-      }
+      // 2. Fallback: POST sub-route for APPROVE/REJECT or main POST endpoint for UPDATE_PROPOSED (no GET mutations)
+      const endpoint =
+        action === 'UPDATE_PROPOSED'
+          ? '/api/change-requests'
+          : `/api/change-requests/${encodeURIComponent(ticketId)}/${action === 'APPROVE' ? 'approve' : 'reject'}`;
+      const res2 = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: action === 'UPDATE_PROPOSED' ? payload : JSON.stringify({ notes, ...(proposedData ? { proposed_data: proposedData } : {}) })
+      });
+      const data2 = await res2.json();
+      if (!res2.ok) throw new Error(data2.error || `Request failed (${res2.status})`);
+      return data2;
     }
   };
 
@@ -509,6 +503,40 @@ export default function ApprovalsPage() {
       loadDashboardData();
     } catch (err: unknown) {
       toast.error('Return Failed', { description: getErrMessage(err, 'Failed to return transaction'), id: toastId });
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // 4b. Action 3: Resolve Recheck & Resubmit for Auditor Re-verification
+  const handleConfirmResubmit = async () => {
+    if (!selectedPawnId) return;
+    if (!resubmitNote.trim()) {
+      toast.error('Please enter a note describing the correction made.');
+      return;
+    }
+    setIsSubmittingAction(true);
+    const toastId = toast.loading('Resolving recheck and resubmitting for audit...');
+    try {
+      const res = await fetch(`/api/pawns/${selectedPawnId}/resubmit`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ note: resubmitNote.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to resubmit transaction');
+      }
+      toast.success('Resubmitted for Audit', {
+        description: 'Status returned to PENDING_APPROVAL. Auditor can now re-verify this ticket.',
+        id: toastId
+      });
+      setIsResubmitModalOpen(false);
+      setIsReviewModalOpen(false);
+      setResubmitNote('');
+      loadDashboardData();
+    } catch (err: unknown) {
+      toast.error('Resubmit Failed', { description: getErrMessage(err, 'Failed to resubmit transaction'), id: toastId });
     } finally {
       setIsSubmittingAction(false);
     }
@@ -914,11 +942,12 @@ export default function ApprovalsPage() {
                             </Button>
                             <Button
                               size="sm"
-                              disabled={isTicketActionLoading}
+                              disabled={isTicketActionLoading || isOwnChangeTicket(t)}
+                              title={isOwnChangeTicket(t) ? 'Maker-Checker: You cannot approve your own ticket' : 'Approve ticket'}
                               onClick={() => handleApproveTicket(t, 'Approved by Branch Manager')}
-                              className="h-8 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+                              className="h-8 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs cursor-pointer shadow-xs"
                             >
-                              Approve
+                              {isOwnChangeTicket(t) ? 'Own Request' : 'Approve'}
                             </Button>
                             <Button
                               size="sm"
@@ -1667,6 +1696,18 @@ export default function ApprovalsPage() {
                 </Button>
 
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                  {pData.status === 'REQUIRES_RECHECK' && (
+                    <Button
+                      onClick={() => {
+                        setResubmitNote('');
+                        setIsResubmitModalOpen(true);
+                      }}
+                      className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider h-11 px-5 rounded-2xl gap-2 cursor-pointer shadow-md"
+                    >
+                      <RefreshCcw className="w-4 h-4" /> Resolve &amp; Resubmit for Audit
+                    </Button>
+                  )}
+
                   {/* Action 2: RETURN / REJECT */}
                   <Button
                     onClick={() => {
@@ -1746,6 +1787,56 @@ export default function ApprovalsPage() {
             >
               {isSubmittingAction ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
               Submit Return Note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      {/* ── RESOLVE & RESUBMIT FOR AUDIT MODAL ── */}
+      {/* ══════════════════════════════════════════════════════════════════════════ */}
+      <Dialog open={isResubmitModalOpen} onOpenChange={setIsResubmitModalOpen}>
+        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+          <DialogHeader className="space-y-1">
+            <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mx-auto sm:mx-0">
+              <RefreshCcw className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-xl font-black text-slate-900">
+              Resolve Recheck &amp; Resubmit for Audit
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-medium">
+              Confirm the corrections made for this ticket. Resubmitting marks active audit issues as resolved and returns the pawn to PENDING_APPROVAL for fresh Auditor verification.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-slate-700">
+              Correction / Resolution Note <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={4}
+              value={resubmitNote}
+              onChange={(e) => setResubmitNote(e.target.value)}
+              placeholder="e.g. Updated physical weight photo and corrected customer NIC scan..."
+              className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+            />
+          </div>
+
+          <DialogFooter className="flex sm:justify-between gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsResubmitModalOpen(false)}
+              className="rounded-xl font-bold"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmResubmit}
+              disabled={isSubmittingAction || !resubmitNote.trim()}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl gap-2 cursor-pointer shadow-md"
+            >
+              {isSubmittingAction ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+              Resubmit for Audit
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2151,7 +2242,8 @@ export default function ApprovalsPage() {
                         <XCircle className="w-4 h-4 mr-1.5" /> Reject Ticket
                       </Button>
                       <Button
-                        disabled={isTicketActionLoading}
+                        disabled={isTicketActionLoading || isOwnChangeTicket(selectedTicket)}
+                        title={isOwnChangeTicket(selectedTicket) ? 'Maker-Checker: You cannot approve your own ticket' : 'Approve & apply changes'}
                         onClick={() =>
                           handleApproveTicket(
                             selectedTicket,
@@ -2159,14 +2251,18 @@ export default function ApprovalsPage() {
                             canEditProposed ? editableProposedData : undefined
                           )
                         }
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl px-5 h-10 cursor-pointer shadow-md"
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl px-5 h-10 cursor-pointer shadow-md"
                       >
                         {isTicketActionLoading ? (
                           <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin" />
                         ) : (
                           <CheckCircle2 className="w-4 h-4 mr-1.5" />
                         )}
-                        {hasProposedEdits ? 'Approve & Apply Edited Changes' : 'Approve & Apply Changes'}
+                        {isOwnChangeTicket(selectedTicket)
+                          ? 'Cannot Approve Own Ticket'
+                          : hasProposedEdits
+                          ? 'Approve & Apply Edited Changes'
+                          : 'Approve & Apply Changes'}
                       </Button>
                     </div>
                   )}

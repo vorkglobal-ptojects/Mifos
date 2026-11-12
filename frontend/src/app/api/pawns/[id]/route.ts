@@ -107,16 +107,22 @@ export async function GET(request: Request, context: any) {
       dailyLedger = ledgerRows;
     }
 
-    // 9. Fetch historical audit logs for this bill
+    // 9. Fetch historical audit logs scoped to this pawn or its branch
     let auditHistory: any[] = [];
+    const pawnBranchCode = normalizeBranchId(pawn.branch_id || '');
     let queryLogs = adminSupabase.from('audit_logs').select('*');
     if (cleanBill) {
-      queryLogs = queryLogs.or(`resource.eq.${cleanBill},resource.eq.${pawn.id}`);
+      queryLogs = queryLogs.or(`resource.eq."${cleanBill}",resource.eq."${pawn.id}"`);
     } else {
       queryLogs = queryLogs.eq('resource', pawn.id);
     }
     const { data: aLogs } = await queryLogs.order('created_at', { ascending: false });
-    auditHistory = aLogs || [];
+    auditHistory = (aLogs || []).filter((log: any) => {
+      const logPawnId = log.details?.pawn_id;
+      if (logPawnId) return logPawnId === pawn.id;
+      const logBranch = normalizeBranchId(log.branch_id || log.details?.branch_id || '');
+      return !pawnBranchCode || !logBranch || logBranch === pawnBranchCode;
+    });
 
     const unresolvedIssues = auditHistory.filter(
       (log: any) => log.action === 'AUDIT_ISSUE_RAISED' && (log.details?.resolved === false || log.details?.status === 'REQUIRES_RECHECK')
@@ -163,16 +169,18 @@ export async function PATCH(request: Request, context: any) {
       if (normalizeBranchId(existingPawn.branch_id) !== normalizeBranchId(session.branchId)) {
         return NextResponse.json({ error: 'Forbidden. Tellers cannot modify pawns belonging to another branch.' }, { status: 403 });
       }
+      const existingTotWeight = (Number(existingPawn.weight_grams) || 0) + ((Number(existingPawn.weight_mg) || 0) / 1000);
       const isAttemptingFinancialChange = 
         (appraisedValue !== undefined && parseFloat(appraisedValue) !== existingPawn.appraised_value) ||
         (disbursedAmount !== undefined && parseFloat(disbursedAmount) !== existingPawn.disbursed_amount) ||
         (billNo !== undefined && stripBranchPrefix(billNo.trim()) !== stripBranchPrefix(existingPawn.bill_no)) ||
-        (weight !== undefined && parseFloat(weight) > 0) ||
-        (weightGrams !== undefined && parseFloat(weightGrams) !== existingPawn.weight_grams);
+        (weight !== undefined && Math.abs(parseFloat(weight) - existingTotWeight) > 0.0005) ||
+        (weightGrams !== undefined && parseFloat(weightGrams) !== existingPawn.weight_grams) ||
+        (body.periodMonths !== undefined && parseInt(body.periodMonths, 10) !== (existingPawn.period_months || 3));
 
       if (isAttemptingFinancialChange) {
         return NextResponse.json({
-          error: 'Direct modifications to pawn loan amounts, gold weights, or bill numbers are prohibited for Tellers. Please submit a Change Request Ticket for Manager approval.'
+          error: 'Direct modifications to pawn loan amounts, gold weights, loan period, or bill numbers are prohibited for Tellers. Please submit a Change Request Ticket for Manager approval.'
         }, { status: 403 });
       }
     }
@@ -422,10 +430,16 @@ export async function DELETE(request: Request, context: any) {
     const { error } = await adminSupabase.from('pawns').delete().eq('id', id);
     if (error) throw error;
 
-    // Also delete from stock_items using stored bill_no or regex fallback
+    // Also delete matching stock_items strictly within the pawn's branch
     const targetBillNo = pawn.bill_no || (pawn.description ? pawn.description.match(/^([A-Za-z0-9]+\s+\d+)/)?.[1]?.trim() : null);
     if (targetBillNo) {
-      await adminSupabase.from('stock_items').delete().eq('bill_no', targetBillNo);
+      const cleanStockBill = stripBranchPrefix(targetBillNo);
+      const branchTerms = getBranchSearchTerms(pawn.branch_id);
+      await adminSupabase
+        .from('stock_items')
+        .delete()
+        .in('branch_id', branchTerms)
+        .or(`bill_no.eq."${targetBillNo}",bill_no.eq."${cleanStockBill}"`);
       try {
         await invalidateBranchInventoryCache(pawn.branch_id);
       } catch (cErr) {

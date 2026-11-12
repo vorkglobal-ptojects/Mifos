@@ -1,5 +1,5 @@
 import { adminSupabase, AuthSession } from './auth-server';
-import { normalizeBranchId, stripBranchPrefix } from './branch-mapping';
+import { normalizeBranchId, stripBranchPrefix, getBranchSearchTerms } from './branch-mapping';
 import { invalidateBranchInventoryCache } from './redis';
 
 export type ChangeEntityType = 'PAWN' | 'STOCK' | 'DAILY_LEDGER' | 'INTEREST' | 'CLIENT';
@@ -80,12 +80,20 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
   const sourceBranch = normalizeBranchId(String(current_data?.branch_id || branch_id || 'HQ'));
 
   if (entity_type === 'PAWN') {
+    const branchTerms = getBranchSearchTerms(sourceBranch);
     if (action_type === 'DELETE') {
       // 1. Delete from pawns
-      await adminSupabase.from('pawns').delete().eq('id', entity_id);
-      // 2. Delete matching stock_item if exists
+      const { error: pawnDelErr } = await adminSupabase.from('pawns').delete().eq('id', entity_id);
+      if (pawnDelErr) throw new Error(pawnDelErr.message || 'Failed to delete pawn ticket');
+      // 2. Delete matching stock_item strictly within source branch
       if (ticket.reference_no) {
-        await adminSupabase.from('stock_items').delete().eq('bill_no', ticket.reference_no);
+        const cleanRef = stripBranchPrefix(String(ticket.reference_no));
+        const { error: stockDelErr } = await adminSupabase
+          .from('stock_items')
+          .delete()
+          .in('branch_id', branchTerms)
+          .or(`bill_no.eq."${ticket.reference_no}",bill_no.eq."${cleanRef}"`);
+        if (stockDelErr) throw new Error(stockDelErr.message || 'Failed to delete linked stock item');
       }
       await invalidateBranchInventoryCache(sourceBranch);
     } else if (action_type === 'UPDATE') {
@@ -94,9 +102,13 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       const appraised = parseFiniteNumber(proposed_data.appraised_value);
       const weightGrams = parseFiniteNumber(proposed_data.weight_grams);
       const weightMg = parseFiniteNumber(proposed_data.weight_mg);
+      const periodMonths = parseFiniteNumber(proposed_data.period_months);
 
       if (disbursed !== undefined) pawnUpdate.disbursed_amount = disbursed;
       if (appraised !== undefined) pawnUpdate.appraised_value = appraised;
+      if (periodMonths !== undefined && periodMonths > 0) {
+        pawnUpdate.period_months = Math.round(periodMonths);
+      }
       if (proposed_data.description !== undefined) pawnUpdate.description = proposed_data.description;
       if (proposed_data.bill_no !== undefined && String(proposed_data.bill_no).trim() !== '') {
         pawnUpdate.bill_no = stripBranchPrefix(String(proposed_data.bill_no));
@@ -133,7 +145,14 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
         if (pawnUpdate.branch_id !== undefined) stockUpdate.branch_id = pawnUpdate.branch_id;
 
         if (Object.keys(stockUpdate).length > 0) {
-          await adminSupabase.from('stock_items').update(stockUpdate).ilike('bill_no', billToMatch).eq('branch_id', sourceBranch);
+          const { error: stockSyncErr } = await adminSupabase
+            .from('stock_items')
+            .update(stockUpdate)
+            .ilike('bill_no', billToMatch)
+            .in('branch_id', branchTerms);
+          if (stockSyncErr) {
+            throw new Error(stockSyncErr.message || 'Failed to sync linked stock item');
+          }
         }
       }
       await invalidateBranchInventoryCache(sourceBranch);
@@ -148,12 +167,19 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       await invalidateBranchInventoryCache(sourceBranch);
     } else if (action_type === 'RESTORE') {
       const todayStr = new Date().toISOString().split('T')[0];
-      const interestVal = parseFloat(String(proposed_data.interest_paid ?? 0)) || 0;
+      const rawInterest = proposed_data.interest_paid ?? proposed_data.interest_amount ?? 0;
+      const interestVal = parseFloat(String(rawInterest)) || 0;
       const cleanNotes = String(proposed_data.notes || '').trim();
       const restoreLine = `[APPROVED RESTORE TO SAFE on ${todayStr} by ${reviewer.name || reviewer.email}] Interest: Rs. ${interestVal}${cleanNotes ? ' | ' + cleanNotes : ''}`;
       
-      const { data: currentStock } = await adminSupabase.from('stock_items').select('withdrawal_notes, bill_no').eq('id', entity_id).single();
+      const { data: currentStock, error: fetchStockErr } = await adminSupabase
+        .from('stock_items')
+        .select('withdrawal_notes, bill_no, branch_id')
+        .eq('id', entity_id)
+        .single();
+      if (fetchStockErr) throw new Error(fetchStockErr.message || 'Stock item not found for restore');
       const updatedNotes = currentStock?.withdrawal_notes ? `${currentStock.withdrawal_notes}\n${restoreLine}` : restoreLine;
+      const stockBranch = normalizeBranchId(String(currentStock?.branch_id || sourceBranch));
 
       const { error: stockUpErr } = await adminSupabase.from('stock_items').update({
         status: 'Active',
@@ -164,9 +190,15 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       if (stockUpErr) throw new Error(stockUpErr.message);
 
       if (currentStock?.bill_no) {
-        await adminSupabase.from('pawns').update({ status: 'ACTIVE' }).ilike('bill_no', currentStock.bill_no.trim());
+        const cleanStockBill = stripBranchPrefix(currentStock.bill_no.trim());
+        const { error: pawnRestoreErr } = await adminSupabase
+          .from('pawns')
+          .update({ status: 'ACTIVE' })
+          .in('branch_id', getBranchSearchTerms(stockBranch))
+          .or(`bill_no.ilike."${currentStock.bill_no.trim()}",bill_no.ilike."${cleanStockBill}"`);
+        if (pawnRestoreErr) throw new Error(pawnRestoreErr.message || 'Failed to restore linked pawn status');
       }
-      await invalidateBranchInventoryCache(sourceBranch);
+      await invalidateBranchInventoryCache(stockBranch);
     } else if (action_type === 'UPDATE') {
       const stockUpdate: ChangeRecordData = {};
       const parsedPrice = parseFiniteNumber(proposed_data.price);
@@ -190,7 +222,7 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
         if (stockUpdErr) throw new Error(stockUpdErr.message);
       }
 
-      // Sync corresponding pawn record if price, weight, bill_no, or branch_id changed
+      // Sync corresponding pawn record strictly within source branch if price, weight, bill_no, or branch_id changed
       const billToMatch = stripBranchPrefix(String(current_data?.bill_no || ticket.reference_no || ''));
       const targetBranch = typeof stockUpdate.branch_id === 'string' ? stockUpdate.branch_id : sourceBranch;
       if (billToMatch) {
@@ -209,11 +241,12 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
           pawnUpdate.branch_id = stockUpdate.branch_id;
         }
         if (Object.keys(pawnUpdate).length > 0) {
-          await adminSupabase
+          const { error: pawnSyncErr } = await adminSupabase
             .from('pawns')
             .update(pawnUpdate)
             .ilike('bill_no', billToMatch)
-            .eq('branch_id', sourceBranch);
+            .in('branch_id', getBranchSearchTerms(sourceBranch));
+          if (pawnSyncErr) throw new Error(pawnSyncErr.message || 'Failed to sync linked pawn ticket');
         }
       }
 
@@ -226,25 +259,44 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
     const safePayload: ChangeRecordData = { ...(proposed_data || {}) };
     delete safePayload.id;
     delete safePayload.created_at;
-    const ledgerPayload: ChangeRecordData = { ...safePayload, updated_at: new Date().toISOString() };
-    await adminSupabase
+    const dateMatch =
+      String(safePayload.ledger_date || current_data?.ledger_date || '').trim() ||
+      (String(ticket.reference_no || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? '') ||
+      (String(entity_id || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? '');
+    const ledgerBranch = normalizeBranchId(String(safePayload.branch_id || current_data?.branch_id || sourceBranch));
+
+    if (!ledgerBranch || !dateMatch) {
+      throw new Error('Daily ledger change ticket is missing branch_id or ledger_date.');
+    }
+
+    const ledgerPayload: ChangeRecordData = {
+      ...safePayload,
+      branch_id: ledgerBranch,
+      ledger_date: dateMatch,
+      updated_at: new Date().toISOString()
+    };
+    const { error: ledgerErr } = await adminSupabase
       .from('daily_ledgers')
       .upsert(ledgerPayload, { onConflict: 'branch_id,ledger_date' });
+    if (ledgerErr) throw new Error(ledgerErr.message || 'Failed to update daily ledger');
   } else if (entity_type === 'INTEREST') {
     if (action_type === 'DELETE' || action_type === 'VOID_INTEREST') {
-      await adminSupabase.from('stock_interests').delete().eq('id', entity_id);
+      const { error: intDelErr } = await adminSupabase.from('stock_interests').delete().eq('id', entity_id);
+      if (intDelErr) throw new Error(intDelErr.message || 'Failed to delete interest record');
       await invalidateBranchInventoryCache(sourceBranch);
     }
   } else if (entity_type === 'CLIENT') {
     if (action_type === 'DELETE') {
-      await adminSupabase.from('clients').delete().eq('id', entity_id);
+      const { error: clientDelErr } = await adminSupabase.from('clients').delete().eq('id', entity_id);
+      if (clientDelErr) throw new Error(clientDelErr.message || 'Failed to delete client record');
     } else if (action_type === 'UPDATE') {
       const safeClient: ChangeRecordData = { ...(proposed_data || {}) };
       delete safeClient.id;
       delete safeClient.created_at;
       delete safeClient.updated_at;
       if (Object.keys(safeClient).length > 0) {
-        await adminSupabase.from('clients').update(safeClient).eq('id', entity_id);
+        const { error: clientUpdErr } = await adminSupabase.from('clients').update(safeClient).eq('id', entity_id);
+        if (clientUpdErr) throw new Error(clientUpdErr.message || 'Failed to update client record');
       }
     }
   }
@@ -340,6 +392,20 @@ export async function executeChangeTicketAction(
   }
 
   if (action === 'APPROVE') {
+    const requesterId = ticket.requested_by_user_id ? String(ticket.requested_by_user_id).trim() : '';
+    const reviewerId = session.user?.id ? String(session.user.id).trim() : '';
+    const requesterEmail = ticket.requested_by_email ? String(ticket.requested_by_email).trim().toLowerCase() : '';
+    const reviewerEmail = session.user?.email ? String(session.user.email).trim().toLowerCase() : '';
+
+    if ((requesterId && reviewerId && requesterId === reviewerId) || (!requesterId && requesterEmail && reviewerEmail && requesterEmail === reviewerEmail)) {
+      return {
+        status: 403,
+        body: {
+          error: 'Maker-Checker Violation: You cannot approve your own Change Request ticket. Another Manager or Admin must approve it.'
+        }
+      };
+    }
+
     const ticketWithEdits: ChangeRequestTicket = {
       ...ticket,
       ...editAuditFields,

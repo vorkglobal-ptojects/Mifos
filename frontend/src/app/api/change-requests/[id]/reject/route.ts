@@ -53,10 +53,15 @@ export async function POST(request: Request, context: any) {
       updated_at: nowIso
     };
 
-    await adminSupabase
+    const { error: updErr } = await adminSupabase
       .from('audit_logs')
       .update({ details: updatedTicket })
       .eq('id', id);
+
+    if (updErr) {
+      console.error('Error updating rejected change request:', updErr);
+      throw updErr;
+    }
 
     return NextResponse.json({
       success: true,

@@ -34,37 +34,53 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // 1. Fetch Pawn Details by UUID or bill_no
-    let query = adminSupabase.from('pawns').select('*');
+    // 1. Fetch Pawn Details by UUID (or unique bill_no)
+    let pawn: any = null;
     if (isUUID(id)) {
-      query = query.eq('id', id);
+      const { data, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('id', id).maybeSingle();
+      if (fetchErr) throw fetchErr;
+      pawn = data;
     } else {
-      query = query.eq('bill_no', id);
+      const { data: matches, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('bill_no', id).limit(2);
+      if (fetchErr) throw fetchErr;
+      if (matches && matches.length > 1) {
+        return NextResponse.json({ error: 'Ambiguous bill number across branches. Please use exact pawn UUID.' }, { status: 400 });
+      }
+      pawn = matches?.[0] || null;
     }
-    const { data: pawn, error: fetchErr } = await query.maybeSingle();
 
-    if (fetchErr || !pawn) {
+    if (!pawn) {
       return NextResponse.json({ error: 'Pawn transaction not found.' }, { status: 404 });
     }
 
-    // 2. Auditors and Admins can audit transactions across all branches including Head Office
-
-    // 3. Safety Check: Disallow auditor approval if an unresolved issue is active or status is REQUIRES_RECHECK
+    // 2. Status transition guard: Only PENDING_APPROVAL pawns can receive Auditor verification approval
     if (pawn.status === 'REQUIRES_RECHECK') {
       return NextResponse.json({ 
         error: 'Cannot approve transaction. An unresolved auditor issue/discrepancy is active on this ticket. The issue must be rectified before approval.' 
       }, { status: 409 });
     }
+    if (pawn.status !== 'PENDING_APPROVAL') {
+      return NextResponse.json({
+        error: `Cannot perform auditor approval on a pawn with status '${pawn.status}'. Only PENDING_APPROVAL transactions can be audited.`
+      }, { status: 409 });
+    }
 
+    const pawnBranch = normalizeBranchId(pawn.branch_id || '');
     const cleanBill = pawn.bill_no || pawn.id.substring(0, 8).toUpperCase();
     let issueQuery = adminSupabase.from('audit_logs').select('*').eq('action', 'AUDIT_ISSUE_RAISED');
     if (cleanBill) {
-      issueQuery = issueQuery.or(`resource.eq.${cleanBill},resource.eq.${pawn.id}`);
+      issueQuery = issueQuery.or(`resource.eq."${cleanBill}",resource.eq."${pawn.id}"`);
     } else {
       issueQuery = issueQuery.eq('resource', pawn.id);
     }
     const { data: issues } = await issueQuery;
-    const hasUnresolvedIssue = (issues || []).some((l: any) => l.details?.status === 'REQUIRES_RECHECK' || l.details?.resolved === false);
+    const hasUnresolvedIssue = (issues || []).some((l: any) => {
+      const logPawnId = l.details?.pawn_id;
+      if (logPawnId && logPawnId !== pawn.id) return false;
+      const logBranch = normalizeBranchId(l.branch_id || l.details?.branch_id || '');
+      if (!logPawnId && pawnBranch && logBranch && logBranch !== pawnBranch) return false;
+      return l.details?.status === 'REQUIRES_RECHECK' || l.details?.resolved === false;
+    });
 
     if (hasUnresolvedIssue) {
       return NextResponse.json({ 
@@ -109,18 +125,23 @@ export async function POST(
       throw logErr;
     }
 
-    // 5. Change Transaction to Auditor-approved / Manager-pending State
+    // 5. Change Transaction to Auditor-approved / Manager-pending State (atomic guard on PENDING_APPROVAL)
     // (Notice: The Auditor does NOT update stock or release funds)
-    const { error: updateErr } = await adminSupabase
+    const { data: updatedRows, error: updateErr } = await adminSupabase
       .from('pawns')
       .update({
         status: 'AUDITED_PENDING_APPROVAL'
       })
-      .eq('id', pawn.id);
+      .eq('id', pawn.id)
+      .eq('status', 'PENDING_APPROVAL')
+      .select('id');
 
     if (updateErr) {
       console.error('Error updating pawn status to AUDITED_PENDING_APPROVAL:', updateErr);
       throw updateErr;
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json({ error: 'Pawn ticket status changed concurrently.' }, { status: 409 });
     }
 
     return NextResponse.json({

@@ -3,6 +3,7 @@ import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { oldSupabase } from '@/lib/old-supabase-server';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
+import { getBranchSearchTerms, normalizeBranchId, stripBranchPrefix } from '@/lib/branch-mapping';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,24 +19,33 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
-    const { id, bill_no, isOld } = await req.json();
+    const { id, bill_no, branch_id, isOld } = await req.json();
     if (!id && !bill_no) {
       return NextResponse.json({ error: 'Item ID or Bill Number is required' }, { status: 400 });
     }
 
     const client = isOld ? oldSupabase : adminSupabase;
 
-    // 1. Fetch item details to verify branch permission & log
+    // 1. Fetch item details to verify branch scoping and avoid cross-branch bill_no collision
     let query = client.from('stock_items').select('*');
     if (id) {
       query = query.eq('id', id);
     } else if (bill_no) {
-      query = query.ilike('bill_no', bill_no.trim());
+      const cleanBill = stripBranchPrefix(String(bill_no).trim());
+      query = query.or(`bill_no.ilike."${String(bill_no).trim()}",bill_no.ilike."${cleanBill}"`);
+      if (branch_id) {
+        query = query.in('branch_id', getBranchSearchTerms(String(branch_id)));
+      }
     }
-    const { data: existingItems } = await query;
+    const { data: existingItems } = await query.limit(5);
+    if (!id && existingItems && existingItems.length > 1) {
+      return NextResponse.json({
+        error: 'Multiple stock items across branches match this bill number. Please provide item ID or branch_id.'
+      }, { status: 400 });
+    }
     const existingItem = existingItems && existingItems.length > 0 ? existingItems[0] : null;
 
-    // 2. Perform deletion from stock_items by ID first, then by bill_no fallback
+    // 2. Perform deletion from stock_items by exact ID (or branch-scoped fallback when unique)
     let deleteResult;
     if (id) {
       deleteResult = await client
@@ -43,13 +53,18 @@ export async function POST(req: Request) {
         .delete()
         .eq('id', id)
         .select();
-    }
-
-    if ((!deleteResult || !deleteResult.data || deleteResult.data.length === 0) && bill_no) {
+    } else if (existingItem?.id) {
       deleteResult = await client
         .from('stock_items')
         .delete()
-        .ilike('bill_no', bill_no.trim())
+        .eq('id', existingItem.id)
+        .select();
+    } else if (bill_no && branch_id) {
+      deleteResult = await client
+        .from('stock_items')
+        .delete()
+        .ilike('bill_no', String(bill_no).trim())
+        .in('branch_id', getBranchSearchTerms(normalizeBranchId(String(branch_id))))
         .select();
     }
 

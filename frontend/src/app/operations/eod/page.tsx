@@ -2219,6 +2219,7 @@ function EndOfDayContent() {
           body: JSON.stringify({ 
             id: item.id, 
             bill_no: item.bill_no, 
+            branch_id: item.branch_id,
             isOld 
           })
         });

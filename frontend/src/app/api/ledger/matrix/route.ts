@@ -26,8 +26,18 @@ export async function GET(request: Request) {
     let query = adminSupabase.from('daily_ledgers').select('id, branch_id, ledger_date, closing_balance, variance, status, is_flag_ignored');
 
     if (month) {
-      const startDate = `${month}-01`;
-      const endDate = `${month}-31`;
+      const match = /^(\d{4})-(\d{2})$/.exec(month.trim());
+      if (!match) {
+        return NextResponse.json({ error: 'Invalid month format. Expected YYYY-MM.' }, { status: 400 });
+      }
+      const yearNum = parseInt(match[1], 10);
+      const monthNum = parseInt(match[2], 10);
+      if (monthNum < 1 || monthNum > 12) {
+        return NextResponse.json({ error: 'Invalid month value. Expected 01-12.' }, { status: 400 });
+      }
+      const lastDay = new Date(yearNum, monthNum, 0).getDate();
+      const startDate = `${match[1]}-${match[2]}-01`;
+      const endDate = `${match[1]}-${match[2]}-${String(lastDay).padStart(2, '0')}`;
       query = query.gte('ledger_date', startDate).lte('ledger_date', endDate);
     } else {
       const startDate = `${year}-01-01`;

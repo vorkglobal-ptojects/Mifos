@@ -30,6 +30,8 @@ export default function ManagerReviewPage() {
   const [isApproveConfirmOpen, setIsApproveConfirmOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
+  const [resubmitNote, setResubmitNote] = useState('');
   const [managerCertified, setManagerCertified] = useState(false);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
 
@@ -141,6 +143,40 @@ export default function ManagerReviewPage() {
       }, 1200);
     } catch (err: any) {
       toast.error('Return Failed', { description: err.message, id: toastId });
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // Action 3: Resolve Recheck & Resubmit for Audit
+  const handleConfirmResubmit = async () => {
+    if (!id) return;
+    if (!resubmitNote.trim()) {
+      toast.error('Please enter a note describing the correction made.');
+      return;
+    }
+    setIsSubmittingAction(true);
+    const toastId = toast.loading('Resolving recheck and resubmitting for audit...');
+    try {
+      const res = await fetch(`/api/pawns/${id}/resubmit`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ note: resubmitNote.trim() })
+      });
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.error || 'Failed to resubmit transaction');
+      }
+      toast.success('Resubmitted for Audit', {
+        description: 'Status updated to PENDING_APPROVAL for fresh Auditor verification.',
+        id: toastId
+      });
+      setIsResubmitModalOpen(false);
+      setTimeout(() => {
+        router.push('/operations/approvals');
+      }, 1200);
+    } catch (err: any) {
+      toast.error('Resubmit Failed', { description: err.message, id: toastId });
     } finally {
       setIsSubmittingAction(false);
     }
@@ -709,6 +745,18 @@ export default function ManagerReviewPage() {
         </Link>
 
         <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+          {pData.status === 'REQUIRES_RECHECK' && (
+            <Button
+              onClick={() => {
+                setResubmitNote('');
+                setIsResubmitModalOpen(true);
+              }}
+              className="w-full sm:w-auto bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider h-12 px-6 rounded-2xl gap-2 cursor-pointer shadow-md"
+            >
+              <RefreshCcw className="w-4 h-4" /> Resolve &amp; Resubmit for Audit
+            </Button>
+          )}
+
           {/* Action 2: RETURN / REJECT */}
           <Button
             onClick={() => {
@@ -776,6 +824,50 @@ export default function ManagerReviewPage() {
             >
               {isSubmittingAction ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
               Submit Return Note
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resolve & Resubmit Modal */}
+      <Dialog open={isResubmitModalOpen} onOpenChange={setIsResubmitModalOpen}>
+        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+          <DialogHeader className="space-y-1">
+            <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mx-auto sm:mx-0">
+              <RefreshCcw className="w-6 h-6" />
+            </div>
+            <DialogTitle className="text-xl font-black text-slate-900">
+              Resolve Recheck &amp; Resubmit for Audit
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500 font-medium">
+              Confirm the corrections made for this ticket. Resubmitting marks active audit issues as resolved and returns the pawn to PENDING_APPROVAL for fresh Auditor verification.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase text-slate-700">
+              Correction / Resolution Note <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={4}
+              value={resubmitNote}
+              onChange={(e) => setResubmitNote(e.target.value)}
+              placeholder="e.g. Updated physical weight photo and corrected customer NIC scan..."
+              className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+            />
+          </div>
+
+          <DialogFooter className="flex sm:justify-between gap-2 pt-2">
+            <Button variant="outline" onClick={() => setIsResubmitModalOpen(false)} className="rounded-xl font-bold">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmResubmit}
+              disabled={isSubmittingAction || !resubmitNote.trim()}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl gap-2 cursor-pointer shadow-md"
+            >
+              {isSubmittingAction ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+              Resubmit for Audit
             </Button>
           </DialogFooter>
         </DialogContent>

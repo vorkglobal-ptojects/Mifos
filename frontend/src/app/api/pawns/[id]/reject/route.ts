@@ -34,17 +34,29 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // 1. Fetch Pawn Details by UUID or bill_no
-    let query = adminSupabase.from('pawns').select('*');
+    // 1. Fetch Pawn Details by UUID (or unambiguous bill_no)
+    let pawn: any = null;
     if (isUUID(id)) {
-      query = query.eq('id', id);
+      const { data, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('id', id).maybeSingle();
+      if (fetchErr) throw fetchErr;
+      pawn = data;
     } else {
-      query = query.eq('bill_no', id);
+      const { data: matches, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('bill_no', id).limit(2);
+      if (fetchErr) throw fetchErr;
+      if (matches && matches.length > 1) {
+        return NextResponse.json({ error: 'Ambiguous bill number across branches. Please use exact pawn UUID.' }, { status: 400 });
+      }
+      pawn = matches?.[0] || null;
     }
-    const { data: pawn, error: fetchErr } = await query.maybeSingle();
 
-    if (fetchErr || !pawn) {
+    if (!pawn) {
       return NextResponse.json({ error: 'Pawn transaction not found.' }, { status: 404 });
+    }
+
+    if (pawn.status === 'REDEEMED' || pawn.status === 'FORFEITED') {
+      return NextResponse.json({
+        error: `Cannot return a pawn in '${pawn.status}' status for recheck.`
+      }, { status: 409 });
     }
 
     // 2. Managers and Admins can return or reject transactions across all branches including Head Office

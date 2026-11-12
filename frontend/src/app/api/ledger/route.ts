@@ -33,13 +33,38 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    
-    // Server-side double-entry validation
-    const totalDebit = (body.entries || []).reduce((sum: number, line: any) => sum + (parseFloat(line.debit) || 0), 0);
-    const totalCredit = (body.entries || []).reduce((sum: number, line: any) => sum + (parseFloat(line.credit) || 0), 0);
+    const entries = Array.isArray(body?.entries) ? body.entries : [];
+    const dateStr = String(body?.date || '').trim();
+    const descriptionStr = String(body?.description || '').trim();
 
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      return NextResponse.json({ error: "Debits and Credits must balance identically." }, { status: 400 });
+    if (!dateStr || !descriptionStr) {
+      return NextResponse.json({ error: 'Journal entry date and description are required.' }, { status: 400 });
+    }
+    if (entries.length === 0) {
+      return NextResponse.json({ error: 'At least one journal entry line is required.' }, { status: 400 });
+    }
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (const line of entries) {
+      const accountName = String(line?.account || '').trim();
+      const debitVal = Number(line?.debit ?? 0);
+      const creditVal = Number(line?.credit ?? 0);
+      if (!accountName) {
+        return NextResponse.json({ error: 'Every journal entry line must specify an account.' }, { status: 400 });
+      }
+      if (!Number.isFinite(debitVal) || !Number.isFinite(creditVal) || debitVal < 0 || creditVal < 0) {
+        return NextResponse.json({ error: 'Debit and Credit amounts must be valid non-negative numbers.' }, { status: 400 });
+      }
+      if (debitVal === 0 && creditVal === 0) {
+        return NextResponse.json({ error: 'Journal entry lines cannot have both zero debit and zero credit.' }, { status: 400 });
+      }
+      totalDebit += debitVal;
+      totalCredit += creditVal;
+    }
+
+    if (totalDebit <= 0 || Math.abs(totalDebit - totalCredit) > 0.01) {
+      return NextResponse.json({ error: "Debits and Credits must be positive and balance identically." }, { status: 400 });
     }
 
     const entryId = `JE-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -47,9 +72,9 @@ export async function POST(request: Request) {
     // Insert Header
     const { error: headerError } = await adminSupabase.from('journal_entry').insert([{
       id: entryId,
-      date: body.date,
-      description: body.description,
-      reference: body.reference,
+      date: dateStr,
+      description: descriptionStr,
+      reference: body.reference || null,
       total_debit: totalDebit,
       total_credit: totalCredit,
       created_by: session.user.email || body.createdBy || 'System User'
@@ -57,16 +82,19 @@ export async function POST(request: Request) {
 
     if (headerError) throw headerError;
 
-    // Insert Lines
-    const lines = (body.entries || []).map((line: any) => ({
+    // Insert Lines (with header rollback if lines insert fails)
+    const lines = entries.map((line: any) => ({
       journal_entry_id: entryId,
-      account_name: line.account,
-      debit: parseFloat(line.debit) || 0,
-      credit: parseFloat(line.credit) || 0
+      account_name: String(line.account).trim(),
+      debit: Number(line.debit ?? 0),
+      credit: Number(line.credit ?? 0)
     }));
 
     const { error: linesError } = await adminSupabase.from('journal_entry_line').insert(lines);
-    if (linesError) throw linesError;
+    if (linesError) {
+      await adminSupabase.from('journal_entry').delete().eq('id', entryId);
+      throw linesError;
+    }
     
     return NextResponse.json({ success: true, id: entryId }, { status: 201 });
   } catch (error: any) {

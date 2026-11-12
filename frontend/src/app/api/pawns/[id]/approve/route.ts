@@ -49,15 +49,22 @@ export async function POST(
       }, { status: 409 });
     }
 
+    const pawnBranch = normalizeBranchId(pawn.branch_id || '');
     const cleanBill = (pawn.bill_no || '').trim();
     let issueQuery = adminSupabase.from('audit_logs').select('*').eq('action', 'AUDIT_ISSUE_RAISED');
     if (cleanBill) {
-      issueQuery = issueQuery.or(`resource.eq.${cleanBill},resource.eq.${pawn.id}`);
+      issueQuery = issueQuery.or(`resource.eq."${cleanBill}",resource.eq."${pawn.id}"`);
     } else {
       issueQuery = issueQuery.eq('resource', pawn.id);
     }
     const { data: issues } = await issueQuery;
-    const hasUnresolvedIssue = (issues || []).some((l: any) => l.details?.status === 'REQUIRES_RECHECK' || l.details?.resolved === false);
+    const hasUnresolvedIssue = (issues || []).some((l: any) => {
+      const logPawnId = l.details?.pawn_id;
+      if (logPawnId && logPawnId !== pawn.id) return false;
+      const logBranch = normalizeBranchId(l.branch_id || l.details?.branch_id || '');
+      if (!logPawnId && pawnBranch && logBranch && logBranch !== pawnBranch) return false;
+      return l.details?.status === 'REQUIRES_RECHECK' || l.details?.resolved === false;
+    });
 
     if (hasUnresolvedIssue) {
       return NextResponse.json({ 
@@ -74,19 +81,98 @@ export async function POST(
     const managerEmail = session.user?.email || (session as any).email || 'manager@mifos.lk';
     const approvalTimestamp = new Date().toISOString();
 
-    // 2. Update Pawn Status to ACTIVE with Manager Approval Metadata
-    const { error: updateError } = await adminSupabase
+    // 2. Update Pawn Status to ACTIVE with Manager Approval Metadata (atomic status guard)
+    const { data: updatedRows, error: updateError } = await adminSupabase
       .from('pawns')
       .update({ 
         status: 'ACTIVE',
         approved_by: managerId,
         approved_at: approvalTimestamp
       })
-      .eq('id', id);
+      .eq('id', id)
+      .in('status', ['PENDING_APPROVAL', 'AUDITED_PENDING_APPROVAL'])
+      .select('id');
 
     if (updateError) throw updateError;
+    if (!updatedRows || updatedRows.length === 0) {
+      return NextResponse.json({ error: 'Pawn ticket was already approved or modified concurrently.' }, { status: 409 });
+    }
 
-    // 2b. Record Manager Approval in audit_logs
+    // 3. Log Disbursement Transaction (Soft Fallback)
+    const txId = crypto.randomUUID();
+    let txInserted = false;
+    try {
+      const { error: txErr } = await adminSupabase.from('transaction').insert([{
+        id: txId,
+        client_id: pawn.client_id,
+        type: 'PAWN_DISBURSE',
+        amount: principal,
+        description: `Disbursed Pawn: ${pawn.description}`,
+        branch_id: pawn.branch_id,
+        timestamp: approvalTimestamp
+      }]);
+      if (!txErr) txInserted = true;
+    } catch (txErr) {
+      console.warn("Transaction log warning (non-fatal):", txErr);
+    }
+
+    const rollbackApproval = async (deleteJeId?: string) => {
+      if (deleteJeId) {
+        await adminSupabase.from('journal_entry').delete().eq('id', deleteJeId);
+      }
+      if (txInserted) {
+        await adminSupabase.from('transaction').delete().eq('id', txId);
+      }
+      await adminSupabase
+        .from('pawns')
+        .update({
+          status: pawn.status,
+          approved_by: pawn.approved_by ?? null,
+          approved_at: pawn.approved_at ?? null
+        })
+        .eq('id', id);
+    };
+
+    // 4. Generate Automated Double-Entry General Ledger Posting BEFORE committing final audit log
+    const jeId = `JE-AUTO-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const dateStr = getSriLankaDate();
+
+    const { error: jeError } = await adminSupabase.from('journal_entry').insert([{
+      id: jeId,
+      date: dateStr,
+      description: `Automated Posting - Originated Pawn: ${pawn.description}`,
+      reference: `PAWN-${pawn.id.substring(0, 8).toUpperCase()}`,
+      total_debit: principal,
+      total_credit: principal,
+      created_by: approvedBy || 'Manager / Admin'
+    }]);
+
+    if (jeError) {
+      await rollbackApproval();
+      throw jeError;
+    }
+
+    const { error: linesError } = await adminSupabase.from('journal_entry_line').insert([
+      {
+        journal_entry_id: jeId,
+        account_name: 'Pawn Loan Portfolio (Asset)',
+        debit: principal,
+        credit: 0
+      },
+      {
+        journal_entry_id: jeId,
+        account_name: 'Vault Cash (Asset)',
+        debit: 0,
+        credit: principal
+      }
+    ]);
+
+    if (linesError) {
+      await rollbackApproval(jeId);
+      throw linesError;
+    }
+
+    // 5. Record Manager Approval in audit_logs only after GL succeeds
     try {
       await adminSupabase.from('audit_logs').insert([{
         user_id: managerId,
@@ -110,54 +196,6 @@ export async function POST(
     } catch (logErr) {
       console.warn("Audit log insert warning:", logErr);
     }
-
-    // 3. Log Disbursement Transaction (Soft Fallback)
-    try {
-      await adminSupabase.from('transaction').insert([{
-        id: crypto.randomUUID(),
-        client_id: pawn.client_id,
-        type: 'PAWN_DISBURSE',
-        amount: principal,
-        description: `Disbursed Pawn: ${pawn.description}`,
-        branch_id: pawn.branch_id,
-        timestamp: new Date().toISOString()
-      }]);
-    } catch (txErr) {
-      console.warn("Transaction log warning (non-fatal):", txErr);
-    }
-
-    // 4. Generate Automated Double-Entry General Ledger Posting
-    const jeId = `JE-AUTO-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-    const dateStr = getSriLankaDate();
-
-    const { error: jeError } = await adminSupabase.from('journal_entry').insert([{
-      id: jeId,
-      date: dateStr,
-      description: `Automated Posting - Originated Pawn: ${pawn.description}`,
-      reference: `PAWN-${pawn.id.substring(0, 8).toUpperCase()}`,
-      total_debit: principal,
-      total_credit: principal,
-      created_by: approvedBy || 'Manager / Admin'
-    }]);
-
-    if (jeError) throw jeError;
-
-    const { error: linesError } = await adminSupabase.from('journal_entry_line').insert([
-      {
-        journal_entry_id: jeId,
-        account_name: 'Pawn Loan Portfolio (Asset)',
-        debit: principal,
-        credit: 0
-      },
-      {
-        journal_entry_id: jeId,
-        account_name: 'Vault Cash (Asset)',
-        debit: 0,
-        credit: principal
-      }
-    ]);
-
-    if (linesError) throw linesError;
 
     return NextResponse.json({ success: true, pawnId: id, journalEntryId: jeId });
   } catch (error: any) {

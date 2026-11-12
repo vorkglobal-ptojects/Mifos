@@ -3,6 +3,7 @@ import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { getSriLankaDate } from '@/lib/date-utils';
+import { getBranchSearchTerms, stripBranchPrefix } from '@/lib/branch-mapping';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,16 +64,24 @@ export async function POST(req: Request) {
       throw new Error("Failed to restore stock item: " + updateErr.message);
     }
 
-    // 4. Update matching Pawn Ticket in 'pawns' table if exists
+    // 4. Update matching Pawn Ticket in 'pawns' table strictly within the stock item's branch
     try {
       if (item.bill_no) {
-        await adminSupabase
+        const rawBill = item.bill_no.trim();
+        const cleanBill = stripBranchPrefix(rawBill);
+        let pawnUpdateQuery = adminSupabase
           .from('pawns')
-          .update({
-            status: 'ACTIVE',
-            updated_at: new Date().toISOString()
-          })
-          .ilike('bill_no', item.bill_no.trim());
+          .update({ status: 'ACTIVE' })
+          .or(`bill_no.eq."${rawBill}",bill_no.eq."${cleanBill}"`);
+
+        if (item.branch_id) {
+          pawnUpdateQuery = pawnUpdateQuery.in('branch_id', getBranchSearchTerms(item.branch_id));
+        }
+
+        const { error: pawnErr } = await pawnUpdateQuery;
+        if (pawnErr) {
+          console.warn("Matching pawn ticket status update warning:", pawnErr.message);
+        }
       }
     } catch (pawnErr) {
       console.warn("Matching pawn ticket status update notice:", pawnErr);

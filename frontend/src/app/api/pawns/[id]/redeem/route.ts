@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { sendFreeSms, buildPawnRedeemSms } from '@/lib/sms';
-import { normalizeBranchId, stripBranchPrefix } from '@/lib/branch-mapping';
+import { normalizeBranchId, stripBranchPrefix, getBranchSearchTerms } from '@/lib/branch-mapping';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { getSriLankaDate } from '@/lib/date-utils';
 
@@ -39,10 +39,23 @@ export async function POST(
     if (pawn.status === 'REDEEMED') {
       return NextResponse.json({ error: 'Pawn ticket is already redeemed' }, { status: 400 });
     }
+    if (pawn.status !== 'ACTIVE') {
+      return NextResponse.json({
+        error: `Cannot redeem pawn in '${pawn.status}' status. Only ACTIVE approved loans can be redeemed.`
+      }, { status: 400 });
+    }
+
+    const parsedDays = Number(days);
+    if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+      return NextResponse.json({ error: 'Days must be a valid positive number.' }, { status: 400 });
+    }
+    const manualInsurance = Number(insurance ?? 0);
+    if (!Number.isFinite(manualInsurance) || manualInsurance < 0) {
+      return NextResponse.json({ error: 'Insurance fee must be a valid non-negative number.' }, { status: 400 });
+    }
 
     // 2. Perform Interest Calculation Logic
-    const principal = pawn.disbursed_amount || 0;
-    const manualInsurance = parseFloat(insurance) || 0;
+    const principal = Number(pawn.disbursed_amount) || 0;
     
     // Rupasinghe Tiered Interest Structure
     const tier = principal < 50000 ? 'A' : 'B';
@@ -57,24 +70,30 @@ export async function POST(
     const totalAmount = principal + interestOne;
 
     let settlement = 0;
-    if (days <= 10) {
+    if (parsedDays <= 10) {
       const discount = totalAmount * discountRate;
       settlement = totalAmount - discount;
-    } else if (days <= 30) {
+    } else if (parsedDays <= 30) {
       settlement = totalAmount;
-    } else if (days <= 38) {
+    } else if (parsedDays <= 38) {
       settlement = principal + ((totalAmount * interestRate) * 0.25) + interestOne + manualInsurance;
-    } else if (days <= 45) {
+    } else if (parsedDays <= 45) {
       settlement = principal + ((totalAmount * interestRate) * 0.50) + interestOne + manualInsurance;
-    } else if (days <= 60) {
+    } else if (parsedDays <= 60) {
       settlement = principal + (totalAmount * interestRate) + interestOne + manualInsurance;
     } else {
-      const months = Math.ceil(days / 30);
+      const months = Math.ceil(parsedDays / 30);
       settlement = principal + ((totalAmount * interestRate) * (months - 1)) + interestOne + manualInsurance;
     }
 
-    const accruedCharges = Math.max(0, settlement - principal);
-    const interest = accruedCharges;
+    const accruedCharges = settlement - principal;
+    if (accruedCharges < -0.01) {
+      return NextResponse.json({
+        error: 'Invalid settlement calculation: settlement cannot be lower than loan principal.'
+      }, { status: 400 });
+    }
+    const safeAccruedCharges = Math.max(0, accruedCharges);
+    const interest = safeAccruedCharges;
 
     // 3. Mark Pawn Ticket as REDEEMED (Track servicing branch in redeemed_by if cross-branch)
     const servicingBranch = session?.branchId ? normalizeBranchId(session.branchId) : pawn.branch_id;
@@ -83,7 +102,7 @@ export async function POST(
       ? (isCrossBranch ? `${approvedBy} (${servicingBranch} for ${pawn.branch_id})` : approvedBy)
       : (isCrossBranch ? `Teller (${servicingBranch} for ${pawn.branch_id})` : 'Teller / Cashier');
 
-    const { error: updateError } = await adminSupabase
+    const { data: updatedPawnRows, error: updateError } = await adminSupabase
       .from('pawns')
       .update({
         status: 'REDEEMED',
@@ -93,19 +112,38 @@ export async function POST(
         redeem_interest: interest,
         branch_id: pawn.branch_id
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', 'ACTIVE')
+      .select('id');
 
     if (updateError) throw updateError;
+    if (!updatedPawnRows || updatedPawnRows.length === 0) {
+      return NextResponse.json({ error: 'Pawn ticket was already modified or redeemed concurrently.' }, { status: 409 });
+    }
 
-    // 3.5 Mark matching stock item(s) as Withdrawn (including sub-items)
+    // 3.5 Mark matching stock item(s) strictly within the pawn's branch as Withdrawn
+    let withdrawnStockIds: string[] = [];
+    const pawnBranchTerms = getBranchSearchTerms(pawn.branch_id);
     try {
       const cleanBillNo = pawn.bill_no ? stripBranchPrefix(pawn.bill_no) : (id.substring(0, 8));
       const targetBill = pawn.bill_no || id.substring(0, 8);
-      await adminSupabase.from('stock_items').update({
-        status: 'Withdrawn',
-        withdrawal_date: getSriLankaDate(),
-        withdrawal_reason: 'Pawn Redeemed (Closed)'
-      }).or(`bill_no.eq."${targetBill}",bill_no.eq."${cleanBillNo}",bill_no.ilike."${cleanBillNo}-%",bill_no.ilike."${targetBill}-%"`);
+      const { data: withdrawnRows, error: stockErr } = await adminSupabase
+        .from('stock_items')
+        .update({
+          status: 'Withdrawn',
+          withdrawal_date: getSriLankaDate(),
+          withdrawal_reason: 'Pawn Redeemed (Closed)'
+        })
+        .in('branch_id', pawnBranchTerms)
+        .eq('status', 'Active')
+        .or(`bill_no.eq."${targetBill}",bill_no.eq."${cleanBillNo}",bill_no.ilike."${cleanBillNo}-%",bill_no.ilike."${targetBill}-%"`)
+        .select('id');
+
+      if (stockErr) {
+        console.warn("Could not mark matching vault stock item as Withdrawn:", stockErr);
+      } else {
+        withdrawnStockIds = (withdrawnRows || []).map((r: { id: string }) => r.id);
+      }
 
       // Invalidate branch inventory cache
       await invalidateBranchInventoryCache(pawn.branch_id);
@@ -117,19 +155,47 @@ export async function POST(
     }
 
     // 4. Log Settle/Redemption Transaction in User History (Track at servicing branch where cash was received)
+    const txId = crypto.randomUUID();
+    let txInserted = false;
     try {
-      await adminSupabase.from('transaction').insert([{
-        id: crypto.randomUUID(),
+      const { error: txErr } = await adminSupabase.from('transaction').insert([{
+        id: txId,
         client_id: pawn.client_id,
         type: 'PAWN_REDEEM',
         amount: settlement,
-        description: `Redeemed Pawn: ${pawn.description} (Principal: Rs. ${principal.toLocaleString()}, Charges: Rs. ${accruedCharges.toLocaleString()}, Insurance: Rs. ${manualInsurance.toLocaleString()})${isCrossBranch ? ` [Cross-Branch at ${servicingBranch}]` : ''}`,
+        description: `Redeemed Pawn: ${pawn.description} (Principal: Rs. ${principal.toLocaleString()}, Charges: Rs. ${safeAccruedCharges.toLocaleString()}, Insurance: Rs. ${manualInsurance.toLocaleString()})${isCrossBranch ? ` [Cross-Branch at ${servicingBranch}]` : ''}`,
         branch_id: servicingBranch || pawn.branch_id,
         timestamp: new Date().toISOString()
       }]);
+      if (!txErr) txInserted = true;
     } catch (txErr) {
       console.warn("Transaction log warning (non-fatal):", txErr);
     }
+
+    const rollbackRedemption = async (deleteJeId?: string) => {
+      if (deleteJeId) {
+        await adminSupabase.from('journal_entry').delete().eq('id', deleteJeId);
+      }
+      if (txInserted) {
+        await adminSupabase.from('transaction').delete().eq('id', txId);
+      }
+      await adminSupabase.from('pawns').update({
+        status: pawn.status,
+        redeemed_at: pawn.redeemed_at ?? null,
+        redeemed_by: pawn.redeemed_by ?? null,
+        redeem_amount: pawn.redeem_amount ?? null,
+        redeem_interest: pawn.redeem_interest ?? null
+      }).eq('id', id);
+
+      if (withdrawnStockIds.length > 0) {
+        await adminSupabase.from('stock_items').update({
+          status: 'Active',
+          withdrawal_date: null,
+          withdrawal_reason: null
+        }).in('id', withdrawnStockIds);
+        await invalidateBranchInventoryCache(pawn.branch_id).catch(() => {});
+      }
+    };
 
     // 5. Post Balanced Double-Entry Journal Entry
     const jeId = `JE-AUTO-RED-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -147,20 +213,7 @@ export async function POST(
 
     if (jeError) {
       console.error("Journal entry creation failed during redemption:", jeError);
-      // Compensating rollback of pawn ticket and stock item
-      await adminSupabase.from('pawns').update({
-        status: pawn.status,
-        redeemed_at: null,
-        redeemed_by: null,
-        redeem_amount: null,
-        redeem_interest: null
-      }).eq('id', id);
-
-      await adminSupabase.from('stock_items').update({
-        status: 'Active',
-        withdrawal_date: null,
-        withdrawal_reason: null
-      }).eq('bill_no', pawn.bill_no || id.substring(0, 8));
+      await rollbackRedemption();
 
       return NextResponse.json({ 
         error: 'Accounting General Ledger posting failed. Redemption has been safely rolled back. Please retry: ' + jeError.message 
@@ -183,26 +236,19 @@ export async function POST(
       }
     ];
 
-    if (accruedCharges > 0) {
+    if (safeAccruedCharges > 0) {
       journalLines.push({
         journal_entry_id: jeId,
         account_name: 'Interest & Fee Income (Revenue)',
         debit: 0,
-        credit: accruedCharges
+        credit: safeAccruedCharges
       });
     }
 
     const { error: linesError } = await adminSupabase.from('journal_entry_line').insert(journalLines);
     if (linesError) {
       console.error("Journal lines insert failed during redemption:", linesError);
-      await adminSupabase.from('journal_entry').delete().eq('id', jeId);
-      await adminSupabase.from('pawns').update({
-        status: pawn.status,
-        redeemed_at: null,
-        redeemed_by: null,
-        redeem_amount: null,
-        redeem_interest: null
-      }).eq('id', id);
+      await rollbackRedemption(jeId);
 
       return NextResponse.json({ 
         error: 'Accounting entry line posting failed. Redemption rolled back: ' + linesError.message 
@@ -220,7 +266,7 @@ export async function POST(
         principal,
         interest,
         insurance: manualInsurance,
-        days,
+        days: parsedDays,
         originatingBranch: pawn.branch_id,
         servicingBranch: servicingBranch || pawn.branch_id
       }
