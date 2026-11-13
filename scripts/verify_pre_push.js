@@ -326,6 +326,32 @@ async function runVerification() {
     } else {
       logPass('All 4-Part Cross-Sync, Customer Delete Block (403) & Daily Ledger sync guards verified');
     }
+
+    // 5. SMS Gateway Security, Log Schema & Branch Isolation Guards
+    const smsLib = fs.readFileSync(path.join(rootDir, 'frontend/src/lib/sms.ts'), 'utf8');
+    const smsTplLib = fs.readFileSync(path.join(rootDir, 'frontend/src/lib/sms-templates.ts'), 'utf8');
+    const smsNotifApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/notifications/sms/route.ts'), 'utf8');
+    const smsSetApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/settings/sms-gateway/route.ts'), 'utf8');
+    const smsSetPage = fs.readFileSync(path.join(rootDir, 'frontend/src/app/operations/sms-settings/page.tsx'), 'utf8');
+    const stIntApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/stock/interest/route.ts'), 'utf8');
+
+    const hardcodedKeyRegex = /txb_[A-Za-z0-9]{10,}/;
+    const smsGuards = [
+      { ok: !hardcodedKeyRegex.test(smsLib) && !hardcodedKeyRegex.test(smsNotifApi) && !hardcodedKeyRegex.test(smsSetApi) && !hardcodedKeyRegex.test(smsSetPage), name: 'zero hardcoded TextBee API keys in src' },
+      { ok: smsLib.includes('recipient_phone') && smsLib.includes('message_text') && smsLib.includes('normalizeSriLankaPhone'), name: 'sms.ts schema alignment & phone validation' },
+      { ok: smsTplLib.includes('buildInterestPaymentSms') && smsTplLib.includes('buildPawnApprovedSms'), name: 'sms-templates trilingual builders' },
+      { ok: smsNotifApi.includes('sanitizeSmsGatewayConfig') && smsNotifApi.includes('getBranchSearchTerms(userBranch)') && smsNotifApi.includes('retrySmsLogEntry'), name: 'notifications/sms branch isolation, masking & retry' },
+      { ok: smsSetApi.includes('sanitizeSmsGatewayConfig') && smsSetApi.includes('shouldKeepExistingKey'), name: 'settings/sms-gateway key preservation & masking' },
+      { ok: smsSetPage.includes('recipient_phone') && smsSetPage.includes('message_text') && smsSetPage.includes('RETRY'), name: 'sms-settings UI log columns & retry wiring' },
+      { ok: stIntApi.includes('buildInterestPaymentSms') && stIntApi.includes('userBranch !== cleanBranch'), name: 'stock/interest branch guard & auto-SMS' },
+    ];
+    const failedSms = smsGuards.filter(c => !c.ok);
+    if (failedSms.length > 0) {
+      logFail(`REGRESSION: Missing SMS Gateway guard in: ${failedSms.map(f => f.name).join(', ')}`);
+      failureCount++;
+    } else {
+      logPass('All SMS Gateway security, schema alignment, branch isolation & auto-trigger guards verified');
+    }
   } catch (ruleErr) {
     logFail(`Rule verification exception: ${ruleErr.message}`);
     failureCount++;

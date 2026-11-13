@@ -3,6 +3,8 @@ import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { getSriLankaDate } from '@/lib/date-utils';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { getBranchSearchTerms, isSameNumericBill, normalizeBranchId, stripBranchPrefix } from '@/lib/branch-mapping';
+import { buildInterestPaymentSms, getSmsGatewayConfig, resolvePawnCustomerContact, sendFreeSms } from '@/lib/sms';
 export const dynamic = 'force-dynamic';
 
 // GET: Fetch interest records for a specific bill, branch, item, or all bills
@@ -117,7 +119,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid interest_value' }, { status: 400 });
     }
 
-    const cleanBranch = branch.trim().toUpperCase();
+    const cleanBranch = normalizeBranchId(branch.trim().toUpperCase());
+    const userBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+    const isHead = session.role === 'ADMIN' || userBranch === 'HQ' || userBranch === 'ALL' || !userBranch;
+    if (!isHead && userBranch !== cleanBranch) {
+      return NextResponse.json({
+        error: `Forbidden. You can only record stock interest for branch (${userBranch}).`
+      }, { status: 403 });
+    }
     const id = 'si_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const payload: any = {
       id: id,
@@ -185,16 +194,34 @@ export async function POST(req: Request) {
           details: insertedData
         });
 
-        // Record Transaction and General Ledger Double-Entry
+        // Record Transaction and General Ledger Double-Entry (strictly branch-scoped)
+        let matchedPawn: any = null;
         try {
           let clientId: string | null = null;
           if (item_id) {
-            const { data: pawnMatch } = await adminSupabase.from('pawns').select('client_id').eq('id', item_id).maybeSingle();
-            if (pawnMatch?.client_id) clientId = pawnMatch.client_id;
+            const { data: pawnMatch } = await adminSupabase
+              .from('pawns')
+              .select('id, client_id, phone, client_name, customer_name, bill_no, branch_id')
+              .eq('id', item_id)
+              .maybeSingle();
+            if (pawnMatch) {
+              matchedPawn = pawnMatch;
+              if (pawnMatch.client_id) clientId = pawnMatch.client_id;
+            }
           }
-          if (!clientId && payload.bill_no) {
-            const { data: pawnMatch } = await adminSupabase.from('pawns').select('client_id').ilike('bill_no', `%${payload.bill_no}%`).limit(1).maybeSingle();
-            if (pawnMatch?.client_id) clientId = pawnMatch.client_id;
+          if (!matchedPawn && payload.bill_no) {
+            const cleanBill = stripBranchPrefix(payload.bill_no);
+            const branchTerms = getBranchSearchTerms(cleanBranch);
+            const { data: candidatePawns } = await adminSupabase
+              .from('pawns')
+              .select('id, client_id, phone, client_name, customer_name, bill_no, branch_id')
+              .in('branch_id', branchTerms)
+              .ilike('bill_no', `%${cleanBill}%`)
+              .limit(20);
+            matchedPawn = (candidatePawns || []).find((p: any) =>
+              normalizeBranchId(p.branch_id) === cleanBranch && isSameNumericBill(p.bill_no, payload.bill_no)
+            ) || null;
+            if (matchedPawn?.client_id) clientId = matchedPawn.client_id;
           }
 
           // 1. Transaction log
@@ -239,6 +266,62 @@ export async function POST(req: Request) {
           }
         } catch (glErr) {
           console.warn('[Non-fatal GL/Transaction warning during interest payment]:', glErr);
+        }
+
+        // Dispatch automated Interest Payment Confirmation SMS (Non-fatal, strictly branch-scoped)
+        try {
+          const smsConfig = await getSmsGatewayConfig();
+          if (smsConfig.triggers?.onInterestPayment !== false) {
+            let contactPhone = '';
+            let contactName = 'Valued Customer';
+
+            if (matchedPawn) {
+              const contact = await resolvePawnCustomerContact(matchedPawn);
+              contactPhone = contact.phone;
+              contactName = contact.name;
+            }
+
+            if (!contactPhone) {
+              const branchTerms = getBranchSearchTerms(cleanBranch);
+              const { data: scRows } = await adminSupabase
+                .from('stock_customers')
+                .select('name, phone, branch_id, bill_numbers')
+                .in('branch_id', branchTerms)
+                .limit(500);
+              const matchedSc = (scRows || []).find((sc: any) => {
+                if (normalizeBranchId(sc.branch_id) !== cleanBranch) return false;
+                const bills = Array.isArray(sc.bill_numbers) ? sc.bill_numbers : [];
+                return bills.some((b: any) => isSameNumericBill(String(b), payload.bill_no));
+              });
+              if (matchedSc?.phone) {
+                contactPhone = String(matchedSc.phone).trim();
+                if (matchedSc.name) contactName = String(matchedSc.name).trim();
+              }
+            }
+
+            if (contactPhone) {
+              const ticketDisplay = stripBranchPrefix(payload.bill_no) || payload.bill_no;
+              const interestMsg = buildInterestPaymentSms({
+                customerName: contactName,
+                ticketNo: ticketDisplay,
+                interestAmount: numericValue,
+                dateStr: date || getSriLankaDate(),
+                branchName: cleanBranch,
+                customTemplate: smsConfig.templates?.INTEREST,
+              });
+              await sendFreeSms({
+                phone: contactPhone,
+                message: interestMsg,
+                ticketNo: ticketDisplay,
+                amount: numericValue,
+                type: 'INTEREST',
+                branchId: cleanBranch,
+                triggerKey: 'onInterestPayment',
+              });
+            }
+          }
+        } catch (smsErr) {
+          console.warn('[Interest Payment SMS warning]:', smsErr);
         }
       } catch (e: any) {
         console.error('[Exception during stock_interests insert]:', e);
@@ -287,6 +370,21 @@ export async function DELETE(req: Request) {
     }
 
     if (adminSupabase) {
+      const userBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+      const isHead = session.role === 'ADMIN' || userBranch === 'HQ' || userBranch === 'ALL' || !userBranch;
+      if (!isHead) {
+        const { data: targetRow } = await adminSupabase
+          .from('stock_interests')
+          .select('id, branch')
+          .eq('id', id)
+          .maybeSingle();
+        if (targetRow?.branch && normalizeBranchId(targetRow.branch) !== userBranch) {
+          return NextResponse.json({
+            error: `Forbidden. You cannot delete interest records belonging to branch (${targetRow.branch}).`
+          }, { status: 403 });
+        }
+      }
+
       try {
         await adminSupabase
           .from('stock_interests')

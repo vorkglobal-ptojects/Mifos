@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
-import { normalizeBranchId } from '@/lib/branch-mapping';
+import { normalizeBranchId, stripBranchPrefix } from '@/lib/branch-mapping';
+import { sendFreeSms, buildPawnReturnedSms, getSmsGatewayConfig, resolvePawnCustomerContact } from '@/lib/sms';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,6 +111,34 @@ export async function POST(
     if (updateErr) {
       console.error('Error updating pawn status to REQUIRES_RECHECK:', updateErr);
       throw updateErr;
+    }
+
+    // 5. Optional Automated Return/Rejection SMS (only fires if Admin enables 'onPawnReject')
+    try {
+      const smsConfig = await getSmsGatewayConfig();
+      if (smsConfig.triggers?.onPawnReject) {
+        const contact = await resolvePawnCustomerContact(pawn);
+        if (contact.phone) {
+          const ticketDisplay = stripBranchPrefix(cleanBill) || pawn.id.substring(0, 8).toUpperCase();
+          const returnMsg = buildPawnReturnedSms({
+            customerName: contact.name,
+            ticketNo: ticketDisplay,
+            reason,
+            branchName: normalizeBranchId(pawn.branch_id || ''),
+            customTemplate: smsConfig.templates?.REJECTED,
+          });
+          await sendFreeSms({
+            phone: contact.phone,
+            message: returnMsg,
+            ticketNo: ticketDisplay,
+            type: 'REJECTED',
+            branchId: pawn.branch_id,
+            triggerKey: 'onPawnReject',
+          });
+        }
+      }
+    } catch (smsErr) {
+      console.warn('Return/Reject SMS notice:', smsErr);
     }
 
     return NextResponse.json({

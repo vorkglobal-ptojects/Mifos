@@ -29,7 +29,7 @@ import ChangeRequestModal from "@/components/ChangeRequestModal"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
-import { buildPawnReminderSms } from "@/lib/sms"
+import { buildPawnReminderSms } from "@/lib/sms-templates"
 import { compressImage } from "@/lib/image-compression"
 
 export default function PawnesPage() {
@@ -1520,18 +1520,24 @@ export default function PawnesPage() {
           message: reminderMsg,
           ticketNo: billDisplay,
           amount: amountVal,
-          type: 'REMINDER'
+          type: 'REMINDER',
+          branchId: pawn.branch_id || undefined
         })
       });
 
       const data = await res.json();
-      if (res.ok) {
-        toast.success(`SMS Reminder dispatched to ${custPhone}!`, {
-          description: data.notice || 'Dispatched via Android SIM Gateway',
+      if (res.ok && data.status === 'SENT') {
+        toast.success(`SMS Reminder sent to ${data.phone || custPhone}!`, {
+          description: data.notice || 'Dispatched via TextBee SIM Gateway',
+          id: toastId
+        });
+      } else if (res.ok && data.status === 'QUEUED') {
+        toast.warning(`SMS Queued for Retry (${data.phone || custPhone})`, {
+          description: data.notice || 'Gateway offline — saved in SMS Retry Queue.',
           id: toastId
         });
       } else {
-        toast.error(data.error || 'Failed to send SMS reminder', { id: toastId });
+        toast.error(data.error || data.notice || 'Failed to send SMS reminder', { id: toastId });
       }
     } catch (err: any) {
       toast.error('Error sending SMS reminder: ' + err.message, { id: toastId });

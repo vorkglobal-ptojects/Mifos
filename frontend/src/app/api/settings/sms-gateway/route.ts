@@ -1,8 +1,25 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { normalizeBranchId } from '@/lib/branch-mapping';
+import {
+  BranchSmsConfig,
+  buildTextBeeSendUrl,
+  findBranchConfig,
+  getSmsGatewayConfig,
+  sanitizeSmsGatewayConfig,
+  SmsGatewayConfig,
+} from '@/lib/sms';
+import { DEFAULT_SMS_TEMPLATES, SmsTemplateKey, SmsTriggerKey } from '@/lib/sms-templates';
 
 export const dynamic = 'force-dynamic';
+
+function shouldKeepExistingKey(incomingKey?: string | null, clearApiKey?: boolean): boolean {
+  if (clearApiKey) return false;
+  if (!incomingKey || !String(incomingKey).trim()) return true;
+  const trimmed = String(incomingKey).trim();
+  return trimmed.startsWith('••••') || trimmed === '***REDACTED***';
+}
 
 export async function POST(req: Request) {
   try {
@@ -15,77 +32,154 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { branchId, branchName, email, deviceId, gatewayUrl, apiKey, simSlot, enabled } = body;
+    const {
+      action,
+      branchId,
+      branchName,
+      email,
+      deviceId,
+      apiKey,
+      simSlot,
+      enabled,
+      clearApiKey,
+      triggers,
+      templates,
+    } = body;
 
-    // Fetch existing settings to preserve other branch configs
-    const { data: existingData } = await adminSupabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'sms_gateway_config')
-      .single();
+    const existingConfig = await getSmsGatewayConfig();
+    const updatedBranches: Record<string, BranchSmsConfig> = { ...(existingConfig.branches || {}) };
+    const nowIso = new Date().toISOString();
 
-    const existingConfig = existingData?.value || {
-      enabled: true,
+    let nextConfig: SmsGatewayConfig = {
+      ...existingConfig,
       provider: 'TEXTBEE',
-      deviceId: '6aa2895cccb6c72709fa5556',
-      apiKey: 'txb_SQX87S1btDchmgxYURa40D3I3WEjxSqg',
-      gatewayUrl: 'https://api.textbee.dev/api/v1/gateway/devices/6aa2895cccb6c72709fa5556/send-sms',
-      simSlot: 1,
-      branches: {}
+      branches: updatedBranches,
+      updatedAt: nowIso,
     };
 
-    const updatedBranches = { ...(existingConfig.branches || {}) };
+    if (action === 'REMOVE_BRANCH' && branchId && String(branchId).toUpperCase() !== 'GLOBAL') {
+      const normBranch = normalizeBranchId(String(branchId));
+      const matched = findBranchConfig(updatedBranches, normBranch);
+      if (matched) {
+        delete updatedBranches[matched.key];
+      }
+      delete updatedBranches[normBranch];
+      nextConfig.branches = updatedBranches;
+    } else if (action === 'SAVE_TRIGGERS' || (triggers && !branchId && deviceId === undefined)) {
+      const incoming = (triggers && typeof triggers === 'object') ? triggers : {};
+      const updatedTriggers = { ...existingConfig.triggers };
+      for (const k of Object.keys(existingConfig.triggers) as SmsTriggerKey[]) {
+        if (typeof incoming[k] === 'boolean') {
+          updatedTriggers[k] = incoming[k];
+        }
+      }
+      nextConfig.triggers = updatedTriggers;
+    } else if (action === 'SAVE_TEMPLATES' || (templates && !branchId && deviceId === undefined)) {
+      const incoming = (templates && typeof templates === 'object') ? templates : {};
+      const updatedTemplates = { ...existingConfig.templates };
+      for (const k of Object.keys(DEFAULT_SMS_TEMPLATES) as SmsTemplateKey[]) {
+        if (k in incoming) {
+          const val = typeof incoming[k] === 'string' ? incoming[k].trim() : '';
+          if (!val || val === DEFAULT_SMS_TEMPLATES[k].trim()) {
+            delete updatedTemplates[k];
+          } else {
+            updatedTemplates[k] = val;
+          }
+        }
+      }
+      nextConfig.templates = updatedTemplates;
+    } else if (branchId && String(branchId).toUpperCase() !== 'GLOBAL') {
+      const normBranch = normalizeBranchId(String(branchId));
+      const matched = findBranchConfig(updatedBranches, normBranch);
+      const prevBranch = matched?.config;
+      if (matched && matched.key !== normBranch) {
+        delete updatedBranches[matched.key];
+      }
 
-    if (branchId) {
-      // Update specific branch config
-      updatedBranches[branchId] = {
-        branchId,
-        branchName: branchName || branchId,
-        email: email || '',
-        deviceId: deviceId || '',
-        apiKey: apiKey || '',
-        gatewayUrl: gatewayUrl || (deviceId ? `https://api.textbee.dev/api/v1/gateway/devices/${deviceId}/send-sms` : ''),
-        simSlot: parseInt(simSlot) || 1,
-        enabled: enabled !== false,
-        updatedAt: new Date().toISOString()
+      const finalDeviceId = deviceId !== undefined ? String(deviceId).trim() : String(prevBranch?.deviceId || '').trim();
+      const finalApiKey = shouldKeepExistingKey(apiKey, clearApiKey)
+        ? String(prevBranch?.apiKey || '')
+        : String(apiKey || '').trim();
+
+      updatedBranches[normBranch] = {
+        branchId: normBranch,
+        branchName: branchName || prevBranch?.branchName || normBranch,
+        email: email !== undefined ? String(email).trim() : (prevBranch?.email || ''),
+        deviceId: finalDeviceId,
+        apiKey: finalApiKey,
+        gatewayUrl: finalDeviceId ? buildTextBeeSendUrl(finalDeviceId) : '',
+        simSlot: parseInt(String(simSlot ?? prevBranch?.simSlot ?? 1), 10) || 1,
+        enabled: enabled !== undefined ? enabled !== false : (prevBranch?.enabled !== false),
+        updatedAt: nowIso,
       };
+      nextConfig.branches = updatedBranches;
+    } else {
+      const finalDeviceId = deviceId !== undefined ? String(deviceId).trim() : existingConfig.deviceId;
+      const finalApiKey = shouldKeepExistingKey(apiKey, clearApiKey)
+        ? existingConfig.apiKey
+        : String(apiKey || '').trim();
+
+      nextConfig.email = email !== undefined ? String(email).trim() : existingConfig.email;
+      nextConfig.deviceId = finalDeviceId;
+      nextConfig.apiKey = finalApiKey;
+      nextConfig.gatewayUrl = finalDeviceId ? buildTextBeeSendUrl(finalDeviceId) : '';
+      nextConfig.simSlot = parseInt(String(simSlot ?? existingConfig.simSlot ?? 1), 10) || 1;
+      nextConfig.enabled = enabled !== undefined ? enabled !== false : existingConfig.enabled;
     }
 
-    const configValue = {
-      ...existingConfig,
-      gatewayUrl: !branchId ? (gatewayUrl || existingConfig.gatewayUrl) : existingConfig.gatewayUrl,
-      apiKey: !branchId ? (apiKey || existingConfig.apiKey) : existingConfig.apiKey,
-      deviceId: !branchId ? (deviceId || existingConfig.deviceId) : existingConfig.deviceId,
-      simSlot: !branchId ? (parseInt(simSlot) || existingConfig.simSlot || 1) : existingConfig.simSlot,
-      enabled: !branchId ? (enabled !== false) : existingConfig.enabled,
-      branches: updatedBranches,
-      updatedAt: new Date().toISOString()
-    };
+    // Apply inline triggers/templates too if passed alongside config
+    if (triggers && typeof triggers === 'object') {
+      for (const k of Object.keys(nextConfig.triggers) as SmsTriggerKey[]) {
+        if (typeof triggers[k] === 'boolean') {
+          nextConfig.triggers[k] = triggers[k];
+        }
+      }
+    }
+    if (templates && typeof templates === 'object') {
+      for (const k of Object.keys(DEFAULT_SMS_TEMPLATES) as SmsTemplateKey[]) {
+        if (k in templates) {
+          const val = typeof templates[k] === 'string' ? templates[k].trim() : '';
+          if (!val || val === DEFAULT_SMS_TEMPLATES[k].trim()) {
+            delete nextConfig.templates[k];
+          } else {
+            nextConfig.templates[k] = val;
+          }
+        }
+      }
+    }
 
-    const { data, error } = await adminSupabase
+    const { error } = await adminSupabase
       .from('system_settings')
-      .upsert({
-        key: 'sms_gateway_config',
-        value: configValue,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'key' })
-      .select()
-      .single();
+      .upsert(
+        {
+          key: 'sms_gateway_config',
+          value: nextConfig,
+          description: 'Multi-branch TextBee SMS gateway config, triggers, and templates',
+          updated_at: nowIso,
+          updated_by: session.user?.email || session.user?.id || 'ADMIN',
+        },
+        { onConflict: 'key' }
+      );
 
     if (error) {
       throw error;
     }
 
-    if (session) {
-      await recordAuditLog(session, {
-        action: 'UPDATE_SMS_GATEWAY_CONFIG',
-        resource: 'system_settings:sms_gateway_config',
-        details: { branchId: branchId || 'GLOBAL', config: configValue }
-      });
-    }
+    const safeConfig = sanitizeSmsGatewayConfig(nextConfig, true);
 
-    return NextResponse.json({ success: true, config: configValue });
+    await recordAuditLog(session, {
+      action: 'UPDATE_SMS_GATEWAY_CONFIG',
+      resource: 'system_settings:sms_gateway_config',
+      branchId: branchId && String(branchId).toUpperCase() !== 'GLOBAL' ? normalizeBranchId(String(branchId)) : 'HQ',
+      details: {
+        action: action || 'SAVE_GATEWAY',
+        branchId: branchId || 'GLOBAL',
+        config: safeConfig,
+      },
+      request: req,
+    });
 
+    return NextResponse.json({ success: true, config: safeConfig });
   } catch (err: any) {
     console.error('Error in /api/settings/sms-gateway:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });

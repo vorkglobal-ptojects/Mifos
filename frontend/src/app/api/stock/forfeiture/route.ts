@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
-import { sendFreeSms, buildForfeitureWarningSms } from '@/lib/sms';
+import { sendFreeSms, buildForfeitureWarningSms, getSmsGatewayConfig } from '@/lib/sms';
 import { getBranchSearchTerms, normalizeBranchId, extractNumericBillNo, stripBranchPrefix, isSameNumericBill } from '@/lib/branch-mapping';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 
@@ -489,6 +489,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'A valid customer mobile phone number is required to send SMS.' }, { status: 400 });
       }
 
+      const smsConfig = await getSmsGatewayConfig();
       const message = (customMessage && typeof customMessage === 'string' && customMessage.trim() !== '')
         ? customMessage.trim()
         : buildForfeitureWarningSms({
@@ -502,7 +503,8 @@ export async function POST(request: Request) {
             periodMonths: parseInt(periodMonths, 10) || 3,
             interestPaid: parseFloat(interestPaid) || 0,
             coveredMonths: parseInt(coveredMonths, 10) || 0,
-            lastInterestDate
+            lastInterestDate,
+            customTemplate: smsConfig.templates?.FORFEITURE,
           });
 
       const smsRes = await sendFreeSms({
@@ -510,8 +512,9 @@ export async function POST(request: Request) {
         message,
         ticketNo: billNo,
         amount: parseFloat(interestDue) || 0,
-        type: 'REMINDER',
-        branchId: branchId || session.branchId || 'HQ'
+        type: 'FORFEITURE',
+        branchId: branchId || session.branchId || 'HQ',
+        triggerKey: 'onForfeitureWarning',
       });
 
       await recordAuditLog(session, {
@@ -548,6 +551,7 @@ export async function POST(request: Request) {
       let failedCount = 0;
       let skippedNoPhone = 0;
       const results: any[] = [];
+      const smsConfig = await getSmsGatewayConfig();
 
       for (const it of items) {
         if (!it.phone || !isValidPhone(it.phone)) {
@@ -579,7 +583,8 @@ export async function POST(request: Request) {
               periodMonths: parseInt(it.periodMonths, 10) || 3,
               interestPaid: parseFloat(it.interestPaid) || 0,
               coveredMonths: parseInt(it.coveredMonths, 10) || 0,
-              lastInterestDate: it.lastInterestDate
+              lastInterestDate: it.lastInterestDate,
+              customTemplate: smsConfig.templates?.FORFEITURE,
             });
           }
 
@@ -588,8 +593,9 @@ export async function POST(request: Request) {
             message,
             ticketNo: it.billNo,
             amount: parseFloat(it.interestDue) || 0,
-            type: 'REMINDER',
-            branchId: it.branchId || session.branchId || 'HQ'
+            type: 'FORFEITURE',
+            branchId: it.branchId || session.branchId || 'HQ',
+            triggerKey: 'onForfeitureWarning',
           });
 
           if (smsRes.success) sentCount++;

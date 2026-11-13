@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
-import { sendFreeSms, buildPawnRedeemSms } from '@/lib/sms';
+import { sendFreeSms, buildPawnRedeemSms, getSmsGatewayConfig } from '@/lib/sms';
 import { normalizeBranchId, stripBranchPrefix, getBranchSearchTerms } from '@/lib/branch-mapping';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { getSriLankaDate } from '@/lib/date-utils';
@@ -288,12 +288,15 @@ export async function POST(
         }
       }
       if (clientPhone) {
-        const ticketDisplay = pawn.bill_no || id.substring(0, 8).toUpperCase();
+        const smsConfig = await getSmsGatewayConfig();
+        const ticketDisplay = stripBranchPrefix(pawn.bill_no) || pawn.bill_no || id.substring(0, 8).toUpperCase();
         const redeemMsg = buildPawnRedeemSms({
           customerName: clientName || 'Valued Customer',
           ticketNo: ticketDisplay,
           settlementAmount: settlement,
-          principalAmount: principal
+          principalAmount: principal,
+          branchName: normalizeBranchId(pawn.branch_id || ''),
+          customTemplate: smsConfig.templates?.REDEEM,
         });
         await sendFreeSms({
           phone: clientPhone,
@@ -301,7 +304,8 @@ export async function POST(
           ticketNo: ticketDisplay,
           amount: settlement,
           type: 'REDEEM',
-          branchId: pawn.branch_id
+          branchId: pawn.branch_id,
+          triggerKey: 'onPawnRedeem',
         });
       }
     } catch (smsErr) {

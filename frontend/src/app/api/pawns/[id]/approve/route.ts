@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
-import { normalizeBranchId } from '@/lib/branch-mapping';
+import { normalizeBranchId, stripBranchPrefix } from '@/lib/branch-mapping';
 import { getSriLankaDate } from '@/lib/date-utils';
+import { sendFreeSms, buildPawnApprovedSms, getSmsGatewayConfig, resolvePawnCustomerContact } from '@/lib/sms';
 
 export const dynamic = 'force-dynamic';
 
@@ -195,6 +196,33 @@ export async function POST(
       }]);
     } catch (logErr) {
       console.warn("Audit log insert warning:", logErr);
+    }
+
+    // 6. Dispatch Automated Loan Approval SMS via Branch TextBee SIM (Non-fatal)
+    try {
+      const smsConfig = await getSmsGatewayConfig();
+      const contact = await resolvePawnCustomerContact(pawn);
+      if (contact.phone) {
+        const ticketDisplay = stripBranchPrefix(cleanBill) || pawn.id.substring(0, 8).toUpperCase();
+        const approvedMsg = buildPawnApprovedSms({
+          customerName: contact.name,
+          ticketNo: ticketDisplay,
+          amount: principal,
+          branchName: pawnBranch || pawn.branch_id,
+          customTemplate: smsConfig.templates?.APPROVED,
+        });
+        await sendFreeSms({
+          phone: contact.phone,
+          message: approvedMsg,
+          ticketNo: ticketDisplay,
+          amount: principal,
+          type: 'APPROVED',
+          branchId: pawn.branch_id,
+          triggerKey: 'onPawnApprove',
+        });
+      }
+    } catch (smsErr) {
+      console.warn('Approval SMS notice:', smsErr);
     }
 
     return NextResponse.json({ success: true, pawnId: id, journalEntryId: jeId });

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
-import { sendFreeSms, buildPawnReceiptSms } from '@/lib/sms';
+import { sendFreeSms, buildPawnReceiptSms, getSmsGatewayConfig } from '@/lib/sms';
 import { normalizeBranchId, getBranchSearchTerms, isNationalId, normalizeNationalId, formatBranchScopedId, formatBranchScopedBillNo, stripBranchPrefix, extractNumericBillNo, isSameNumericBill, generateUniqueOrderTag } from '@/lib/branch-mapping';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { invalidateClientsCache } from '@/app/api/clients/route';
@@ -930,12 +930,14 @@ export async function POST(request: Request) {
     const targetPhone = clientPhone || fullClientObj?.phone;
     if (targetPhone) {
       try {
+        const smsConfig = await getSmsGatewayConfig();
         const ticketDisplay = stripBranchPrefix(scopedBillNo || billNo) || pawnId.substring(0, 8).toUpperCase();
         const cName = clientName || customerName || (fullClientObj ? `${fullClientObj.first_name || ''} ${fullClientObj.last_name || ''}`.trim() : 'Valued Customer');
         const smsMessage = buildPawnReceiptSms({
           customerName: cName,
           ticketNo: ticketDisplay,
-          amount: finalDisbursed
+          amount: finalDisbursed,
+          customTemplate: smsConfig.templates?.RECEIPT,
         });
         await sendFreeSms({
           phone: targetPhone,
@@ -943,7 +945,8 @@ export async function POST(request: Request) {
           ticketNo: ticketDisplay,
           amount: finalDisbursed,
           type: 'RECEIPT',
-          branchId: targetBranchId
+          branchId: targetBranchId,
+          triggerKey: 'onPawnCreate',
         });
       } catch (smsErr) {
         console.warn("SMS Auto-dispatch notice:", smsErr);
