@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase, validateFinancialActionAuth } from '@/lib/auth-server';
 import { calculateDenominationTotal } from '@/lib/cash-management';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { getBranchSearchTerms, normalizeBranchId } from '@/lib/branch-mapping';
+import { getSriLankaDate } from '@/lib/date-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { action, tillId, sessionId, openingCash = 0, systemExpectedCash = 0, denominations, notes } = body;
+    const { action, tillId, sessionId, openingCash = 0, denominations, notes } = body;
 
     // -------------------------------------------------------------
     // ACTION 1: OPEN TILL SESSION
@@ -52,7 +54,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'This till already has an active OPEN session.' }, { status: 409 });
       }
 
-      const parsedOpening = Math.max(0, Number(openingCash) || 0);
+      const parsedOpening = Number(openingCash ?? 0);
+      if (!Number.isFinite(parsedOpening) || parsedOpening < 0) {
+        return NextResponse.json({ error: 'Opening cash must be a valid non-negative number.' }, { status: 400 });
+      }
 
       const { data: newSession, error: createErr } = await adminSupabase
         .from('till_sessions')
@@ -60,7 +65,7 @@ export async function POST(request: Request) {
           till_id: tillId,
           user_id: session.user.id,
           branch_id: till.branch_id,
-          session_date: new Date().toISOString().split('T')[0],
+          session_date: getSriLankaDate(),
           opened_at: new Date().toISOString(),
           opening_cash: parsedOpening,
           system_expected_cash: parsedOpening,
@@ -122,12 +127,59 @@ export async function POST(request: Request) {
       }
 
       const actualCash = denomCalc.total;
-      const expectedCash = Number(systemExpectedCash || currentSession.system_expected_cash || 0);
+
+      // Compute server-side expected cash from opening float + shift transactions & cash transfers
+      const shiftStartIso = currentSession.opened_at;
+      const branchTerms = getBranchSearchTerms(currentSession.branch_id);
+      const normSessionBranch = normalizeBranchId(currentSession.branch_id);
+      let serverExpectedCash = Number(currentSession.opening_cash || 0);
+
+      const { data: shiftTxs } = await adminSupabase
+        .from('transaction')
+        .select('type, amount')
+        .in('branch_id', branchTerms)
+        .gte('timestamp', shiftStartIso);
+
+      for (const tx of shiftTxs || []) {
+        const amt = Number(tx.amount || 0);
+        const t = String(tx.type || '').toUpperCase();
+        if (t === 'PAWN_REDEEM' || t === 'CASH_IN' || t === 'INTEREST') {
+          serverExpectedCash += amt;
+        } else if (t === 'PAWN_DISBURSE' || t === 'CASH_OUT' || t === 'EXPENSE') {
+          serverExpectedCash -= amt;
+        }
+      }
+
+      const { data: inwardTransfers } = await adminSupabase
+        .from('cash_transfers')
+        .select('amount')
+        .eq('destination_branch_id', normSessionBranch)
+        .eq('status', 'ACCEPTED')
+        .gte('updated_at', shiftStartIso);
+
+      for (const trf of inwardTransfers || []) {
+        serverExpectedCash += Number(trf.amount || 0);
+      }
+
+      const { data: outwardTransfers } = await adminSupabase
+        .from('cash_transfers')
+        .select('amount, source_bank_id')
+        .eq('source_branch_id', normSessionBranch)
+        .in('status', ['IN_TRANSIT', 'ACCEPTED'])
+        .gte('updated_at', shiftStartIso);
+
+      for (const trf of outwardTransfers || []) {
+        if (!trf.source_bank_id) {
+          serverExpectedCash -= Number(trf.amount || 0);
+        }
+      }
+
+      const expectedCash = Number(serverExpectedCash.toFixed(2));
       const variance = Number((actualCash - expectedCash).toFixed(2));
       const isMismatch = Math.abs(variance) > 0.01;
       const finalStatus = isMismatch ? 'FLAGGED' : 'CLOSED';
 
-      // 1. Update Till Session
+      // 1. Update Till Session (atomic guard against double-close)
       const { data: updatedSession, error: updateErr } = await adminSupabase
         .from('till_sessions')
         .update({
@@ -140,15 +192,19 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString()
         })
         .eq('id', sessionId)
+        .eq('status', 'OPEN')
         .select()
-        .single();
+        .maybeSingle();
 
       if (updateErr) {
         return NextResponse.json({ error: updateErr.message }, { status: 500 });
       }
+      if (!updatedSession) {
+        return NextResponse.json({ error: 'Till session was already closed concurrently.' }, { status: 409 });
+      }
 
       // 2. Insert Denomination Record
-      await adminSupabase.from('till_denominations').insert([{
+      const { error: denomInsErr } = await adminSupabase.from('till_denominations').insert([{
         session_id: sessionId,
         count_type: 'CLOSING',
         notes_5000: denomCalc.breakdown.notes_5000,
@@ -164,6 +220,9 @@ export async function POST(request: Request) {
         counted_by_user_id: session.user.id,
         counted_at: new Date().toISOString()
       }]);
+      if (denomInsErr) {
+        return NextResponse.json({ error: 'Failed to record till closing denominations: ' + denomInsErr.message }, { status: 500 });
+      }
 
       await recordAuditLog(session, {
         action: 'TILL_SESSION_CLOSED',

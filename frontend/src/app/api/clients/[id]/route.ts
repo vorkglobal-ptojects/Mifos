@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
+import { normalizeBranchId } from '@/lib/branch-mapping';
 import { invalidateClientsCache } from '../route';
 
 export const dynamic = 'force-dynamic';
@@ -11,11 +12,18 @@ export async function GET(request: Request, context: any) {
       return NextResponse.json({ error: 'Unauthorized. Please log in.' }, { status: 401 });
     }
     const { id } = await context.params;
+    const sessionBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+    const isGlobalRole = session.role === 'ADMIN' || session.role === 'AUDITOR' || sessionBranch === 'HQ';
+
     let query = adminSupabase.from('clients').select('*');
     if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(id)) {
       query = query.eq('id', id);
     } else {
-      query = query.or(`national_id.eq.${id},nationalId.eq.${id}`);
+      query = query.ilike('national_id', id);
+      if (!isGlobalRole && sessionBranch) {
+        query = query.eq('branch_id', sessionBranch);
+      }
+      query = query.limit(1);
     }
     const { data, error } = await query.maybeSingle();
     if (error || !data) {
@@ -38,6 +46,26 @@ export async function PATCH(request: Request, context: any) {
     }
 
     const { id } = await context.params;
+    const { data: existingClient } = await adminSupabase
+      .from('clients')
+      .select('id, branch_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!existingClient) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    const sessionBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+    const isGlobalRole = session.role === 'ADMIN' || sessionBranch === 'HQ';
+    const existingBranch = existingClient.branch_id ? normalizeBranchId(existingClient.branch_id) : '';
+    if (!isGlobalRole && sessionBranch && existingBranch && existingBranch !== sessionBranch) {
+      return NextResponse.json(
+        { error: `Forbidden: Cannot modify client belonging to branch ${existingBranch}.` },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
 
     if (body.phone) {
@@ -90,6 +118,7 @@ export async function PATCH(request: Request, context: any) {
       .single();
 
     if (!error && data) {
+      invalidateClientsCache();
       return NextResponse.json(data);
     }
 
@@ -134,6 +163,25 @@ export async function DELETE(request: Request, context: any) {
     }
 
     const { id } = await context.params;
+    const { data: existingClient } = await adminSupabase
+      .from('clients')
+      .select('id, branch_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (!existingClient) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    const sessionBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+    const isGlobalRole = session.role === 'ADMIN' || sessionBranch === 'HQ';
+    const existingBranch = existingClient.branch_id ? normalizeBranchId(existingClient.branch_id) : '';
+    if (!isGlobalRole && sessionBranch && existingBranch && existingBranch !== sessionBranch) {
+      return NextResponse.json(
+        { error: `Forbidden: Cannot delete client belonging to branch ${existingBranch}.` },
+        { status: 403 }
+      );
+    }
+
     const { error } = await adminSupabase
       .from('clients')
       .delete()

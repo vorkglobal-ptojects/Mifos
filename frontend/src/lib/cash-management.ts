@@ -1,4 +1,6 @@
+import crypto from 'crypto';
 import { adminSupabase } from './auth-server';
+import { getSriLankaDate } from './date-utils';
 
 export interface LkrDenominations {
   notes_5000?: number;
@@ -101,19 +103,34 @@ export async function postCashTransferJournalEntry(params: {
   transferRef: string;
   sourceBranch: string;
   sourceBranchName?: string;
+  sourceBankGlAccount?: string;
+  sourceBankName?: string;
   destBranch: string;
   destBranchName?: string;
   amount: number;
   actorEmail: string;
 }): Promise<{ journalEntryId: string | null; error?: string }> {
   try {
-    const { transferRef, sourceBranch, sourceBranchName, destBranch, destBranchName, amount, actorEmail } = params;
-    const jeId = `JE-CASH-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const dateStr = new Date().toISOString().split('T')[0];
+    const {
+      transferRef,
+      sourceBranch,
+      sourceBranchName,
+      sourceBankGlAccount,
+      sourceBankName,
+      destBranch,
+      destBranchName,
+      amount,
+      actorEmail
+    } = params;
+    const jeId = `JE-CASH-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const dateStr = getSriLankaDate();
 
-    const srcName = sourceBranchName || sourceBranch;
+    const srcName = sourceBankName || sourceBranchName || sourceBranch;
     const dstName = destBranchName || destBranch;
     const transferAmount = Number(amount.toFixed(2));
+    const creditAccountName = sourceBankGlAccount
+      ? `${sourceBankGlAccount}${sourceBankName ? ` (${sourceBankName})` : ''}`
+      : `Vault Cash (${srcName}) (Asset)`;
 
     // 1. Insert Journal Entry Header
     const { error: headerErr } = await adminSupabase.from('journal_entry').insert([{
@@ -141,7 +158,7 @@ export async function postCashTransferJournalEntry(params: {
       },
       {
         journal_entry_id: jeId,
-        account_name: `Vault Cash (${srcName}) (Asset)`,
+        account_name: creditAccountName,
         debit: 0,
         credit: transferAmount
       }
@@ -150,6 +167,7 @@ export async function postCashTransferJournalEntry(params: {
     const { error: linesErr } = await adminSupabase.from('journal_entry_line').insert(journalLines);
     if (linesErr) {
       console.error('Error inserting cash transfer journal entry lines:', linesErr);
+      await adminSupabase.from('journal_entry').delete().eq('id', jeId);
       return { journalEntryId: null, error: linesErr.message };
     }
 

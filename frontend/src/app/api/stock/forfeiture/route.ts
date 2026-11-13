@@ -74,7 +74,44 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
+    const modeParam = (searchParams.get('mode') || '').toLowerCase();
     const branchParam = searchParams.get('branch') || 'ALL';
+
+    // Mode: Return only items explicitly marked as Forfeited ('F/S') in stock_items
+    if (modeParam === 'fs_marked') {
+      let fsMarked: any[] = [];
+      let mPage = 0;
+      const mSize = 1000;
+      while (true) {
+        let mq = adminSupabase
+          .from('stock_items')
+          .select('id, bill_no, branch_id, date, item_type, weight, status, withdrawal_reason, withdrawal_date, created_at')
+          .eq('withdrawal_reason', 'F/S')
+          .order('branch_id', { ascending: true })
+          .order('date', { ascending: true })
+          .range(mPage * mSize, (mPage + 1) * mSize - 1);
+
+        if (branchParam !== 'ALL' && branchParam.trim() !== '') {
+          mq = mq.in('branch_id', getBranchSearchTerms(branchParam));
+        }
+
+        const { data, error } = await mq;
+        if (error) throw error;
+        if (data && data.length > 0) {
+          fsMarked = fsMarked.concat(data);
+          if (data.length < mSize) break;
+          mPage++;
+        } else {
+          break;
+        }
+      }
+      return NextResponse.json({
+        success: true,
+        count: fsMarked.length,
+        items: fsMarked
+      });
+    }
+
     const severityParam = searchParams.get('severity') || 'ALL';
     const periodParam = searchParams.get('period') || 'ALL';
     const billTagParam = (searchParams.get('billTag') || 'ALL').toUpperCase();
@@ -160,24 +197,36 @@ export async function GET(request: Request) {
 
     // 4. Fetch Clients & Stock Customers for phone/contact resolution
     const [clientsRes, scRes, smsLogsRes] = await Promise.all([
-      adminSupabase.from('clients').select('id, national_id, first_name, last_name, phone, address'),
-      adminSupabase.from('stock_customers').select('name, nic, tp, address, bill_numbers'),
+      adminSupabase.from('clients').select('id, national_id, first_name, last_name, phone, address, branch_id'),
+      adminSupabase.from('stock_customers').select('name, nic, tp, address, bill_numbers, branch_id'),
       adminSupabase.from('sms_logs').select('recipient_phone, message_text, status, created_at').order('created_at', { ascending: false }).limit(200)
     ]);
 
     const clientsMap: Record<string, any> = {};
     (clientsRes.data || []).forEach(c => {
       if (c.id) clientsMap[c.id] = c;
-      if (c.national_id) clientsMap[c.national_id.trim().toUpperCase()] = c;
+      if (c.national_id && c.branch_id) {
+        clientsMap[`${normalizeBranchId(c.branch_id)}::${c.national_id.trim().toUpperCase()}`] = c;
+      }
     });
 
-    const scByNumericBillMap: Record<string, any> = {};
+    const scByBranchFullBillMap: Record<string, any> = {};
+    const scByBranchNumericBillMap: Record<string, any> = {};
+    const scUnassignedNumericBillMap: Record<string, any> = {};
     (scRes.data || []).forEach(sc => {
       if (sc.bill_numbers) {
+        const scBr = sc.branch_id ? normalizeBranchId(sc.branch_id) : '';
         const parts = String(sc.bill_numbers).split(/[,;]/);
         parts.forEach(p => {
-          const num = extractNumericBillNo(p.trim());
-          if (num) scByNumericBillMap[num] = sc;
+          const trimmed = p.trim();
+          const normFull = stripBranchPrefix(trimmed).toUpperCase().replace(/[\s\-_/]+/g, '');
+          const num = extractNumericBillNo(trimmed);
+          if (scBr) {
+            if (normFull) scByBranchFullBillMap[`${scBr}::${normFull}`] = sc;
+            if (num) scByBranchNumericBillMap[`${scBr}::${num}`] = sc;
+          } else if (num) {
+            scUnassignedNumericBillMap[num] = sc;
+          }
         });
       }
     });
@@ -278,18 +327,21 @@ export async function GET(request: Request) {
       let customerNic = '';
       let customerAddress = '';
 
+      const matchedSc =
+        scByBranchFullBillMap[`${branch}::${stripBranchPrefix(item.bill_no || '').toUpperCase().replace(/[\s\-_/]+/g, '')}`] ||
+        (numBill ? (scByBranchNumericBillMap[billKey] || scUnassignedNumericBillMap[numBill]) : null);
+
       if (linkedPawn?.client_id && clientsMap[linkedPawn.client_id]) {
         const c = clientsMap[linkedPawn.client_id];
         customerName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Valued Customer';
         customerPhone = cleanPhoneDisplay(c.phone);
         customerNic = c.national_id || '';
         customerAddress = c.address || '';
-      } else if (numBill && scByNumericBillMap[numBill]) {
-        const sc = scByNumericBillMap[numBill];
-        customerName = sc.name || 'Valued Customer';
-        customerPhone = cleanPhoneDisplay(sc.tp);
-        customerNic = sc.nic || '';
-        customerAddress = sc.address || '';
+      } else if (matchedSc) {
+        customerName = matchedSc.name || 'Valued Customer';
+        customerPhone = cleanPhoneDisplay(matchedSc.tp);
+        customerNic = matchedSc.nic || '';
+        customerAddress = matchedSc.address || '';
       }
 
       // SMS status check

@@ -787,7 +787,7 @@ export default function ManagerReviewPage() {
 
       {/* Return Modal */}
       <Dialog open={isReturnModalOpen} onOpenChange={setIsReturnModalOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+        <DialogContent className="w-[95vw] sm:max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
           <DialogHeader className="space-y-1">
             <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto sm:mx-0">
               <RotateCcw className="w-6 h-6" />
@@ -831,7 +831,7 @@ export default function ManagerReviewPage() {
 
       {/* Resolve & Resubmit Modal */}
       <Dialog open={isResubmitModalOpen} onOpenChange={setIsResubmitModalOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+        <DialogContent className="w-[95vw] sm:max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
           <DialogHeader className="space-y-1">
             <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mx-auto sm:mx-0">
               <RefreshCcw className="w-6 h-6" />
@@ -875,7 +875,7 @@ export default function ManagerReviewPage() {
 
       {/* Final Approve Modal */}
       <Dialog open={isApproveConfirmOpen} onOpenChange={setIsApproveConfirmOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+        <DialogContent className="w-[95vw] sm:max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
           <DialogHeader className="space-y-1">
             <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mx-auto sm:mx-0">
               <CheckCircle2 className="w-6 h-6" />
@@ -922,7 +922,7 @@ export default function ManagerReviewPage() {
 
       {/* Lightbox */}
       <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
-        <DialogContent className="max-w-4xl p-2 bg-black/95 border-none rounded-3xl">
+        <DialogContent className="w-[95vw] sm:max-w-4xl p-2 bg-black/95 border-none rounded-3xl">
           <div className="relative flex items-center justify-center p-2 min-h-[60vh]">
             {previewImage && (
               <img 

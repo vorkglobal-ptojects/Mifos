@@ -47,19 +47,43 @@ export async function PATCH(
       }, { status: 403 });
     }
 
-    const finalApprovedAmount = Math.max(0, Number(approvedAmount || cashReq.requested_amount));
-    if (finalApprovedAmount <= 0) {
+    const finalApprovedAmount = Number(approvedAmount ?? cashReq.requested_amount);
+    if (!Number.isFinite(finalApprovedAmount) || finalApprovedAmount <= 0) {
       return NextResponse.json({ error: 'Approved amount must be greater than 0.' }, { status: 400 });
     }
 
-    const normSourceBranch = normalizeBranchId(sourceBranchId);
-    if (normSourceBranch === cashReq.requesting_branch_id) {
-      return NextResponse.json({ error: 'Source branch and requesting destination branch cannot be the same.' }, { status: 400 });
+    let normSourceBranch = normalizeBranchId(sourceBranchId || 'HQ');
+    let validatedBankId: string | null = null;
+
+    if (sourceType === 'BANK') {
+      if (!sourceBankId) {
+        return NextResponse.json({ error: 'A source bank account must be selected when source type is BANK.' }, { status: 400 });
+      }
+      const { data: bankRow, error: bankErr } = await adminSupabase
+        .from('bank_accounts')
+        .select('id, branch_id, is_active, current_balance, bank_name')
+        .eq('id', sourceBankId)
+        .maybeSingle();
+
+      if (bankErr || !bankRow) {
+        return NextResponse.json({ error: 'Selected source bank account not found.' }, { status: 404 });
+      }
+      if (!bankRow.is_active) {
+        return NextResponse.json({ error: 'Selected bank account is inactive.' }, { status: 400 });
+      }
+      validatedBankId = bankRow.id;
+      normSourceBranch = normalizeBranchId(bankRow.branch_id || sourceBranchId || 'HQ');
+    } else if (sourceType === 'BRANCH') {
+      if (normSourceBranch === cashReq.requesting_branch_id) {
+        return NextResponse.json({ error: 'Source branch and requesting destination branch cannot be the same.' }, { status: 400 });
+      }
+    } else {
+      return NextResponse.json({ error: 'Invalid sourceType. Expected BRANCH or BANK.' }, { status: 400 });
     }
 
     const approvalTime = new Date().toISOString();
 
-    // 3. Update Cash Request to APPROVED
+    // 3. Update Cash Request to APPROVED (atomic guard against double-approval)
     const { data: updatedReq, error: updateErr } = await adminSupabase
       .from('cash_requests')
       .update({
@@ -70,15 +94,19 @@ export async function PATCH(
         approved_at: approvalTime,
         assigned_source_type: sourceType,
         assigned_source_branch_id: sourceType === 'BRANCH' ? normSourceBranch : null,
-        assigned_source_bank_id: sourceType === 'BANK' ? sourceBankId : null,
+        assigned_source_bank_id: sourceType === 'BANK' ? validatedBankId : null,
         updated_at: approvalTime
       })
       .eq('id', id)
+      .eq('status', 'SUBMITTED')
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateErr) {
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
+    if (!updatedReq) {
+      return NextResponse.json({ error: 'Cash request was already approved or modified concurrently.' }, { status: 409 });
     }
 
     // 4. Instantiate Linked Cash Transfer in ASSIGNED status
@@ -90,7 +118,7 @@ export async function PATCH(
         request_id: cashReq.id,
         source_branch_id: normSourceBranch,
         destination_branch_id: cashReq.requesting_branch_id,
-        source_bank_id: sourceType === 'BANK' ? sourceBankId : null,
+        source_bank_id: sourceType === 'BANK' ? validatedBankId : null,
         amount: finalApprovedAmount,
         status: 'ASSIGNED',
         created_at: approvalTime,
@@ -100,6 +128,20 @@ export async function PATCH(
       .single();
 
     if (transferErr) {
+      await adminSupabase
+        .from('cash_requests')
+        .update({
+          status: 'SUBMITTED',
+          approved_amount: null,
+          approved_by_user_id: null,
+          approved_by_email: null,
+          approved_at: null,
+          assigned_source_type: null,
+          assigned_source_branch_id: null,
+          assigned_source_bank_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
       return NextResponse.json({ error: 'Failed to create transfer record: ' + transferErr.message }, { status: 500 });
     }
 

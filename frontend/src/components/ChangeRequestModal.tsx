@@ -101,7 +101,7 @@ export default function ChangeRequestModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[90dvh] rounded-2xl p-6 bg-white border border-slate-200 shadow-2xl overflow-y-auto">
+      <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90dvh] rounded-2xl p-6 bg-white border border-slate-200 shadow-2xl overflow-y-auto overflow-x-hidden">
         <DialogHeader className="space-y-1 pr-8">
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border-amber-200">
@@ -209,12 +209,52 @@ export default function ChangeRequestModal({
               {entityType === 'DAILY_LEDGER' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Opening Balance (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.opening_balance ?? '')}
+                      value={proposedData.opening_balance ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, opening_balance: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
                     <Label className="text-xs font-bold text-slate-700">Adjusted Closing Cash (Rs.)</Label>
                     <Input
                       type="number"
-                      placeholder={String(currentData.closing_balance || '')}
+                      placeholder={String(currentData.closing_balance ?? '')}
                       value={proposedData.closing_balance ?? ''}
                       onChange={e => setProposedData({ ...proposedData, closing_balance: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Loan Issued Total (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.loan_issued_total ?? '')}
+                      value={proposedData.loan_issued_total ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, loan_issued_total: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Redemption Total (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.redemption_total ?? '')}
+                      value={proposedData.redemption_total ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, redemption_total: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Interest Received (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.interest_rec_total ?? '')}
+                      value={proposedData.interest_rec_total ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, interest_rec_total: e.target.value })}
                       className="h-9 rounded-xl text-xs"
                     />
                   </div>
@@ -222,9 +262,44 @@ export default function ChangeRequestModal({
                     <Label className="text-xs font-bold text-slate-700">Adjusted Expenses Total (Rs.)</Label>
                     <Input
                       type="number"
-                      placeholder={String(currentData.expenses_total || '')}
+                      placeholder={String(currentData.expenses_total ?? '')}
                       value={proposedData.expenses_total ?? ''}
                       onChange={e => setProposedData({ ...proposedData, expenses_total: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Transfer In (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.transfer_in ?? '')}
+                      value={proposedData.transfer_in ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, transfer_in: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Transfer Out (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.transfer_out ?? '')}
+                      value={proposedData.transfer_out ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, transfer_out: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {entityType === 'INTEREST' && (
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Adjusted Interest Amount (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.interest_value ?? currentData.amount ?? '')}
+                      value={proposedData.interest_value ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, interest_value: e.target.value })}
                       className="h-9 rounded-xl text-xs"
                     />
                   </div>

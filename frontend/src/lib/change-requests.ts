@@ -1,5 +1,5 @@
 import { adminSupabase, AuthSession } from './auth-server';
-import { normalizeBranchId, stripBranchPrefix, getBranchSearchTerms } from './branch-mapping';
+import { normalizeBranchId, stripBranchPrefix, getBranchSearchTerms, generateUniqueOrderTag } from './branch-mapping';
 import { invalidateBranchInventoryCache } from './redis';
 
 export type ChangeEntityType = 'PAWN' | 'STOCK' | 'DAILY_LEDGER' | 'INTEREST' | 'CLIENT';
@@ -125,6 +125,27 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
         pawnUpdate.branch_id = normalizeBranchId(String(proposed_data.branch_id));
       }
 
+      if (pawnUpdate.bill_no !== undefined || pawnUpdate.branch_id !== undefined) {
+        const { data: existingPawn } = await adminSupabase
+          .from('pawns')
+          .select('client_id, branch_id, bill_no')
+          .eq('id', entity_id)
+          .maybeSingle();
+        let nicForTag = String(current_data?.national_id || '');
+        const cId = existingPawn?.client_id;
+        if (!nicForTag && cId) {
+          const { data: cRow } = await adminSupabase
+            .from('clients')
+            .select('national_id')
+            .eq('id', cId)
+            .maybeSingle();
+          nicForTag = cRow?.national_id || '';
+        }
+        const effBranch = String(pawnUpdate.branch_id || existingPawn?.branch_id || sourceBranch);
+        const effBill = String(pawnUpdate.bill_no || existingPawn?.bill_no || ticket.reference_no || '');
+        pawnUpdate.unique_tag = generateUniqueOrderTag(effBranch, nicForTag, effBill);
+      }
+
       if (Object.keys(pawnUpdate).length > 0) {
         const { error: pawnErr } = await adminSupabase.from('pawns').update(pawnUpdate).eq('id', entity_id);
         if (pawnErr) {
@@ -240,6 +261,29 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
         if (stockUpdate.branch_id !== undefined) {
           pawnUpdate.branch_id = stockUpdate.branch_id;
         }
+        if (stockUpdate.bill_no !== undefined || stockUpdate.branch_id !== undefined) {
+          const { data: matchedPawns } = await adminSupabase
+            .from('pawns')
+            .select('id, client_id, branch_id, bill_no')
+            .ilike('bill_no', billToMatch)
+            .in('branch_id', getBranchSearchTerms(sourceBranch))
+            .limit(1);
+          const matchedPawn = matchedPawns?.[0];
+          if (matchedPawn) {
+            let clientNic = '';
+            if (matchedPawn.client_id) {
+              const { data: cRow } = await adminSupabase
+                .from('clients')
+                .select('national_id')
+                .eq('id', matchedPawn.client_id)
+                .maybeSingle();
+              clientNic = cRow?.national_id || '';
+            }
+            const effBranch = String(pawnUpdate.branch_id || matchedPawn.branch_id || sourceBranch);
+            const effBill = String(pawnUpdate.bill_no || matchedPawn.bill_no || billToMatch);
+            pawnUpdate.unique_tag = generateUniqueOrderTag(effBranch, clientNic, effBill);
+          }
+        }
         if (Object.keys(pawnUpdate).length > 0) {
           const { error: pawnSyncErr } = await adminSupabase
             .from('pawns')
@@ -284,6 +328,16 @@ export async function applyApprovedChange(ticket: ChangeRequestTicket, reviewer:
       const { error: intDelErr } = await adminSupabase.from('stock_interests').delete().eq('id', entity_id);
       if (intDelErr) throw new Error(intDelErr.message || 'Failed to delete interest record');
       await invalidateBranchInventoryCache(sourceBranch);
+    } else if (action_type === 'UPDATE') {
+      const interestVal = parseFiniteNumber(proposed_data?.interest_value ?? proposed_data?.amount);
+      if (interestVal !== undefined) {
+        const { error: intUpdErr } = await adminSupabase
+          .from('stock_interests')
+          .update({ interest_value: interestVal })
+          .eq('id', entity_id);
+        if (intUpdErr) throw new Error(intUpdErr.message || 'Failed to update interest record');
+        await invalidateBranchInventoryCache(sourceBranch);
+      }
     }
   } else if (entity_type === 'CLIENT') {
     if (action_type === 'DELETE') {

@@ -449,7 +449,7 @@ export default function CashRequestsPage() {
               <Button type="button" variant="outline" onClick={() => setIsApproveModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleApprove} disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+              <Button onClick={handleApprove} disabled={submitting || (sourceType === 'BANK' && !sourceBankId)} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
                 {submitting ? 'Approving...' : 'Authorize & Initiate Transfer'}
               </Button>
             </DialogFooter>

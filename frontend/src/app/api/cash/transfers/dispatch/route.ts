@@ -108,7 +108,7 @@ export async function POST(request: Request) {
     }
 
     // 5. Store Denomination Breakdown for Dispatch
-    await adminSupabase.from('cash_transfer_denominations').insert([{
+    const { error: denomErr } = await adminSupabase.from('cash_transfer_denominations').insert([{
       transfer_id: transfer.id,
       stage: 'DISPATCH',
       notes_5000: denomCalc.breakdown.notes_5000,
@@ -124,22 +124,39 @@ export async function POST(request: Request) {
       recorded_by_user_id: session.user.id,
       created_at: dispatchTime
     }]);
+    if (denomErr) {
+      await adminSupabase.from('cash_dispatches').delete().eq('id', dispatchRecord.id);
+      return NextResponse.json({ error: 'Failed to store dispatch denominations: ' + denomErr.message }, { status: 500 });
+    }
 
-    // 6. Update Transfer Status to IN_TRANSIT
-    await adminSupabase
+    // 6. Update Transfer Status to IN_TRANSIT (atomic guard against duplicate dispatches)
+    const { data: updatedTransferRows, error: trfUpdErr } = await adminSupabase
       .from('cash_transfers')
       .update({
         status: 'IN_TRANSIT',
         updated_at: dispatchTime
       })
-      .eq('id', transfer.id);
+      .eq('id', transfer.id)
+      .eq('status', 'ASSIGNED')
+      .select('id');
+
+    if (trfUpdErr || !updatedTransferRows || updatedTransferRows.length === 0) {
+      await adminSupabase.from('cash_transfer_denominations').delete().eq('transfer_id', transfer.id).eq('stage', 'DISPATCH');
+      await adminSupabase.from('cash_dispatches').delete().eq('id', dispatchRecord.id);
+      return NextResponse.json({
+        error: trfUpdErr?.message || 'Cash transfer was already dispatched concurrently.'
+      }, { status: trfUpdErr ? 500 : 409 });
+    }
 
     // If linked to cash request, update request status too
     if (transfer.request_id) {
-      await adminSupabase
+      const { error: reqUpdErr } = await adminSupabase
         .from('cash_requests')
         .update({ status: 'IN_TRANSIT', updated_at: dispatchTime })
         .eq('id', transfer.request_id);
+      if (reqUpdErr) {
+        console.warn('Warning syncing linked cash_request to IN_TRANSIT:', reqUpdErr.message);
+      }
     }
 
     await recordAuditLog(session, {

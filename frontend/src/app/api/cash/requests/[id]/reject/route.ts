@@ -27,6 +27,21 @@ export async function PATCH(
 
     const targetStatus = action === 'RETURN' ? 'RETURNED' : 'REJECTED';
 
+    const { data: existingReq, error: fetchErr } = await adminSupabase
+      .from('cash_requests')
+      .select('id, status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr || !existingReq) {
+      return NextResponse.json({ error: 'Cash request not found.' }, { status: 404 });
+    }
+    if (existingReq.status !== 'SUBMITTED') {
+      return NextResponse.json({
+        error: `Cannot ${action === 'RETURN' ? 'return' : 'reject'} request with current status '${existingReq.status}'.`
+      }, { status: 409 });
+    }
+
     const { data: updatedReq, error } = await adminSupabase
       .from('cash_requests')
       .update({
@@ -35,11 +50,15 @@ export async function PATCH(
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
+      .eq('status', 'SUBMITTED')
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error || !updatedReq) {
-      return NextResponse.json({ error: error?.message || 'Cash request not found' }, { status: 500 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!updatedReq) {
+      return NextResponse.json({ error: 'Cash request status changed concurrently.' }, { status: 409 });
     }
 
     await recordAuditLog(session, {

@@ -593,10 +593,14 @@ function MainLedgerContent() {
         body: JSON.stringify(payload)
       });
       const contentType = res.headers.get('content-type');
-      let data: any = {};
-      if (contentType && contentType.includes('application/json')) {
-        data = await res.json();
+      if (!contentType || !contentType.includes('application/json')) {
+        setFeedback({
+          type: 'error',
+          message: `Unexpected server response (${res.status}). Ledger was not saved — please re-login and try again.`
+        });
+        return;
       }
+      const data: any = await res.json();
 
       if (!res.ok) {
         setFeedback({
@@ -609,9 +613,12 @@ function MainLedgerContent() {
       if (data.error) {
         setFeedback({ type: 'error', message: data.error });
       } else {
+        if (data.branch_id && data.branch_id !== selectedBranch) {
+          setSelectedBranch(data.branch_id);
+        }
         setFeedback({
           type: 'success',
-          message: `Daily Ledger for ${selectedBranch} (${ledgerDate}) saved successfully!`
+          message: `Daily Ledger for ${data.branch_id || selectedBranch} (${ledgerDate}) saved successfully!`
         });
         setShowSavedPopup(true);
         fetchLedgerData();
@@ -684,6 +691,16 @@ function MainLedgerContent() {
   };
 
   const handleEditLedgerFromMatrix = (date: string, branchId: string) => {
+    if (!isHqUser && currentUser && (currentUser.branch_id || currentUser.branchId) && branchId !== (currentUser.branch_id || currentUser.branchId)) {
+      setFeedback({
+        type: 'error',
+        message: `You can only edit ledgers for your assigned branch (${currentUser.branch_id || currentUser.branchId}).`
+      });
+      setMatrixBranchModalOpen(false);
+      setMonthsModalOpen(false);
+      handleTabSwitch('entry');
+      return;
+    }
     setSelectedBranch(branchId);
     setLedgerDate(date);
     setMatrixBranchModalOpen(false);

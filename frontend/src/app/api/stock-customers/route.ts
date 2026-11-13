@@ -5,6 +5,21 @@ import { invalidateClientsCache } from '@/app/api/clients/route';
 
 export const dynamic = 'force-dynamic';
 
+const DUMMY_NICS = new Set(['0', '00', '000', '0000', '-', '--', 'N/A', 'NA', 'NONE', 'NULL', 'UNKNOWN', '.']);
+
+function isDummyNic(nic: string | null | undefined): boolean {
+  const trimmed = (nic || '').trim();
+  if (!trimmed) return true;
+  const upper = trimmed.toUpperCase();
+  if (DUMMY_NICS.has(upper) || /^0+$/.test(trimmed) || upper.startsWith('PENDING-')) return true;
+  return !/[A-Za-z0-9]/.test(trimmed);
+}
+
+function isDummyPhone(phone: string | null | undefined): boolean {
+  const clean = normalizePhone(phone);
+  return !clean || /^0+$/.test(clean) || clean === '0700000000' || clean.length < 9;
+}
+
 function normalizePhone(phone: string | null | undefined): string {
   if (!phone) return '';
   let clean = phone.replace(/\D/g, '');
@@ -55,24 +70,32 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. Fetch clients and stock_items to resolve branch_id for stock_customers
+    // 2. Fetch clients and stock_items only as fallback if a legacy row somehow lacks branch_id
     const { data: clientsData } = await adminSupabase
       .from('clients')
       .select('national_id, phone, branch_id')
       .limit(10000);
 
-    const clientNicToBranch = new Map<string, string>();
-    const clientPhoneToBranch = new Map<string, string>();
+    const clientNicToBranches = new Map<string, Set<string>>();
+    const clientPhoneToBranches = new Map<string, Set<string>>();
     if (clientsData && Array.isArray(clientsData)) {
       for (const cl of clientsData) {
-        const normBr = normalizeBranchId(cl.branch_id);
-        if (cl.national_id) {
-          const cNic = cl.national_id.trim().toUpperCase();
-          clientNicToBranch.set(cNic, normBr);
+        const normBr = cl.branch_id ? normalizeBranchId(cl.branch_id) : '';
+        if (!normBr) continue;
+        if (cl.national_id && !isDummyNic(cl.national_id)) {
+          const rawNic = cl.national_id.trim().toUpperCase();
+          if (!clientNicToBranches.has(rawNic)) clientNicToBranches.set(rawNic, new Set());
+          clientNicToBranches.get(rawNic)!.add(normBr);
+          if (isNationalId(rawNic)) {
+            const normNic = normalizeNationalId(rawNic);
+            if (!clientNicToBranches.has(normNic)) clientNicToBranches.set(normNic, new Set());
+            clientNicToBranches.get(normNic)!.add(normBr);
+          }
         }
-        if (cl.phone) {
+        if (cl.phone && !isDummyPhone(cl.phone)) {
           const cP = normalizePhone(cl.phone);
-          if (cP) clientPhoneToBranch.set(cP, normBr);
+          if (!clientPhoneToBranches.has(cP)) clientPhoneToBranches.set(cP, new Set());
+          clientPhoneToBranches.get(cP)!.add(normBr);
         }
       }
     }
@@ -86,7 +109,7 @@ export async function GET(request: Request) {
     if (itemsData && Array.isArray(itemsData)) {
       for (const it of itemsData) {
         if (!it.bill_no) continue;
-        const normBr = normalizeBranchId(it.branch_id);
+        const normBr = it.branch_id ? normalizeBranchId(it.branch_id) : '';
         const cBill = stripBranchPrefix(it.bill_no).toUpperCase().replace(/[\s\-_/]+/g, '');
         if (!itemBillToBranches.has(cBill)) itemBillToBranches.set(cBill, new Set());
         if (normBr) itemBillToBranches.get(cBill)!.add(normBr);
@@ -104,72 +127,84 @@ export async function GET(request: Request) {
       console.warn('Warning: Could not fetch pawns for stock customer sync:', pawnErr.message);
     }
 
-    // Build unified map of customers indexed by bill numbers
+    // Build unified map of customers indexed strictly by (branch_id :: bill_no)
     const unifiedList: any[] = [];
-    const billMap = new Set<string>();
+    const branchBillMap = new Set<string>();
 
-    // Add existing stock_customers first, enriched with accurate branch_id
+    // Add existing stock_customers first, trusting stored sc.branch_id before fallbacks
     for (const sc of allStockCustomers) {
       let resolvedBranch = sc.branch_id ? normalizeBranchId(sc.branch_id) : null;
 
-      // 1. Resolve branch via client NIC
-      if (!resolvedBranch && sc.nic) {
-        const cNic = sc.nic.trim().toUpperCase();
-        if (clientNicToBranch.has(cNic)) {
-          resolvedBranch = clientNicToBranch.get(cNic)!;
-        }
-      }
-
-      // 2. Resolve branch via stock_items bills
+      // 1. Fallback via stock_items bill number ONLY if bill belongs to a single branch
       if (!resolvedBranch && sc.bill_numbers) {
         const bills = sc.bill_numbers.split(',').map((b: string) => stripBranchPrefix(b).toUpperCase().replace(/[\s\-_/]+/g, '')).filter(Boolean);
+        const foundBranches = new Set<string>();
         for (const b of bills) {
           const brSet = itemBillToBranches.get(b);
           if (brSet && brSet.size === 1) {
-            resolvedBranch = Array.from(brSet)[0];
-            break;
+            foundBranches.add(Array.from(brSet)[0]);
           }
         }
-      }
-
-      // 3. Resolve branch via phone
-      if (!resolvedBranch && sc.tp) {
-        const cP = normalizePhone(sc.tp);
-        if (cP && clientPhoneToBranch.has(cP)) {
-          resolvedBranch = clientPhoneToBranch.get(cP)!;
+        if (foundBranches.size === 1) {
+          resolvedBranch = Array.from(foundBranches)[0];
         }
       }
 
+      // 2. Fallback via genuine client NIC ONLY if unambiguous (single branch)
+      if (!resolvedBranch && sc.nic && !isDummyNic(sc.nic)) {
+        const cNic = isNationalId(sc.nic) ? normalizeNationalId(sc.nic) : sc.nic.trim().toUpperCase();
+        const brSet = clientNicToBranches.get(cNic);
+        if (brSet && brSet.size === 1) {
+          resolvedBranch = Array.from(brSet)[0];
+        }
+      }
+
+      // 3. Fallback via non-dummy phone ONLY if unambiguous (single branch)
+      if (!resolvedBranch && sc.tp && !isDummyPhone(sc.tp)) {
+        const cP = normalizePhone(sc.tp);
+        const brSet = clientPhoneToBranches.get(cP);
+        if (brSet && brSet.size === 1) {
+          resolvedBranch = Array.from(brSet)[0];
+        }
+      }
+
+      const finalBranch = resolvedBranch || sc.branch_id || null;
       const enrichedSc = {
         ...sc,
-        branch_id: resolvedBranch || sc.branch_id || null
+        branch_id: finalBranch
       };
 
       unifiedList.push(enrichedSc);
 
-      if (sc.bill_numbers) {
+      if (sc.bill_numbers && finalBranch) {
+        const brKey = normalizeBranchId(finalBranch);
         sc.bill_numbers.split(',').forEach((b: string) => {
           const raw = b.trim();
           if (raw) {
-            billMap.add(raw.toUpperCase());
-            billMap.add(raw.toUpperCase().replace(/[\s\-_/]+/g, ''));
-            billMap.add(stripBranchPrefix(raw).toUpperCase().replace(/[\s\-_/]+/g, ''));
+            branchBillMap.add(`${brKey}::${raw.toUpperCase()}`);
+            branchBillMap.add(`${brKey}::${raw.toUpperCase().replace(/[\s\-_/]+/g, '')}`);
+            branchBillMap.add(`${brKey}::${stripBranchPrefix(raw).toUpperCase().replace(/[\s\-_/]+/g, '')}`);
           }
         });
       }
     }
 
-    // Enrich with pawn customers if not already present in stock_customers
+    // Enrich with pawn customers if not already present in that branch's stock_customers
     if (pawnData && Array.isArray(pawnData)) {
       for (const p of pawnData) {
         const client = p.clients as any;
         if (!client || !p.bill_no) continue;
+        const pBranch = p.branch_id ? normalizeBranchId(p.branch_id) : 'HQ';
         const rawBill = String(p.bill_no).trim();
         const cleanBill = rawBill.toUpperCase();
         const noSpaceBill = cleanBill.replace(/[\s\-_/]+/g, '');
         const strippedBill = stripBranchPrefix(rawBill).toUpperCase().replace(/[\s\-_/]+/g, '');
 
-        if (!billMap.has(cleanBill) && !billMap.has(noSpaceBill) && !billMap.has(strippedBill)) {
+        if (
+          !branchBillMap.has(`${pBranch}::${cleanBill}`) &&
+          !branchBillMap.has(`${pBranch}::${noSpaceBill}`) &&
+          !branchBillMap.has(`${pBranch}::${strippedBill}`)
+        ) {
           unifiedList.push({
             id: `pawn-${client.id}-${rawBill}`,
             name: `${client.first_name || ''} ${client.last_name && client.last_name !== '.' ? client.last_name : ''}`.trim() || 'Valued Customer',
@@ -178,13 +213,13 @@ export async function GET(request: Request) {
             address: client.address || '',
             address_2: null,
             bill_numbers: rawBill,
-            branch_id: p.branch_id,
+            branch_id: pBranch,
             created_at: client.created_at || new Date().toISOString(),
             source: 'pawn'
           });
-          billMap.add(cleanBill);
-          billMap.add(noSpaceBill);
-          billMap.add(strippedBill);
+          branchBillMap.add(`${pBranch}::${cleanBill}`);
+          branchBillMap.add(`${pBranch}::${noSpaceBill}`);
+          branchBillMap.add(`${pBranch}::${strippedBill}`);
         }
       }
     }
@@ -224,11 +259,44 @@ export async function POST(request: Request) {
     const formattedPhone = normalizePhone(tp);
     const cleanBills = (bill_numbers || '').trim();
     const headerBranch = request.headers.get('x-branch-id') || request.headers.get('X-Branch-Id');
-    const effectiveBranch = normalizeBranchId(branch_id || headerBranch || session?.branchId || 'HQ');
-    const primaryBill = cleanBills.split(',')[0]?.trim() || '';
+    const sessionBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+    const isGlobalRole = session.role === 'ADMIN' || sessionBranch === 'HQ';
+    const requestedBranch = branch_id
+      ? normalizeBranchId(branch_id)
+      : headerBranch
+      ? normalizeBranchId(headerBranch)
+      : '';
 
-    // Determine effective NIC for clients table
-    const trimmedNic = nic ? String(nic).trim() : '';
+    if (!isGlobalRole && sessionBranch && requestedBranch && requestedBranch !== sessionBranch) {
+      return NextResponse.json(
+        { error: `Forbidden: Cannot create or modify customer profile under branch ${requestedBranch}.` },
+        { status: 403 }
+      );
+    }
+
+    let effectiveBranch = !isGlobalRole && sessionBranch
+      ? sessionBranch
+      : (requestedBranch || sessionBranch || 'HQ');
+
+    const billListForResolution = cleanBills.split(',').map((b: string) => b.trim()).filter(Boolean);
+    if (effectiveBranch === 'HQ' && billListForResolution.length > 0) {
+      const { data: matchingStock } = await adminSupabase
+        .from('stock_items')
+        .select('branch_id')
+        .in('bill_no', billListForResolution);
+      const uniqueBranches = Array.from(
+        new Set((matchingStock || []).map((s: any) => normalizeBranchId(s.branch_id)).filter((b: string) => b && b !== 'HQ'))
+      );
+      if (uniqueBranches.length === 1) {
+        effectiveBranch = uniqueBranches[0];
+      }
+    }
+
+    const primaryBill = billListForResolution[0] || '';
+
+    // Determine effective NIC for clients table (never treat '0', '-', 'N/A' as matchable NIC!)
+    const rawTrimmedNic = nic ? String(nic).trim() : '';
+    const trimmedNic = isDummyNic(rawTrimmedNic) ? '' : rawTrimmedNic;
     let effectiveNic = '';
     if (trimmedNic) {
       effectiveNic = isNationalId(trimmedNic)
@@ -240,13 +308,37 @@ export async function POST(request: Request) {
       effectiveNic = formatBranchScopedId(`BOOK-${Date.now()}`, effectiveBranch);
     }
 
-    // 1. SAVE / SYNC INTO CLIENTS (Customer) TABLE
+    // Check explicit ID record upfront to prevent cross-branch mutation & preserve its branch
+    let explicitStockCustomer: any = null;
+    if (id && !String(id).startsWith('pawn-')) {
+      const { data } = await adminSupabase
+        .from('stock_customers')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      explicitStockCustomer = data;
+      if (explicitStockCustomer?.branch_id) {
+        const existingBr = normalizeBranchId(explicitStockCustomer.branch_id);
+        if (!isGlobalRole && sessionBranch && existingBr !== sessionBranch) {
+          return NextResponse.json(
+            { error: `Forbidden: Cannot modify customer belonging to branch ${existingBr}.` },
+            { status: 403 }
+          );
+        }
+        if (!requestedBranch) {
+          effectiveBranch = existingBr;
+        }
+      }
+    }
+
+    // 1. SAVE / SYNC INTO CLIENTS (Customer) TABLE — STRICTLY SCOPED TO effectiveBranch
     let existingClient: any = null;
     if (trimmedNic && isNationalId(trimmedNic)) {
       const { data } = await adminSupabase
         .from('clients')
         .select('*')
-        .ilike('national_id', trimmedNic)
+        .eq('branch_id', effectiveBranch)
+        .ilike('national_id', normalizeNationalId(trimmedNic))
         .limit(1)
         .maybeSingle();
       existingClient = data;
@@ -256,6 +348,7 @@ export async function POST(request: Request) {
       const { data } = await adminSupabase
         .from('clients')
         .select('*')
+        .eq('branch_id', effectiveBranch)
         .ilike('national_id', effectiveNic)
         .limit(1)
         .maybeSingle();
@@ -263,19 +356,18 @@ export async function POST(request: Request) {
     }
     // Phone number fallback is intentionally disabled to prevent overwriting existing clients
     // who share a phone number or use dummy numbers (e.g. 0000000000, 0700000000).
-    // Client profile updates are strictly keyed on unique National ID.
+    // Client profile updates are strictly keyed on (branch_id, national_id).
 
     let savedClient: any = null;
     if (existingClient) {
-      // Update existing client profile with latest details
+      // Update existing same-branch client profile ONLY — NEVER overwrite branch_id across branches!
       const { data: updated, error: updateErr } = await adminSupabase
         .from('clients')
         .update({
           first_name: cleanName,
           last_name: existingClient.last_name || '.',
-          phone: formattedPhone || existingClient.phone,
-          address: fullAddress || existingClient.address,
-          branch_id: effectiveBranch || existingClient.branch_id
+          phone: (isDummyPhone(formattedPhone) ? null : formattedPhone) || existingClient.phone,
+          address: fullAddress || existingClient.address
         })
         .eq('id', existingClient.id)
         .select()
@@ -287,14 +379,14 @@ export async function POST(request: Request) {
         savedClient = existingClient;
       }
     } else {
-      // Create new client record in clients table
+      // Create new branch-scoped client record in clients table
       const newClientId = crypto.randomUUID();
       const newClientPayload = {
         id: newClientId,
         national_id: effectiveNic,
         first_name: cleanName,
         last_name: '.',
-        phone: formattedPhone || null,
+        phone: (isDummyPhone(formattedPhone) ? null : formattedPhone) || null,
         address: fullAddress || null,
         branch_id: effectiveBranch,
         created_by_user_id: session?.user?.id || null,
@@ -317,33 +409,25 @@ export async function POST(request: Request) {
 
     invalidateClientsCache();
 
-    // 2. SAVE / SYNC INTO STOCK_CUSTOMERS TABLE
-    let targetStockCustomer: any = null;
-    if (id && !String(id).startsWith('pawn-')) {
-      const { data } = await adminSupabase
-        .from('stock_customers')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle();
-      targetStockCustomer = data;
-    }
+    // 2. SAVE / SYNC INTO STOCK_CUSTOMERS TABLE — STRICTLY SCOPED TO effectiveBranch
+    let targetStockCustomer: any = explicitStockCustomer;
 
-    if (!targetStockCustomer && trimmedNic) {
+    if (!targetStockCustomer && trimmedNic && (isNationalId(trimmedNic) || trimmedNic.length >= 5)) {
       const { data } = await adminSupabase
         .from('stock_customers')
         .select('*')
+        .eq('branch_id', effectiveBranch)
         .ilike('nic', trimmedNic)
         .limit(1)
         .maybeSingle();
       targetStockCustomer = data;
     }
     // Loose substring bill matching is intentionally removed.
-    // A customer profile must NEVER be adopted or overwritten based on a partial bill number match.
-    // If an explicit ID or NIC match was not found, this customer is treated as new and inserted.
+    // A customer profile must NEVER be adopted or overwritten across branches or via dummy NICs.
 
     let savedStockCustomer: any = null;
     if (targetStockCustomer) {
-      // Merge bill numbers so prior bills are not lost
+      // Merge bill numbers so prior bills in this branch are not lost
       const existingBills = (targetStockCustomer.bill_numbers || '')
         .split(',')
         .map((b: string) => b.trim())
@@ -353,6 +437,7 @@ export async function POST(request: Request) {
         .map((b: string) => b.trim())
         .filter(Boolean);
       const mergedBills = Array.from(new Set([...existingBills, ...newBills])).join(', ');
+      const preservedNic = trimmedNic || (!isDummyNic(targetStockCustomer.nic) ? targetStockCustomer.nic : null);
 
       const { data: updatedStock, error: stockUpErr } = await adminSupabase
         .from('stock_customers')
@@ -361,8 +446,9 @@ export async function POST(request: Request) {
           address: cleanAddress,
           address_2: cleanAddress2,
           tp: formattedPhone || targetStockCustomer.tp,
-          nic: trimmedNic || targetStockCustomer.nic,
-          bill_numbers: mergedBills || cleanBills
+          nic: preservedNic,
+          bill_numbers: mergedBills || cleanBills,
+          branch_id: effectiveBranch
         })
         .eq('id', targetStockCustomer.id)
         .select()
@@ -380,6 +466,7 @@ export async function POST(request: Request) {
           tp: formattedPhone,
           nic: trimmedNic || null,
           bill_numbers: cleanBills,
+          branch_id: effectiveBranch,
           created_at: new Date().toISOString()
         }])
         .select()
@@ -389,7 +476,7 @@ export async function POST(request: Request) {
       savedStockCustomer = insertedStock;
     }
 
-    // 3. LINK MATCHING BILLS IN PAWNS TABLE TO CLIENT
+    // 3. LINK MATCHING BILLS IN PAWNS TABLE TO CLIENT (STRICTLY SAME BRANCH ONLY)
     if (savedClient?.id && cleanBills) {
       const billList = cleanBills.split(',').map((b: string) => b.trim()).filter(Boolean);
       for (const bill of billList) {
@@ -397,6 +484,7 @@ export async function POST(request: Request) {
           await adminSupabase
             .from('pawns')
             .update({ client_id: savedClient.id })
+            .eq('branch_id', effectiveBranch)
             .ilike('bill_no', bill)
             .is('client_id', null);
         } catch (linkErr) {

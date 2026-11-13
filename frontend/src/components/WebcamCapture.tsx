@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Camera, X, Check, Upload } from 'lucide-react';
@@ -66,9 +68,9 @@ export function WebcamCapture({ onCapture, onClose, initialImage }: WebcamCaptur
       videoRef.current.srcObject = streamRef.current;
       videoRef.current.play().catch(() => {});
     }
-  });
+  }, [capturedImage]);
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -80,8 +82,13 @@ export function WebcamCapture({ onCapture, onClose, initialImage }: WebcamCaptur
       if (ctx) {
         ctx.drawImage(video, 0, 0, width, height);
         const image = canvas.toDataURL('image/jpeg', 0.85);
-        setCapturedImage(image);
         stopCamera();
+        try {
+          const compressed = await compressImage(image, 1200, 0.8);
+          setCapturedImage(compressed);
+        } catch {
+          setCapturedImage(image);
+        }
       }
     }
   };

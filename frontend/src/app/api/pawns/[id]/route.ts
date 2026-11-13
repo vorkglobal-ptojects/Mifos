@@ -208,17 +208,6 @@ export async function PATCH(request: Request, context: any) {
           
         if (snakeExisting) {
           existingClients = [snakeExisting];
-        } else {
-          const { data: camelExisting } = await adminSupabase
-            .from('clients')
-            .select('id, phone, address')
-            .eq('nationalId', clientId)
-            .limit(1)
-            .maybeSingle();
-            
-          if (camelExisting) {
-            existingClients = [camelExisting];
-          }
         }
       }
 
@@ -316,11 +305,27 @@ export async function PATCH(request: Request, context: any) {
     }
 
     if (body.unique_tag !== undefined || body.uniqueTag !== undefined) {
-      updateObj.unique_tag = body.unique_tag || body.uniqueTag;
-    } else if (updateObj.bill_no || updateObj.client_id) {
-      const effClient = targetClientId || existingPawn.client_id;
+      const providedTag = String(body.unique_tag || body.uniqueTag || '').trim();
+      if (/^RC-[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9.]+$/i.test(providedTag)) {
+        updateObj.unique_tag = providedTag.toUpperCase();
+      }
+    }
+    if (!updateObj.unique_tag && (updateObj.bill_no || updateObj.client_id)) {
+      const effClientId = targetClientId || existingPawn.client_id;
       const effBill = updateObj.bill_no || existingPawn.bill_no;
-      updateObj.unique_tag = generateUniqueOrderTag(existingPawn.branch_id, effClient, effBill);
+      const effBranch = existingPawn.branch_id;
+      let clientNic = '';
+      if (effClientId && isUUID(effClientId)) {
+        const { data: cRow } = await adminSupabase
+          .from('clients')
+          .select('national_id')
+          .eq('id', effClientId)
+          .maybeSingle();
+        clientNic = cRow?.national_id || '';
+      } else if (clientId && !isUUID(clientId)) {
+        clientNic = String(clientId);
+      }
+      updateObj.unique_tag = generateUniqueOrderTag(effBranch, clientNic, effBill);
     }
 
     const { data, error } = await adminSupabase.from('pawns').update(updateObj).eq('id', id).select().single();

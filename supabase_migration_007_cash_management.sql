@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS public.cash_requests (
     approved_amount NUMERIC(12, 2) CHECK (approved_amount IS NULL OR approved_amount > 0),
     purpose TEXT NOT NULL,
     required_date DATE NOT NULL,
-    status TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED', 'APPROVED', 'REJECTED', 'RETURNED', 'DISPATCHED', 'IN_TRANSIT', 'COMPLETED', 'CANCELLED')),
+    status TEXT NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED', 'APPROVED', 'REJECTED', 'RETURNED', 'DISPATCHED', 'IN_TRANSIT', 'DISCREPANCY_FLAGGED', 'COMPLETED', 'CANCELLED')),
     rejection_reason TEXT,
     approved_by_user_id UUID REFERENCES auth.users(id),
     approved_by_email TEXT,

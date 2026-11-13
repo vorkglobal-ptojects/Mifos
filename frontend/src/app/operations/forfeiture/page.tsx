@@ -14,7 +14,7 @@ import {
   Printer, Layers, Tag, Percent, RotateCcw, MessageSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { CANONICAL_BRANCHES } from '@/lib/branch-mapping';
+import { CANONICAL_BRANCHES, normalizeBranchId } from '@/lib/branch-mapping';
 import { getAuthHeaders } from '@/lib/getAuthHeaders';
 
 export default function ForfeitureManagementPage() {
@@ -391,6 +391,203 @@ Please settle immediately to avoid collateral forfeiture/auction.
     toast.success('Forfeited Stock list exported successfully!');
   };
 
+  // Export Branch-Wise Multi-Sheet Excel (.xlsx)
+  const exportToBranchExcel = async () => {
+    if (displayedItems.length === 0) {
+      toast.error('No FS items to export');
+      return;
+    }
+    const toastId = toast.loading('Generating branch-wise FS Excel sheet...');
+    try {
+      const XLSX = await import('xlsx');
+      const branchNameMap: Record<string, string> = {};
+      CANONICAL_BRANCHES.forEach((b) => {
+        branchNameMap[b.id] = b.name;
+      });
+
+      const byBranch: Record<string, any[]> = {};
+      displayedItems.forEach((it) => {
+        const b = String(it.branch_id || 'HQ').toUpperCase().trim() || 'HQ';
+        if (!byBranch[b]) byBranch[b] = [];
+        byBranch[b].push(it);
+      });
+      const branchCodes = Object.keys(byBranch).sort((a, b) => byBranch[b].length - byBranch[a].length);
+
+      const buildBranchAoA = (list: any[]) => {
+        const hdr = [
+          'No', 'Branch Code', 'Branch Name', 'Bill No', 'Tag', 'Item Type', 'Weight (g)',
+          'Customer Name', 'Phone', 'NIC', 'Address', 'Pawn Date', 'Period (M)',
+          'Expiry Date', 'Days Overdue', 'Principal (LKR)', 'Due Interest (LKR)',
+          'Interest Paid (LKR)', 'Covered Months', 'Last Interest Date', 'Last SMS Status'
+        ];
+        const rows = list.map((it, idx) => [
+          idx + 1,
+          it.branch_id || 'HQ',
+          branchNameMap[it.branch_id] || it.branch_id || 'HQ',
+          it.bill_no || '',
+          it.bill_tag || '',
+          it.item_type || '',
+          Number(it.weight_grams || 0),
+          it.customer_name || '',
+          it.customer_phone || '',
+          it.customer_nic || '',
+          it.customer_address || '',
+          it.origination_date || '',
+          Number(it.period_months || 3),
+          it.effective_expiry_date || '',
+          Number(it.days_overdue || 0),
+          Number(it.principal || 0),
+          Number(it.outstanding_interest || 0),
+          Number(it.total_interest_paid || 0),
+          Number(it.covered_months || 0),
+          it.last_interest_date || 'None',
+          it.last_sms_status || 'None'
+        ]);
+        const tot = [
+          'TOTAL',
+          list.length,
+          'Items',
+          '', '', '',
+          Number(list.reduce((s, it) => s + Number(it.weight_grams || 0), 0).toFixed(3)),
+          '', '', '', '', '', '', '', '',
+          Number(list.reduce((s, it) => s + Number(it.principal || 0), 0).toFixed(2)),
+          Number(list.reduce((s, it) => s + Number(it.outstanding_interest || 0), 0).toFixed(2)),
+          Number(list.reduce((s, it) => s + Number(it.total_interest_paid || 0), 0).toFixed(2)),
+          '', '', ''
+        ];
+        return [hdr, ...rows, tot];
+      };
+
+      const wb = XLSX.utils.book_new();
+
+      const sumHeaders = [
+        'Branch Code', 'Branch Name', 'FS Items Count', 'Total Weight (g)',
+        'Principal at Risk (LKR)', 'Due Interest (LKR)', 'Interest Paid (LKR)',
+        'Critical (>30d Overdue)', 'With Valid Phone', 'Unpaid Interest Count'
+      ];
+      const sumRows = branchCodes.map((b) => {
+        const list = byBranch[b];
+        return [
+          b,
+          branchNameMap[b] || b,
+          list.length,
+          Number(list.reduce((s, it) => s + Number(it.weight_grams || 0), 0).toFixed(3)),
+          Number(list.reduce((s, it) => s + Number(it.principal || 0), 0).toFixed(2)),
+          Number(list.reduce((s, it) => s + Number(it.outstanding_interest || 0), 0).toFixed(2)),
+          Number(list.reduce((s, it) => s + Number(it.total_interest_paid || 0), 0).toFixed(2)),
+          list.filter((it) => Number(it.days_overdue || 0) > 30).length,
+          list.filter((it) => Boolean(it.has_phone)).length,
+          list.filter((it) => !it.has_paid_interest).length
+        ];
+      });
+      const sumTotal = [
+        'ALL', 'GRAND TOTAL', displayedItems.length,
+        Number(displayedItems.reduce((s, it) => s + Number(it.weight_grams || 0), 0).toFixed(3)),
+        Number(displayedItems.reduce((s, it) => s + Number(it.principal || 0), 0).toFixed(2)),
+        Number(displayedItems.reduce((s, it) => s + Number(it.outstanding_interest || 0), 0).toFixed(2)),
+        Number(displayedItems.reduce((s, it) => s + Number(it.total_interest_paid || 0), 0).toFixed(2)),
+        displayedItems.filter((it) => Number(it.days_overdue || 0) > 30).length,
+        displayedItems.filter((it) => Boolean(it.has_phone)).length,
+        displayedItems.filter((it) => !it.has_paid_interest).length
+      ];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sumHeaders, ...sumRows, sumTotal]), 'Branch Summary');
+
+      const sortedAll: any[] = [];
+      branchCodes.forEach((b) => {
+        sortedAll.push(...byBranch[b].sort((x, y) => Number(y.days_overdue || 0) - Number(x.days_overdue || 0)));
+      });
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildBranchAoA(sortedAll)), 'ALL FS Items');
+
+      branchCodes.forEach((b) => {
+        const list = [...byBranch[b]].sort((x, y) => Number(y.days_overdue || 0) - Number(x.days_overdue || 0));
+        const safeName = `${b} - ${branchNameMap[b] || b}`.replace(/[\\/?*[\]:]/g, '_').slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildBranchAoA(list)), safeName);
+      });
+
+      const fileName = `Rupasingha_FS_List_Branch_Wise_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success(`Branch-wise FS Excel exported (${branchCodes.length} branches, ${displayedItems.length} items)!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to generate Excel sheet', { id: toastId });
+    }
+  };
+
+  // Export ONLY items explicitly marked as 'F/S' in system (5 columns, branch-wise)
+  const exportFsMarkedBranchExcel = async () => {
+    const toastId = toast.loading('Fetching F/S marked items from database...');
+    try {
+      const res = await fetch('/api/stock/forfeiture?mode=fs_marked&branch=ALL', {
+        headers: getAuthHeaders()
+      });
+      const json = await res.json();
+      if (!res.ok || !Array.isArray(json.items)) {
+        throw new Error(json.error || 'Failed to load F/S marked items');
+      }
+      const list = json.items as any[];
+      if (list.length === 0) {
+        toast.error('No F/S marked items found in system.', { id: toastId });
+        return;
+      }
+
+      const XLSX = await import('xlsx');
+      const branchNameMap: Record<string, string> = {};
+      CANONICAL_BRANCHES.forEach((b) => { branchNameMap[b.id] = b.name; });
+
+      const normWeightG = (raw: any) => {
+        const w = parseFloat(raw) || 0;
+        if (w <= 0) return 0;
+        return w >= 100 ? Number((w / 1000).toFixed(3)) : Number(w.toFixed(3));
+      };
+
+      const byBranch: Record<string, any[]> = {};
+      list.forEach((it) => {
+        const b = normalizeBranchId(it.branch_id || 'HQ');
+        if (!byBranch[b]) byBranch[b] = [];
+        byBranch[b].push({ ...it, _normBranch: b });
+      });
+      const branchCodes = Object.keys(byBranch).sort((a, b) => byBranch[b].length - byBranch[a].length);
+
+      const buildFiveColAoA = (rowsList: any[]) => {
+        const hdr = ['Bill no', 'Branch', 'Pawning Date', 'Item', 'Weight (g)'];
+        const rows = rowsList.map((it) => [
+          it.bill_no || '',
+          it._normBranch,
+          it.date || (it.created_at ? String(it.created_at).split('T')[0] : ''),
+          it.item_type || '',
+          normWeightG(it.weight)
+        ]);
+        const totW = Number(rows.reduce((s, r) => s + Number(r[4] || 0), 0).toFixed(3));
+        return [hdr, ...rows, ['TOTAL', `${rows.length} Items`, '', '', totW]];
+      };
+
+      const wb = XLSX.utils.book_new();
+      const sumHeaders = ['Branch Code', 'Branch Name', 'FS Marked Count', 'Total Weight (g)'];
+      const sumRows = branchCodes.map((b) => [
+        b,
+        branchNameMap[b] || b,
+        byBranch[b].length,
+        Number(byBranch[b].reduce((s, it) => s + normWeightG(it.weight), 0).toFixed(3))
+      ]);
+      const grandW = Number(list.reduce((s, it) => s + normWeightG(it.weight), 0).toFixed(3));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([sumHeaders, ...sumRows, ['ALL', 'GRAND TOTAL', list.length, grandW]]), 'Branch Summary');
+
+      const allSorted: any[] = [];
+      branchCodes.forEach((b) => allSorted.push(...byBranch[b]));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildFiveColAoA(allSorted)), 'All FS Items');
+
+      branchCodes.forEach((b) => {
+        const safeName = `${b} - ${branchNameMap[b] || b}`.replace(/[\\/?*[\]:]/g, '_').slice(0, 31);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildFiveColAoA(byBranch[b])), safeName);
+      });
+
+      const fileName = `MIFOS_FS_Marked_Items_Branch_Wise_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      toast.success(`Exported ${list.length} F/S marked items across ${branchCodes.length} branches!`, { id: toastId });
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to export F/S marked items', { id: toastId });
+    }
+  };
+
   // PDF Print Function
   const handlePrintPdf = () => {
     if (displayedItems.length === 0) {
@@ -679,6 +876,22 @@ Please settle immediately to avoid collateral forfeiture/auction.
               title="Print official A4 PDF report"
             >
               <Printer className="w-4 h-4 mr-1.5" /> Print PDF
+            </Button>
+
+            <Button
+              onClick={exportFsMarkedBranchExcel}
+              variant="outline"
+              className="h-10 px-3.5 bg-amber-600 hover:bg-amber-700 text-white border-amber-700 font-bold rounded-2xl shadow-sm text-xs"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" /> F/S Marked Excel (.xlsx)
+            </Button>
+
+            <Button
+              onClick={exportToBranchExcel}
+              variant="outline"
+              className="h-10 px-3.5 bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700 font-bold rounded-2xl shadow-sm text-xs"
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" /> Branch Excel (.xlsx)
             </Button>
 
             <Button

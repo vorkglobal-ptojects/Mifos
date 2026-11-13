@@ -9,9 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Send, FileText, ArrowRightLeft, Building2 } from "lucide-react"
-import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
-import { normalizeBranchId, getBranchSearchTerms } from "@/lib/branch-mapping"
+import { normalizeBranchId } from "@/lib/branch-mapping"
 import { getAuthHeaders } from "@/lib/getAuthHeaders"
 
 // Branches are fetched dynamically from /api/branches
@@ -22,48 +21,39 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'GLOBAL' | 'LOCAL'>('GLOBAL');
   const [filterBranchId, setFilterBranchId] = useState<string>('ALL');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [userProfile, setUserProfile] = useState<{ role: string, branchId: string } | null>(null);
   const [branches, setBranches] = useState<any[]>([]);
 
-  // Transfer State
-  const [targetBranchId, setTargetBranchId] = useState('');
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-
   const loadTransactions = async () => {
+    setLoading(true);
     try {
       const storedUser = localStorage.getItem('user');
       const user = storedUser ? JSON.parse(storedUser) : null;
       setUserProfile(user);
-      
+
       const branchId = user?.branchId;
       const role = user?.role;
-
-      // Force LOCAL mode for non-admins / non-HQ users
       const isHead = !branchId || normalizeBranchId(branchId) === 'HQ' || branchId.toUpperCase() === 'HEAD OFFICE';
       const effectiveViewMode = (role === 'ADMIN' || isHead) ? viewMode : 'LOCAL';
+      const activeBranch = effectiveViewMode === 'LOCAL' ? (branchId || 'HQ') : filterBranchId;
 
-      let query = supabase.from('transaction').select('*').order('timestamp', { ascending: false });
-      
-      // Multi-tenant isolation logic
-      if (effectiveViewMode === 'LOCAL' && branchId) {
-        // Show transactions where this branch is either the source or destination
-        const terms = getBranchSearchTerms(branchId);
-        const orClause = terms.map(t => `branch_id.eq.${t},target_branch_id.eq.${t}`).join(',');
-        query = query.or(orClause);
-      } else if (effectiveViewMode === 'GLOBAL' && filterBranchId !== 'ALL') {
-        // Admin branch filter in global view
-        const terms = getBranchSearchTerms(filterBranchId);
-        const orClause = terms.map(t => `branch_id.eq.${t},target_branch_id.eq.${t}`).join(',');
-        query = query.or(orClause);
-      }
+      const params = new URLSearchParams({
+        viewMode: effectiveViewMode,
+        branchId: activeBranch || 'ALL'
+      });
 
-      const { data, error } = await query;
-      if (error) throw error;
-      if (data) {
-        setTransactions(data);
+      const res = await fetch(`/api/transactions?${params.toString()}`, {
+        cache: 'no-store',
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to load transactions');
       }
-    } catch(err) {
+      const data = await res.json();
+      setTransactions(Array.isArray(data) ? data : []);
+    } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
@@ -87,32 +77,18 @@ export default function TransactionsPage() {
     loadBranches();
   }, []);
 
-  const handleTransfer = async () => {
-    try {
-      const storedUser = localStorage.getItem('user');
-      const user = storedUser ? JSON.parse(storedUser) : null;
-
-      const { error } = await supabase.from('transaction').insert([{
-        client_id: 'INTERNAL_TRANSFER',
-        type: 'TRANSFER',
-        branch_id: user?.branchId || 'HQ',
-        target_branch_id: targetBranchId || 'UNKNOWN',
-        amount: parseFloat(amount) || 0,
-        description: description || 'Routine Branch Balancing',
-        timestamp: new Date().toISOString()
-      }]);
-
-      if (error) throw error;
-
-      setIsOpen(false);
-      setTargetBranchId('');
-      setAmount('');
-      setDescription('');
-      loadTransactions();
-    } catch(err) {
-      console.error(err);
-    }
-  };
+  const filteredTransactions = transactions.filter((tx) => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      String(tx.id || '').toLowerCase().includes(q) ||
+      String(tx.type || '').toLowerCase().includes(q) ||
+      String(tx.branch_id || '').toLowerCase().includes(q) ||
+      String(tx.target_branch_id || '').toLowerCase().includes(q) ||
+      String(tx.description || '').toLowerCase().includes(q) ||
+      String(tx.amount || '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="space-y-6">
@@ -255,7 +231,12 @@ export default function TransactionsPage() {
       <div className="flex items-center space-x-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search ledger logs by TX ID..." className="pl-8 bg-white border-slate-200" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search ledger logs by TX ID, type, branch, or description..."
+            className="pl-8 bg-white border-slate-200"
+          />
         </div>
       </div>
 
@@ -276,7 +257,7 @@ export default function TransactionsPage() {
           <TableBody className="divide-y divide-slate-100">
             {loading ? (
                <TableRow><TableCell colSpan={6} className="h-96 text-center font-black text-slate-300 tracking-widest uppercase animate-pulse">Synchronizing Ledger State...</TableCell></TableRow>
-            ) : transactions.length === 0 ? (
+            ) : filteredTransactions.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-96 text-center text-slate-400">
                   <div className="flex flex-col items-center justify-center gap-4">
@@ -285,13 +266,15 @@ export default function TransactionsPage() {
                     </div>
                     <div className="space-y-1">
                       <p className="font-black text-slate-800 uppercase tracking-widest text-xs">No transactions found</p>
-                      <p className="text-sm font-medium text-slate-400">The operational ledger is currently empty for this scope.</p>
+                      <p className="text-sm font-medium text-slate-400">
+                        {searchQuery.trim() ? 'No transactions matched your search filter.' : 'The operational ledger is currently empty for this scope.'}
+                      </p>
                     </div>
                   </div>
                 </TableCell>
               </TableRow>
             ) : (
-                transactions.map((tx) => (
+                filteredTransactions.map((tx) => (
                   <TableRow key={tx.id} className="group hover:bg-amber-50/40 transition-all duration-300">
                     <TableCell className="px-4 py-4 font-black text-slate-900 group-hover:text-amber-700 transition-colors">
                       {tx.id.substring(0,8).toUpperCase()}

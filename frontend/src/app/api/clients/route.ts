@@ -234,44 +234,50 @@ export async function POST(request: Request) {
       effectiveBranchId = normalizeBranchId(session.branchId || branchId || headerBranch);
     }
 
+    // Reject placeholder/dummy NICs (e.g. '0', '-', 'N/A') from global/cross-client collisions
+    const DUMMY_NICS = new Set(['0', '00', '000', '0000', '-', '--', 'N/A', 'NA', 'NONE', 'NULL', 'UNKNOWN', '.']);
+    const isDummy = DUMMY_NICS.has(trimmedNic.toUpperCase()) || /^0+$/.test(trimmedNic) || !/[A-Za-z0-9]/.test(trimmedNic);
+
     // 0. SCOPED IDENTIFIER LOGIC:
-    // If it's a real national NIC (9V/12 digits), it is globally unique to a citizen.
-    // If it's a legacy book-era account / ticket ID (e.g. "3R 14543"), scope it to the branch ("KDW-3R 14543" vs "KIR-3R 14543")
-    const isGovNic = isNationalId(trimmedNic);
-    const effectiveNic = isGovNic 
-      ? normalizeNationalId(trimmedNic) 
+    // Postgres enforces UNIQUE(branch_id, national_id) — all lookups & updates MUST stay within effectiveBranchId.
+    const isGovNic = !isDummy && isNationalId(trimmedNic);
+    const effectiveNic = isDummy
+      ? `PENDING-${effectiveBranchId}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`
+      : isGovNic
+      ? normalizeNationalId(trimmedNic)
       : formatBranchScopedId(trimmedNic, effectiveBranchId);
 
-    // DUPLICATE PREVENTION:
-    // Non-NIC book IDs only check for duplicates within the current branch!
+    // DUPLICATE PREVENTION (strictly branch-scoped to effectiveBranchId):
     const cleanEffectiveNic = String(effectiveNic || '').replace(/[,()"]/g, '').trim();
     const cleanTrimmedNic = String(trimmedNic || '').replace(/[,()"]/g, '').trim();
     const cleanBranchId = String(effectiveBranchId || '').replace(/[,()"]/g, '').trim();
     let existingClient = null;
     if (isGovNic) {
-      const { data: snakeGov } = await adminSupabase
+      let snakeQ = adminSupabase
         .from('clients')
         .select('*')
-        .or(`national_id.ilike.%${effectiveNic}%,national_id.ilike.%${cleanTrimmedNic}%`)
-        .limit(1)
-        .maybeSingle();
+        .or(`national_id.ilike."${cleanEffectiveNic}",national_id.ilike."${cleanTrimmedNic}"`);
+      if (cleanBranchId) snakeQ = snakeQ.eq('branch_id', cleanBranchId);
+      const { data: snakeGov } = await snakeQ.limit(1).maybeSingle();
       existingClient = snakeGov;
       if (!existingClient) {
-        const { data: camelGov } = await adminSupabase
+        let camelQ = adminSupabase
           .from('clients')
           .select('*')
-          .or(`nationalId.ilike.%${effectiveNic}%,nationalId.ilike.%${cleanTrimmedNic}%`)
-          .limit(1)
-          .maybeSingle();
+          .or(`nationalId.ilike."${cleanEffectiveNic}",nationalId.ilike."${cleanTrimmedNic}"`);
+        if (cleanBranchId) camelQ = camelQ.eq('branchId', cleanBranchId);
+        const { data: camelGov } = await camelQ.limit(1).maybeSingle();
         existingClient = camelGov;
       }
-    } else {
-      // 1. Try branch-scoped ID
-      const { data: scopedMatch } = await adminSupabase.from('clients').select('*').ilike('national_id', cleanEffectiveNic).limit(1).maybeSingle();
+    } else if (!isDummy) {
+      // 1. Try branch-scoped ID within branch
+      let scopedQ = adminSupabase.from('clients').select('*').ilike('national_id', cleanEffectiveNic);
+      if (cleanBranchId) scopedQ = scopedQ.eq('branch_id', cleanBranchId);
+      const { data: scopedMatch } = await scopedQ.limit(1).maybeSingle();
       if (scopedMatch) {
         existingClient = scopedMatch;
-      } else {
-        // 2. Try match within current branch
+      } else if (cleanBranchId) {
+        // 2. Try raw non-NIC ID within current branch
         const { data: branchMatch } = await adminSupabase
           .from('clients')
           .select('*')

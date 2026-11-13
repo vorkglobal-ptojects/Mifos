@@ -58,6 +58,7 @@ import { TsplAdapter } from "@/lib/bluetooth/TsplAdapter";
 import { EscPosAdapter } from "@/lib/bluetooth/EscPosAdapter";
 import { normalizeBranchId, getBranchSearchTerms, stripBranchPrefix, CANONICAL_BRANCHES, extractNumericBillNo, isSameNumericBill } from "@/lib/branch-mapping";
 import { getAuthHeaders } from "@/lib/getAuthHeaders";
+import { getSriLankaDate } from "@/lib/date-utils";
 import ChangeRequestModal from "@/components/ChangeRequestModal";
 
 // Stock item abbreviations
@@ -230,10 +231,82 @@ function EndOfDayContent() {
   }, [initialTab]);
   const [step, setStep] = useState(1);
   const [cashCount, setCashCount] = useState<any>({
-    "5000": 0, "1000": 0, "500": 0, "100": 0, "50": 0, "20": 0
+    "5000": 0, "2000": 0, "1000": 0, "500": 0, "100": 0, "50": 0, "20": 0
   });
-  
-  const systemExpected = 458900; 
+  const [reconcileBranch, setReconcileBranch] = useState<string>('HQ');
+  const [reconcileUserRole, setReconcileUserRole] = useState<string>('TELLER');
+  const [systemExpected, setSystemExpected] = useState<number>(0);
+  const [todayLedgerData, setTodayLedgerData] = useState<any>(null);
+  const [prevLedgerClosing, setPrevLedgerClosing] = useState<number>(0);
+  const [loadingReconcile, setLoadingReconcile] = useState<boolean>(false);
+  const [submittingEodArchive, setSubmittingEodArchive] = useState<boolean>(false);
+  const [eodArchiveResult, setEodArchiveResult] = useState<string | null>(null);
+
+  const loadReconciliationData = async (branchOverride?: string) => {
+    setLoadingReconcile(true);
+    try {
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      const u = stored ? JSON.parse(stored) : null;
+      const role = String(u?.role || 'TELLER').toUpperCase();
+      setReconcileUserRole(role);
+      const rawUserBranch = u?.branchId || u?.branch_id || 'HQ';
+      const defaultBranch = normalizeBranchId(rawUserBranch);
+      const isHead = defaultBranch === 'HQ';
+      const targetBranch = (!isHead && role !== 'ADMIN')
+        ? defaultBranch
+        : normalizeBranchId(branchOverride || reconcileBranch || defaultBranch);
+
+      if (targetBranch !== reconcileBranch) {
+        setReconcileBranch(targetBranch);
+      }
+
+      const todayStr = getSriLankaDate();
+      const headers = getAuthHeaders();
+      const [dailyRes, txRes] = await Promise.all([
+        fetch(`/api/ledger/daily?branch_id=${encodeURIComponent(targetBranch)}&date=${todayStr}`, {
+          cache: 'no-store',
+          headers
+        }),
+        fetch(`/api/transactions?viewMode=LOCAL&branchId=${encodeURIComponent(targetBranch)}&date=${todayStr}`, {
+          cache: 'no-store',
+          headers
+        })
+      ]);
+
+      const dailyJson = dailyRes.ok ? await dailyRes.json() : {};
+      const txList = txRes.ok ? await txRes.json() : [];
+
+      const ledgerRow = dailyJson?.ledger || null;
+      const prevClosing = Number(dailyJson?.prevLedger?.closing_balance || 0);
+      setTodayLedgerData(ledgerRow);
+      setPrevLedgerClosing(prevClosing);
+
+      if (ledgerRow && ledgerRow.closing_balance !== undefined && ledgerRow.closing_balance !== null) {
+        setSystemExpected(Number(ledgerRow.closing_balance) || 0);
+      } else {
+        // Compute live expected vault balance from previous day's closing + today's transactions
+        let netToday = 0;
+        for (const tx of (Array.isArray(txList) ? txList : [])) {
+          const amt = Number(tx.amount || 0);
+          const t = String(tx.type || '').toUpperCase();
+          if (t === 'PAWN_REDEEM' || t === 'CASH_IN' || t === 'INTEREST') {
+            netToday += amt;
+          } else if (t === 'PAWN_DISBURSE' || t === 'CASH_OUT' || t === 'EXPENSE') {
+            netToday -= amt;
+          }
+        }
+        setSystemExpected(Number((prevClosing + netToday).toFixed(2)));
+      }
+    } catch (err) {
+      console.error('Failed to load EOD reconciliation state:', err);
+    } finally {
+      setLoadingReconcile(false);
+    }
+  };
+
+  useEffect(() => {
+    loadReconciliationData();
+  }, []);
 
   const calculateTotal = () => {
     return Object.entries(cashCount).reduce((sum, [denom, count]: any) => {
@@ -242,8 +315,50 @@ function EndOfDayContent() {
   };
 
   const actualTotal = calculateTotal();
-  const difference = actualTotal - systemExpected;
-  const isBalanced = difference === 0;
+  const difference = Number((actualTotal - systemExpected).toFixed(2));
+  const isBalanced = Math.abs(difference) < 0.01;
+
+  const handleAuthorizeEodArchive = async () => {
+    setSubmittingEodArchive(true);
+    const toastId = toast.loading(`Saving EOD reconciliation for ${reconcileBranch}...`);
+    try {
+      const todayStr = getSriLankaDate();
+      const base = todayLedgerData || {};
+      const payload = {
+        branch_id: reconcileBranch,
+        ledger_date: todayStr,
+        opening_balance: Number(base.opening_balance ?? prevLedgerClosing) || 0,
+        transfer_in: Number(base.transfer_in || 0),
+        transfer_out: Number(base.transfer_out || 0),
+        loan_issued_total: Number(base.loan_issued_total || 0),
+        redemption_total: Number(base.redemption_total || 0),
+        interest_rec_total: Number(base.interest_rec_total || 0),
+        recovery_total: Number(base.recovery_total || 0),
+        insurance_total: Number(base.insurance_total || 0),
+        expenses_total: Number(base.expenses_total || 0),
+        closing_balance: systemExpected,
+        actual_cash_count: actualTotal,
+        status: isBalanced ? 'LOCKED' : 'FLAGGED'
+      };
+
+      const res = await fetch('/api/ledger/daily', {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || 'Failed to save EOD reconciliation');
+      }
+      setEodArchiveResult(`Saved (${json.ledger?.status || payload.status}) for ${reconcileBranch} on ${todayStr}`);
+      toast.success(`Branch ${reconcileBranch} EOD saved (${isBalanced ? 'LOCKED - Balanced' : 'FLAGGED - Variance'})!`, { id: toastId });
+      loadReconciliationData(reconcileBranch);
+    } catch (err: any) {
+      toast.error(err?.message || 'EOD save failed', { id: toastId });
+    } finally {
+      setSubmittingEodArchive(false);
+    }
+  };
 
   // ==========================================
   // TAB 2: Stock Management State & Logic
@@ -1528,7 +1643,7 @@ function EndOfDayContent() {
           const to = from + pageSize - 1;
           const { data, error } = await supabase
             .from('stock_customers')
-            .select('id, name, tp, nic, address, bill_numbers')
+            .select('id, name, tp, nic, address, bill_numbers, branch_id')
             .order('name', { ascending: true })
             .range(from, to);
 
@@ -1855,8 +1970,9 @@ function EndOfDayContent() {
       // 1. Strict Priority: Exact match on target branch
       const matchExact = (c: any) => {
         if (!isBillMatch(c)) return false;
-        const cBranch = normalizeBranchId(c.branch_id || c.branch || '');
-        return cBranch === targetBranch;
+        const rawBr = c.branch_id || c.branch || '';
+        if (!rawBr) return false;
+        return normalizeBranchId(rawBr) === targetBranch;
       };
 
       const foundNew = stockCustomers.find(matchExact);
@@ -1865,11 +1981,10 @@ function EndOfDayContent() {
       const foundOld = oldStockCustomers.find(matchExact);
       if (foundOld) return foundOld;
 
-      // 2. Fallback: Only match unassigned customer IF they don't have a conflicting branch
+      // 2. Fallback: Only match genuinely unassigned legacy record (never normalize empty string to HQ!)
       const matchUnassigned = (c: any) => {
         if (!isBillMatch(c)) return false;
-        const cBranch = normalizeBranchId(c.branch_id || c.branch || '');
-        return !cBranch;
+        return !(c.branch_id || c.branch);
       };
 
       const unassignedNew = stockCustomers.find(matchUnassigned);
@@ -1930,9 +2045,19 @@ function EndOfDayContent() {
       setShowSuggestions(false);
       return;
     }
-    const matches = stockCustomers.filter(c => 
-      c.name.toLowerCase().includes(val.toLowerCase())
-    );
+    const scopedBranchRaw =
+      selectedStockItemForCustomerView?.branch_id ||
+      selectedBranchForCustomerView ||
+      (selectedBranch !== 'ALL' ? selectedBranch : '') ||
+      (currentUser?.branchId && normalizeBranchId(currentUser.branchId) !== 'HQ' ? currentUser.branchId : '');
+    const scopedBranch = scopedBranchRaw ? normalizeBranchId(scopedBranchRaw) : '';
+    const matches = stockCustomers.filter(c => {
+      if (!c.name.toLowerCase().includes(val.toLowerCase())) return false;
+      if (scopedBranch && scopedBranch !== 'HQ' && c.branch_id) {
+        return normalizeBranchId(c.branch_id) === scopedBranch;
+      }
+      return true;
+    });
     setNameSuggestions(matches);
     setShowSuggestions(matches.length > 0);
   };
@@ -1956,15 +2081,14 @@ function EndOfDayContent() {
       return;
     }
 
-    const targetBranch = normalizeBranchId(
-      selectedStockItemForCustomerView?.branch_id ||
-      selectedBranchForCustomerView ||
-      (selectedBranch !== 'ALL' ? selectedBranch : '') ||
-      currentUser?.branchId ||
-      'HQ'
-    );
+    const isEdit = isEditingCustomer && selectedCustomer?.id && !String(selectedCustomer.id).startsWith('pawn-');
+    const resolvedBranchRaw = isEdit
+      ? (selectedCustomer?.branch_id || selectedStockItemForCustomerView?.branch_id || selectedBranchForCustomerView || (selectedBranch !== 'ALL' ? selectedBranch : '') || currentUser?.branchId || 'HQ')
+      : (selectedStockItemForCustomerView?.branch_id || selectedBranchForCustomerView || (selectedBranch !== 'ALL' ? selectedBranch : '') || currentUser?.branchId || 'HQ');
+    const targetBranch = normalizeBranchId(resolvedBranchRaw);
 
     const payload = {
+      ...(isEdit ? { id: selectedCustomer.id } : {}),
       name: custName.trim(),
       address: custAddress.trim(),
       address_2: custAddress2.trim() || null,
@@ -1975,7 +2099,6 @@ function EndOfDayContent() {
     };
 
     try {
-      const isEdit = isEditingCustomer && selectedCustomer?.id && !String(selectedCustomer.id).startsWith('pawn-');
       const url = isEdit ? `/api/stock-customers/${selectedCustomer.id}` : '/api/stock-customers';
       const method = isEdit ? 'PUT' : 'POST';
 
@@ -2810,29 +2933,60 @@ function EndOfDayContent() {
           <div className="md:col-span-2 space-y-6 animate-in fade-in-50 duration-300">
             {/* Step 1: Physical Cash Count */}
             <div className={`bg-white rounded-xl border ${step === 1 ? 'border-emerald-500 shadow-lg shadow-emerald-500/10' : 'border-slate-200 opacity-50'} overflow-hidden`}>
-              <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex gap-4 items-center">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black ${step === 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>1</div>
-                <div>
-                  <h2 className="font-bold text-slate-800">Physical Vault Count</h2>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Declare all physical denominations</p>
+              <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex flex-wrap gap-4 items-center justify-between">
+                <div className="flex gap-4 items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black ${step === 1 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>1</div>
+                  <div>
+                    <h2 className="font-bold text-slate-800">Physical Vault Count — Branch: {reconcileBranch}</h2>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                      {todayLedgerData ? `Daily Ledger Loaded (${todayLedgerData.status})` : 'Calculated Live From Previous Closing + Today Transactions'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(reconcileUserRole === 'ADMIN' || reconcileUserRole === 'MANAGER' || reconcileUserRole === 'AUDITOR') && (
+                    <select
+                      value={reconcileBranch}
+                      onChange={(e) => {
+                        setReconcileBranch(e.target.value);
+                        loadReconciliationData(e.target.value);
+                      }}
+                      className="h-9 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700"
+                    >
+                      {CANONICAL_BRANCHES.filter((b) => b.id !== 'TEST').map((b) => (
+                        <option key={b.id} value={b.id}>{b.id} - {b.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={loadingReconcile}
+                    onClick={() => loadReconciliationData(reconcileBranch)}
+                    className="h-9 text-xs font-bold"
+                  >
+                    {loadingReconcile ? 'Syncing...' : 'Refresh Ledger'}
+                  </Button>
                 </div>
               </div>
               
               {step === 1 && (
                 <div className="p-6">
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-4">
-                    {[5000, 1000, 500, 100, 50, 20].map((denom) => (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+                    {[5000, 2000, 1000, 500, 100, 50, 20].map((denom) => (
                       <div key={denom} className="flex justify-between items-center gap-4">
                         <span className="font-black text-slate-700 w-16 text-right">Rs. {denom}</span>
                         <span className="text-slate-300 font-black">X</span>
                         <Input 
                           type="number" 
+                          min={0}
                           className="w-24 text-center font-bold" 
                           value={cashCount[denom]} 
                           onChange={e => setCashCount({...cashCount, [denom]: e.target.value})} 
                         />
                         <span className="font-black text-emerald-600 w-24 text-right">
-                          = Rs. {(denom * (cashCount[denom] || 0)).toLocaleString()}
+                          = Rs. {(denom * (parseInt(cashCount[denom], 10) || 0)).toLocaleString()}
                         </span>
                       </div>
                     ))}
@@ -2909,13 +3063,20 @@ function EndOfDayContent() {
                     <Lock className="w-10 h-10 text-amber-600" />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">Lock Branch Operations</h3>
+                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">Lock Branch Operations ({reconcileBranch})</h3>
                     <p className="text-slate-500 font-medium mt-2 max-w-sm mx-auto">
-                      Executing this command will forever archive today's ledger and prevent any further transactions until tomorrow.
+                      Saving will record your physical count (Rs. {actualTotal.toLocaleString()}) against system expected (Rs. {systemExpected.toLocaleString()}) in the daily ledger.
                     </p>
+                    {eodArchiveResult && (
+                      <p className="text-xs font-bold text-emerald-700 mt-2">{eodArchiveResult}</p>
+                    )}
                   </div>
-                  <Button className="w-full bg-slate-900 hover:bg-slate-800 font-bold h-12 text-lg shadow-lg shadow-slate-900/20" onClick={() => alert('Branch successfully archived and closed for the day.')}>
-                    AUTHORIZE END-OF-DAY ARCHIVE
+                  <Button
+                    disabled={submittingEodArchive}
+                    className="w-full bg-slate-900 hover:bg-slate-800 font-bold h-12 text-lg shadow-lg shadow-slate-900/20"
+                    onClick={handleAuthorizeEodArchive}
+                  >
+                    {submittingEodArchive ? 'SAVING DAILY LEDGER...' : 'AUTHORIZE END-OF-DAY ARCHIVE'}
                   </Button>
                   <Button variant="link" onClick={() => setStep(2)} className="font-bold text-slate-400">Cancel & Return</Button>
                 </div>

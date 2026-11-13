@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { normalizeBranchId } from '@/lib/branch-mapping';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +61,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Bank name, account name, and account number are required.' }, { status: 400 });
     }
 
-    const parsedOpening = Math.max(0, Number(openingBalance) || 0);
+    const parsedOpening = Number(openingBalance ?? 0);
+    if (!Number.isFinite(parsedOpening) || parsedOpening < 0) {
+      return NextResponse.json({ error: 'Opening balance must be a valid non-negative number.' }, { status: 400 });
+    }
+    const normalizedBranch = branchId && String(branchId).trim() !== '' ? normalizeBranchId(String(branchId)) : null;
 
     const { data, error } = await adminSupabase
       .from('bank_accounts')
@@ -68,7 +73,7 @@ export async function POST(request: Request) {
         bank_name: bankName.trim(),
         account_name: accountName.trim(),
         account_number: accountNumber.trim(),
-        branch_id: branchId || null,
+        branch_id: normalizedBranch,
         gl_account_name: glAccountName?.trim() || 'Bank Current Account (Asset)',
         currency: currency.trim().toUpperCase(),
         opening_balance: parsedOpening,
@@ -79,6 +84,9 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      if (error.code === '23505') {
+        return NextResponse.json({ error: 'A bank account with this account number is already registered.' }, { status: 409 });
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -116,9 +124,13 @@ export async function PATCH(request: Request) {
 
     const updatePayload: Record<string, any> = { updated_at: new Date().toISOString() };
     if (currentBalance !== undefined) {
-      updatePayload.current_balance = Number(currentBalance);
+      const parsedCurrent = Number(currentBalance);
+      if (!Number.isFinite(parsedCurrent) || parsedCurrent < 0) {
+        return NextResponse.json({ error: 'Reconciled balance must be a valid non-negative number.' }, { status: 400 });
+      }
+      updatePayload.current_balance = parsedCurrent;
       updatePayload.last_reconciled_at = new Date().toISOString();
-      updatePayload.last_reconciled_balance = Number(currentBalance);
+      updatePayload.last_reconciled_balance = parsedCurrent;
     }
     if (isActive !== undefined) {
       updatePayload.is_active = Boolean(isActive);
@@ -129,10 +141,13 @@ export async function PATCH(request: Request) {
       .update(updatePayload)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!data) {
+      return NextResponse.json({ error: 'Bank account not found.' }, { status: 404 });
     }
 
     await recordAuditLog(session, {

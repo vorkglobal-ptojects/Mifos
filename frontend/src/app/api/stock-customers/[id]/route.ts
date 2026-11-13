@@ -27,7 +27,23 @@ export async function DELETE(request: Request, context: any) {
     }
 
     const { id } = await context.params;
-    
+    const { data: existingCust, error: fetchErr } = await adminSupabase
+      .from('stock_customers')
+      .select('id, branch_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+    if (!existingCust) {
+      return NextResponse.json({ error: 'Customer profile not found' }, { status: 404 });
+    }
+
+    const userBranch = normalizeBranchId(session.branchId || 'HQ');
+    const isGlobalRole = session.role === 'ADMIN' || userBranch === 'HQ';
+    if (!isGlobalRole && existingCust.branch_id && normalizeBranchId(existingCust.branch_id) !== userBranch) {
+      return NextResponse.json({ error: 'Forbidden. Cannot delete a customer profile belonging to another branch.' }, { status: 403 });
+    }
+
     // Use adminSupabase to bypass RLS since stock_customers currently lacks a DELETE policy
     const { error } = await adminSupabase
       .from('stock_customers')
@@ -65,6 +81,23 @@ async function handleUpdate(request: Request, context: any) {
     const body = await request.json();
     const { name, address, address_2, tp, nic, bill_numbers, branch_id } = body;
 
+    const { data: existingCust, error: fetchErr } = await adminSupabase
+      .from('stock_customers')
+      .select('id, branch_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+    if (!existingCust) {
+      return NextResponse.json({ error: 'Customer profile not found' }, { status: 404 });
+    }
+
+    const userBranch = normalizeBranchId(session.branchId || 'HQ');
+    const isGlobalRole = session.role === 'ADMIN' || userBranch === 'HQ';
+    if (!isGlobalRole && existingCust.branch_id && normalizeBranchId(existingCust.branch_id) !== userBranch) {
+      return NextResponse.json({ error: 'Forbidden. Cannot modify a customer profile belonging to another branch.' }, { status: 403 });
+    }
+
     const cleanName = name?.trim();
     const cleanAddress = address?.trim();
     const cleanAddress2 = address_2 ? address_2.trim() : null;
@@ -72,9 +105,11 @@ async function handleUpdate(request: Request, context: any) {
     const formattedPhone = normalizePhone(tp);
     const cleanBills = (bill_numbers || '').trim();
     const headerBranch = request.headers.get('x-branch-id') || request.headers.get('X-Branch-Id');
-    const effectiveBranch = normalizeBranchId(branch_id || headerBranch || session?.branchId || 'HQ');
+    const effectiveBranch = !isGlobalRole
+      ? userBranch
+      : normalizeBranchId(branch_id || existingCust.branch_id || headerBranch || session?.branchId || 'HQ');
 
-    // 1. Update stock_customers table
+    // 1. Update stock_customers table (preserving strict branch ownership)
     const updatePayload: any = {};
     if (cleanName) updatePayload.name = cleanName;
     if (cleanAddress) updatePayload.address = cleanAddress;
@@ -82,6 +117,9 @@ async function handleUpdate(request: Request, context: any) {
     if (formattedPhone) updatePayload.tp = formattedPhone;
     if (nic !== undefined) updatePayload.nic = nic ? String(nic).trim() : null;
     if (cleanBills !== undefined) updatePayload.bill_numbers = cleanBills;
+    if (effectiveBranch && effectiveBranch !== 'HQ' && (branch_id || !existingCust.branch_id)) {
+      updatePayload.branch_id = effectiveBranch;
+    }
 
     const { data: updatedCustomer, error: updateErr } = await adminSupabase
       .from('stock_customers')
@@ -92,21 +130,27 @@ async function handleUpdate(request: Request, context: any) {
 
     if (updateErr) throw updateErr;
 
-    // 2. Sync to clients table if applicable
+    // 2. Sync to branch-scoped clients table ONLY within effectiveBranch (never flip branch_id across branches)
     const trimmedNic = nic ? String(nic).trim() : '';
+    const isDummyNic = !trimmedNic || /^0+$/.test(trimmedNic) || trimmedNic === '-' || /^N\/?A$/i.test(trimmedNic);
     let effectiveNic = '';
-    if (trimmedNic) {
+    if (!isDummyNic) {
       effectiveNic = isNationalId(trimmedNic)
         ? trimmedNic.toUpperCase()
         : formatBranchScopedId(trimmedNic, effectiveBranch);
     }
 
-    if (effectiveNic || formattedPhone) {
+    const syncBranch = effectiveBranch !== 'HQ'
+      ? effectiveBranch
+      : (existingCust.branch_id ? normalizeBranchId(existingCust.branch_id) : null);
+
+    if (effectiveNic && syncBranch && syncBranch !== 'HQ') {
       let clientMatch = null;
-      if (trimmedNic && isNationalId(trimmedNic)) {
+      if (!isDummyNic && isNationalId(trimmedNic)) {
         const { data } = await adminSupabase
           .from('clients')
           .select('*')
+          .eq('branch_id', syncBranch)
           .ilike('national_id', trimmedNic)
           .limit(1)
           .maybeSingle();
@@ -116,13 +160,14 @@ async function handleUpdate(request: Request, context: any) {
         const { data } = await adminSupabase
           .from('clients')
           .select('*')
+          .eq('branch_id', syncBranch)
           .ilike('national_id', effectiveNic)
           .limit(1)
           .maybeSingle();
         clientMatch = data;
       }
-      // Phone number matching disabled to prevent mutating another customer's profile
-      // when tellers use shared/dummy mobile numbers.
+      // Phone number matching and cross-branch updates disabled to prevent mutating another
+      // customer's profile or shifting clients between branches.
 
       if (clientMatch) {
         await adminSupabase
@@ -130,8 +175,7 @@ async function handleUpdate(request: Request, context: any) {
           .update({
             first_name: cleanName || clientMatch.first_name,
             phone: formattedPhone || clientMatch.phone,
-            address: fullAddress || clientMatch.address,
-            branch_id: effectiveBranch || clientMatch.branch_id
+            address: fullAddress || clientMatch.address
           })
           .eq('id', clientMatch.id);
         invalidateClientsCache();

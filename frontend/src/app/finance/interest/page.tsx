@@ -157,7 +157,9 @@ export default function InterestPaymentPage() {
           if (Array.isArray(data)) {
             for (const c of data) {
               const nicKey = String(c.national_id || c.nationalId || c.nic || c.id || '').trim().toUpperCase();
-              if (nicKey) seenKeys.add(nicKey);
+              const brKey = String(c.branch_id || c.branchId || '').trim().toUpperCase();
+              const isDummy = !nicKey || ['0', '-', 'N/A', 'NA', 'NONE', 'NULL'].includes(nicKey);
+              if (nicKey && !isDummy) seenKeys.add(`${brKey}::${nicKey}`);
               combined.push(c);
             }
           }
@@ -165,21 +167,26 @@ export default function InterestPaymentPage() {
 
         if (stockCustRes && stockCustRes.ok) {
           const scJson = await stockCustRes.json();
-          const scList = Array.isArray(scJson) ? scJson : (scJson?.data || []);
+          const scList = Array.isArray(scJson) ? scJson : (scJson?.customers || scJson?.data || []);
           if (Array.isArray(scList)) {
             for (const sc of scList) {
               const nicKey = String(sc.nic || '').trim().toUpperCase();
-              if (nicKey && seenKeys.has(nicKey)) {
-                // Attach linked bills to existing client record if missing
-                const existing = combined.find(
-                  c => String(c.national_id || c.nationalId || c.nic || '').trim().toUpperCase() === nicKey
-                );
-                if (existing && sc.bills && !existing.bills) {
-                  existing.bills = sc.bills;
+              const brKey = String(sc.branch_id || sc.branchId || sc.branch || '').trim().toUpperCase();
+              const isDummy = !nicKey || ['0', '-', 'N/A', 'NA', 'NONE', 'NULL'].includes(nicKey);
+              const scopedKey = `${brKey}::${nicKey}`;
+              if (!isDummy && seenKeys.has(scopedKey)) {
+                // Attach linked bills to existing same-branch client record if missing
+                const existing = combined.find(c => {
+                  const cNic = String(c.national_id || c.nationalId || c.nic || '').trim().toUpperCase();
+                  const cBr = String(c.branch_id || c.branchId || '').trim().toUpperCase();
+                  return cNic === nicKey && cBr === brKey;
+                });
+                if (existing && (sc.bills || sc.bill_numbers) && !existing.bills) {
+                  existing.bills = sc.bills || sc.bill_numbers;
                 }
                 continue;
               }
-              if (nicKey) seenKeys.add(nicKey);
+              if (!isDummy) seenKeys.add(scopedKey);
               combined.push({
                 id: sc.id,
                 name: sc.name,
@@ -188,7 +195,7 @@ export default function InterestPaymentPage() {
                 phone: sc.tp,
                 address: sc.address,
                 branch_id: sc.branch_id,
-                bills: sc.bills
+                bills: sc.bills || sc.bill_numbers
               });
             }
           }
@@ -281,10 +288,11 @@ export default function InterestPaymentPage() {
       // 2. Also include matching active items from /api/stock (e.g. Vault Stock / Old Data bills)
       if (stockItemsRes && stockItemsRes.ok) {
         const stockJson = await stockItemsRes.json();
-        const stockList = Array.isArray(stockJson) ? stockJson : (stockJson?.data || []);
+        const stockList = Array.isArray(stockJson) ? stockJson : (stockJson?.items || stockJson?.data || []);
         if (Array.isArray(stockList)) {
           for (const s of stockList) {
-            if (s.status && s.status !== 'ACTIVE' && s.status !== 'FORFEITED') continue;
+            const sStatus = String(s.status || '').toUpperCase();
+            if (sStatus && sStatus !== 'ACTIVE' && sStatus !== 'FORFEITED') continue;
             const sBillClean = String(s.bill_no || '').trim().toUpperCase().replace(/\s+/g, '');
             const key = `${sBillClean}_${s.branch_id || s.branch || ''}`;
             if (seenBillKeys.has(key)) continue;
@@ -295,6 +303,10 @@ export default function InterestPaymentPage() {
 
             if (matchesCustomer) {
               seenBillKeys.add(key);
+              const numericWeight = Number(s.weight);
+              const weightDisplay = s.weight
+                ? (Number.isFinite(numericWeight) && numericWeight >= 100 ? `${s.weight} mg` : `${s.weight} g`)
+                : undefined;
               clientBills.push({
                 id: s.id,
                 bill_no: s.bill_no,
@@ -302,9 +314,9 @@ export default function InterestPaymentPage() {
                 amount: s.price || s.disbursed_amount || s.appraised_value || 0,
                 pawning_date: s.pawning_date || s.created_at,
                 created_at: s.pawning_date || s.created_at,
-                status: s.status || 'ACTIVE',
+                status: s.status || 'Active',
                 description: s.item_type || s.description || 'Pawned Gold Articles',
-                weight: s.weight ? `${s.weight} mg` : undefined,
+                weight: weightDisplay,
                 branch_id: s.branch_id || s.branch,
                 branch: s.branch_id || s.branch
               });
@@ -346,9 +358,11 @@ export default function InterestPaymentPage() {
     setSelectedBill(bill);
     loadInterestHistory(bill.bill_no);
 
-    // Calculate standard 1 month interest
+    // Calculate standard 1 month interest (Tier A < 50k => 2.5%, Tier B >= 50k => 2.75%)
     const principal = parseFloat(String(bill.disbursed_amount || bill.price || bill.amount || '0')) || 0;
-    const rate = bill.interest_rate || monthlyRatePercent || 2.5;
+    const tierDefaultRate = principal >= 50000 ? 2.75 : 2.5;
+    const rate = bill.interest_rate || tierDefaultRate;
+    setMonthlyRatePercent(rate);
     const oneMonth = Math.round((principal * (rate / 100)));
 
     setInterestAmount(String(oneMonth));

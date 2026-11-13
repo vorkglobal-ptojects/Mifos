@@ -1,5 +1,6 @@
 'use client';
 
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,14 +9,18 @@ import {
   RefreshCcw, FileSpreadsheet, FileText, Landmark,
   ChevronRight, Calendar
 } from "lucide-react";
-import { supabase } from "@/lib/supabase"
-import { normalizeBranchId, getBranchSearchTerms } from "@/lib/branch-mapping"
+import { toast } from "sonner";
+import { normalizeBranchId } from "@/lib/branch-mapping";
+import { getAuthHeaders } from "@/lib/getAuthHeaders";
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [portfolio, setPortfolio] = useState<any>(null);
   const [aging, setAging] = useState<any>(null);
   const [daily, setDaily] = useState<any[]>([]);
+  const [rawPawns, setRawPawns] = useState<any[]>([]);
+  const [rawTxs, setRawTxs] = useState<any[]>([]);
 
   useEffect(() => {
     loadReports();
@@ -28,30 +33,34 @@ export default function ReportsPage() {
       const user = stored ? JSON.parse(stored) : null;
       const userBranch = user?.branchId || user?.branch_id;
       const isHead = !userBranch || normalizeBranchId(userBranch) === 'HQ' || userBranch.toUpperCase() === 'HEAD OFFICE';
+      const filterBranch = (!isHead && userBranch && user?.role !== 'ADMIN')
+        ? normalizeBranchId(userBranch)
+        : 'ALL';
+      const headers = getAuthHeaders();
 
-      let txQuery = supabase.from('transaction').select('*');
-      let pawnQuery = supabase.from('pawns').select('*');
-
-      if (!isHead && userBranch && user?.role !== 'ADMIN') {
-        const terms = getBranchSearchTerms(userBranch);
-        txQuery = txQuery.or(terms.map((t: string) => `branch_id.eq.${t},target_branch_id.eq.${t}`).join(','));
-        pawnQuery = pawnQuery.in('branch_id', terms);
-      }
-
-      // 1. Fetch transactions and pawns in parallel
       const [txsRes, pawnsRes] = await Promise.all([
-        txQuery,
-        pawnQuery
+        fetch(`/api/transactions?viewMode=${filterBranch === 'ALL' ? 'GLOBAL' : 'LOCAL'}&branchId=${encodeURIComponent(filterBranch)}`, {
+          cache: 'no-store',
+          headers
+        }),
+        fetch(`/api/pawns?filterBranch=${encodeURIComponent(filterBranch)}`, {
+          cache: 'no-store',
+          headers
+        })
       ]);
 
-      if (txsRes.error) throw txsRes.error;
-      if (pawnsRes.error) throw pawnsRes.error;
+      if (!txsRes.ok) throw new Error('Failed to load transactions for report');
+      if (!pawnsRes.ok) throw new Error('Failed to load pawns for report');
 
-      const txs = txsRes.data || [];
-      const pawns = pawnsRes.data || [];
+      const txs = await txsRes.json();
+      const pawns = await pawnsRes.json();
+      const txList = Array.isArray(txs) ? txs : [];
+      const pawnList = Array.isArray(pawns) ? pawns : [];
+      setRawTxs(txList);
+      setRawPawns(pawnList);
 
       // 2. Compute dynamic outstanding active portfolio and aging analysis
-      const activePawns = pawns.filter((p: any) => p.status === 'ACTIVE');
+      const activePawns = pawnList.filter((p: any) => p.status === 'ACTIVE');
       const totalActivePortfolio = activePawns.reduce((acc: number, p: any) => acc + (p.disbursed_amount || 0), 0);
 
       const now = new Date();
@@ -97,11 +106,11 @@ export default function ReportsPage() {
 
       // 3. Compute daily transaction chart values
       const days: Record<string, {count: number, total: number}> = {};
-      txs.forEach(t => {
+      txList.forEach((t: any) => {
          const d = new Date(t.timestamp || new Date()).toISOString().split('T')[0];
          if (!days[d]) days[d] = {count: 0, total: 0};
          days[d].count++;
-         days[d].total += (t.amount || 0);
+         days[d].total += (Number(t.amount) || 0);
       });
       
       const dailyArr = Object.entries(days).map(([date, val]) => ({
@@ -111,12 +120,123 @@ export default function ReportsPage() {
       setDaily(dailyArr);
     } catch (err) {
       console.error(err);
+      toast.error('Failed to load management reports');
     }
     setLoading(false);
   };
 
-  const downloadFile = async (endpoint: string, filename: string) => {
-    alert("Export generation handled by Supabase Edge Functions in production.");
+  const triggerBlobDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const downloadFile = async (_endpoint: string, filename: string) => {
+    setExporting(true);
+    try {
+      const buckets = aging?.agingBuckets || { current: 0, days_31_60: 0, days_61_90: 0, days_90_plus: 0 };
+      const todayStr = new Date().toISOString().split('T')[0];
+      const stampedName = filename.replace(/(\.\w+)$/, `_${todayStr}$1`);
+
+      if (filename.endsWith('.csv')) {
+        const csvEscape = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const rows: string[] = [
+          'Section,Metric / Bill No,Branch,Date,Status / Category,Amount (LKR)',
+          `Portfolio Summary,Total Active Portfolio,ALL,${todayStr},ACTIVE,${Number(portfolio?.totalDisbursed || 0)}`,
+          `Portfolio Summary,Portfolio At Risk (>90d) %,ALL,${todayStr},PAR,${Number(portfolio?.portfolioAtRisk_pct || 0)}`,
+          `Aging Buckets,Current (0-30d),ALL,${todayStr},BUCKET,${Number(buckets.current || 0)}`,
+          `Aging Buckets,31-60 Days,ALL,${todayStr},BUCKET,${Number(buckets.days_31_60 || 0)}`,
+          `Aging Buckets,61-90 Days,ALL,${todayStr},BUCKET,${Number(buckets.days_61_90 || 0)}`,
+          `Aging Buckets,90+ Days,ALL,${todayStr},BUCKET,${Number(buckets.days_90_plus || 0)}`
+        ];
+        for (const p of rawPawns) {
+          rows.push(
+            [
+              'Pawn Ticket',
+              p.bill_no || p.id,
+              p.branch_id || '',
+              String(p.created_at || '').split('T')[0],
+              p.status || '',
+              Number(p.disbursed_amount || 0)
+            ].map(csvEscape).join(',')
+          );
+        }
+        const blob = new Blob(['\ufeff' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        triggerBlobDownload(blob, stampedName);
+        toast.success(`Exported ${stampedName}`);
+      } else if (filename.endsWith('.xlsx')) {
+        const XLSX = await import('xlsx');
+        const wb = XLSX.utils.book_new();
+        const wsSummary = XLSX.utils.aoa_to_sheet([
+          ['MIFOS Management Portfolio Report', todayStr],
+          [],
+          ['Metric', 'Value'],
+          ['Total Active Portfolio (LKR)', Number(portfolio?.totalDisbursed || 0)],
+          ['Portfolio At Risk (>90d) %', Number(portfolio?.portfolioAtRisk_pct || 0)],
+          ['Current (0-30 Days)', Number(buckets.current || 0)],
+          ['31-60 Days', Number(buckets.days_31_60 || 0)],
+          ['61-90 Days', Number(buckets.days_61_90 || 0)],
+          ['90+ Days Overdue', Number(buckets.days_90_plus || 0)]
+        ]);
+        XLSX.utils.book_append_sheet(wb, wsSummary, 'Portfolio & Aging');
+
+        const wsDaily = XLSX.utils.aoa_to_sheet([
+          ['Date', 'Transactions Count', 'Total Volume (LKR)'],
+          ...daily.map((d) => [d.date, d.count, Number(d.totalAmount || 0)])
+        ]);
+        XLSX.utils.book_append_sheet(wb, wsDaily, 'Daily Volumes');
+
+        const wsPawns = XLSX.utils.aoa_to_sheet([
+          ['Bill No', 'Branch', 'Status', 'Disbursed (LKR)', 'Appraised (LKR)', 'Created Date'],
+          ...rawPawns.map((p) => [
+            p.bill_no || p.id,
+            p.branch_id || '',
+            p.status || '',
+            Number(p.disbursed_amount || 0),
+            Number(p.appraised_value || 0),
+            String(p.created_at || '').split('T')[0]
+          ])
+        ]);
+        XLSX.utils.book_append_sheet(wb, wsPawns, 'Pawn Portfolio');
+
+        const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([buf], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+        triggerBlobDownload(blob, stampedName);
+        toast.success(`Exported ${stampedName}`);
+      } else if (filename.endsWith('.pdf')) {
+        const { jsPDF } = await import('jspdf');
+        const doc = new jsPDF();
+        doc.setFontSize(16);
+        doc.text('MIFOS Management Portfolio & Risk Report', 14, 18);
+        doc.setFontSize(10);
+        doc.text(`Generated: ${todayStr} | Total Transactions: ${rawTxs.length} | Total Loans: ${rawPawns.length}`, 14, 26);
+        doc.text(`Active Portfolio: Rs. ${Number(portfolio?.totalDisbursed || 0).toLocaleString()}`, 14, 36);
+        doc.text(`Portfolio At Risk (>90 days): ${portfolio?.portfolioAtRisk_pct || 0}%`, 14, 43);
+        doc.text('Aging Buckets:', 14, 55);
+        doc.text(`- Current (0-30d): Rs. ${Number(buckets.current || 0).toLocaleString()}`, 18, 62);
+        doc.text(`- 31-60 Days: Rs. ${Number(buckets.days_31_60 || 0).toLocaleString()}`, 18, 69);
+        doc.text(`- 61-90 Days: Rs. ${Number(buckets.days_61_90 || 0).toLocaleString()}`, 18, 76);
+        doc.text(`- 90+ Days: Rs. ${Number(buckets.days_90_plus || 0).toLocaleString()}`, 18, 83);
+        doc.text('Recent Daily Volumes:', 14, 96);
+        daily.slice(0, 18).forEach((d, idx) => {
+          doc.text(`${d.date}: ${d.count} txns — Rs. ${Number(d.totalAmount || 0).toLocaleString()}`, 18, 103 + idx * 7);
+        });
+        doc.save(stampedName);
+        toast.success(`Exported ${stampedName}`);
+      }
+    } catch (err: any) {
+      console.error('Export failed:', err);
+      toast.error(err?.message || 'Failed to export report');
+    } finally {
+      setExporting(false);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center h-64"><RefreshCcw className="animate-spin h-8 w-8 text-blue-600" /></div>;
@@ -260,9 +380,9 @@ export default function ReportsPage() {
               Regulatory compliance requires daily reconciliation of all portfolios. Ensure all branches 
               have completed their EOD workflow before generating consolidated final reports.
             </p>
-            <Button variant="link" className="p-0 text-blue-600 font-black uppercase text-xs tracking-widest hover:text-blue-700 h-auto">
+            <Link href="/operations/eod" className="inline-flex items-center text-blue-600 font-black uppercase text-xs tracking-widest hover:text-blue-700 hover:underline">
               Open EOD Control Panel →
-            </Button>
+            </Link>
           </Card>
         </div>
       </div>

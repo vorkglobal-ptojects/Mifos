@@ -523,7 +523,7 @@ export default function Home() {
                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Income</span>
                 </div>
                 <div className="flex items-center gap-2">
-                   <div className="w-3 h-3 rounded bg-indigo-255 bg-indigo-200" />
+                   <div className="w-3 h-3 rounded bg-indigo-200" />
                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Expenses</span>
                 </div>
              </div>
@@ -618,7 +618,7 @@ export default function Home() {
                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                       <Layers className="w-5 h-5 text-primary/30 mb-1" />
                       <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Active Ratio</span>
-                      <span className="text-2xl font-black text-slate-900 tracking-tighter italic">${activeLoanPercentage}%</span>
+                      <span className="text-2xl font-black text-slate-900 tracking-tighter italic">{activeLoanPercentage}%</span>
                    </div>
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2.5">

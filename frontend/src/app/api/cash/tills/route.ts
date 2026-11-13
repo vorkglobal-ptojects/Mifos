@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { normalizeBranchId } from '@/lib/branch-mapping';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,10 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const branchId = searchParams.get('branchId') || (session.role === 'TELLER' ? session.trustedBranchId : 'ALL');
+    const rawBranchId = searchParams.get('branchId');
+    const branchId = session.role === 'TELLER'
+      ? normalizeBranchId(session.trustedBranchId)
+      : (rawBranchId && rawBranchId !== 'ALL' ? normalizeBranchId(rawBranchId) : 'ALL');
 
     let query = adminSupabase.from('cash_tills').select('*, till_sessions(*)');
     if (branchId !== 'ALL') {

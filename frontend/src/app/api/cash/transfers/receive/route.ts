@@ -88,7 +88,33 @@ export async function POST(request: Request) {
     const receiptTime = new Date().toISOString();
     const finalTransferStatus = hasDiscrepancy ? 'DISCREPANCY_FLAGGED' : 'ACCEPTED';
 
-    // 5. Create Cash Receipt Record (Record 3: Acceptance)
+    // 5. Atomically transition Transfer Status first to prevent concurrent double-receipt / double-GL
+    const { data: lockedTransfers, error: lockErr } = await adminSupabase
+      .from('cash_transfers')
+      .update({
+        status: finalTransferStatus,
+        updated_at: receiptTime
+      })
+      .eq('id', transfer.id)
+      .in('status', ['IN_TRANSIT', 'DISPATCHED'])
+      .select('id');
+
+    if (lockErr) {
+      return NextResponse.json({ error: 'Failed to lock transfer for receipt: ' + lockErr.message }, { status: 500 });
+    }
+    if (!lockedTransfers || lockedTransfers.length === 0) {
+      return NextResponse.json({ error: 'Cash transfer was already received or modified concurrently.' }, { status: 409 });
+    }
+
+    const rollbackTransferAccept = async (receiptId?: string) => {
+      if (receiptId) {
+        await adminSupabase.from('cash_receipts').delete().eq('id', receiptId);
+      }
+      await adminSupabase.from('cash_transfer_denominations').delete().eq('transfer_id', transfer.id).eq('stage', 'RECEIPT');
+      await adminSupabase.from('cash_transfers').update({ status: transfer.status, updated_at: new Date().toISOString() }).eq('id', transfer.id);
+    };
+
+    // 6. Create Cash Receipt Record (Record 3: Acceptance)
     const { data: receiptRecord, error: receiptErr } = await adminSupabase
       .from('cash_receipts')
       .insert([{
@@ -109,11 +135,12 @@ export async function POST(request: Request) {
       .single();
 
     if (receiptErr) {
+      await rollbackTransferAccept();
       return NextResponse.json({ error: 'Failed to record cash receipt: ' + receiptErr.message }, { status: 500 });
     }
 
-    // 6. Record Receipt Denominations
-    await adminSupabase.from('cash_transfer_denominations').insert([{
+    // 7. Record Receipt Denominations
+    const { error: denomErr } = await adminSupabase.from('cash_transfer_denominations').insert([{
       transfer_id: transfer.id,
       stage: 'RECEIPT',
       notes_5000: denomCalc.breakdown.notes_5000,
@@ -130,38 +157,73 @@ export async function POST(request: Request) {
       created_at: receiptTime
     }]);
 
-    // 7. General Ledger Double-Entry Posting (Only when fully balanced)
+    if (denomErr) {
+      await rollbackTransferAccept(receiptRecord.id);
+      return NextResponse.json({ error: 'Failed to store receipt denominations: ' + denomErr.message }, { status: 500 });
+    }
+
+    // 8. General Ledger Double-Entry Posting & Bank Balance Deduction (Only when fully balanced)
     let journalEntryId: string | null = null;
     if (!hasDiscrepancy) {
+      let bankRow: { id: string; bank_name: string; gl_account_name: string; current_balance: number } | null = null;
+      if (transfer.source_bank_id) {
+        const { data: bData, error: bErr } = await adminSupabase
+          .from('bank_accounts')
+          .select('id, bank_name, gl_account_name, current_balance')
+          .eq('id', transfer.source_bank_id)
+          .maybeSingle();
+        if (bErr || !bData) {
+          await rollbackTransferAccept(receiptRecord.id);
+          return NextResponse.json({ error: 'Linked source bank account not found during settlement.' }, { status: 500 });
+        }
+        bankRow = bData;
+      }
+
       const glResult = await postCashTransferJournalEntry({
         transferRef: transfer.transfer_ref,
         sourceBranch: transfer.source_branch_id,
+        sourceBankGlAccount: bankRow?.gl_account_name,
+        sourceBankName: bankRow?.bank_name,
         destBranch: transfer.destination_branch_id,
         amount: receivedCash,
         actorEmail: session.user.email || 'receiver@mifos.lk'
       });
+
+      if (glResult.error || !glResult.journalEntryId) {
+        await rollbackTransferAccept(receiptRecord.id);
+        return NextResponse.json({ error: 'Failed to post General Ledger entry: ' + (glResult.error || 'Unknown GL error') }, { status: 500 });
+      }
       journalEntryId = glResult.journalEntryId;
+
+      if (bankRow) {
+        const nextBankBalance = Number((Number(bankRow.current_balance || 0) - receivedCash).toFixed(2));
+        const { error: bankUpdErr } = await adminSupabase
+          .from('bank_accounts')
+          .update({ current_balance: nextBankBalance, updated_at: receiptTime })
+          .eq('id', bankRow.id);
+        if (bankUpdErr) {
+          console.error('Failed to deduct source bank account balance:', bankUpdErr.message);
+        }
+      }
+
+      await adminSupabase
+        .from('cash_transfers')
+        .update({ gl_journal_entry_id: journalEntryId, updated_at: receiptTime })
+        .eq('id', transfer.id);
     }
 
-    // 8. Update Transfer Record
-    await adminSupabase
-      .from('cash_transfers')
-      .update({
-        status: finalTransferStatus,
-        gl_journal_entry_id: journalEntryId,
-        updated_at: receiptTime
-      })
-      .eq('id', transfer.id);
-
-    // If linked to request, update request status
+    // If linked to request, update request status (DISCREPANCY_FLAGGED or COMPLETED)
     if (transfer.request_id) {
-      await adminSupabase
+      const { error: reqUpdErr } = await adminSupabase
         .from('cash_requests')
         .update({
           status: hasDiscrepancy ? 'DISCREPANCY_FLAGGED' : 'COMPLETED',
           updated_at: receiptTime
         })
         .eq('id', transfer.request_id);
+      if (reqUpdErr) {
+        console.warn('Warning updating cash_requests status on receipt:', reqUpdErr.message);
+      }
     }
 
     // 9. Record Security & Financial Audit Log

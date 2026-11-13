@@ -46,62 +46,60 @@ async function exportStockCustomersExcel() {
     branchMap[b.id.toUpperCase()] = b.name;
   });
 
-  // Build stock items lookup maps
-  const stockExactMap = new Map();
-  const stockNormMap = new Map();
-  const stockSuffixMap = new Map();
+  // Build branch-aware stock items lookup maps
+  const stockByBranchAndBill = new Map();
+  const stockByNormMap = new Map();
 
   stockItems.forEach(item => {
     if (item.bill_no) {
-      const rawKey = item.bill_no.trim().toLowerCase();
-      stockExactMap.set(rawKey, item);
-
+      const itemBranch = (item.branch_id || '').trim().toUpperCase();
       const normKey = normalizeKey(item.bill_no);
-      stockNormMap.set(normKey, item);
-
       const stripped = normalizeKey(stripBranchPrefix(item.bill_no));
-      if (stripped && stripped.length >= 3) {
-        stockSuffixMap.set(stripped, item);
+      if (itemBranch && normKey) {
+        stockByBranchAndBill.set(`${itemBranch}::${normKey}`, item);
+      }
+      if (itemBranch && stripped && stripped.length >= 3) {
+        stockByBranchAndBill.set(`${itemBranch}::${stripped}`, item);
+      }
+      if (normKey) {
+        if (!stockByNormMap.has(normKey)) stockByNormMap.set(normKey, []);
+        stockByNormMap.get(normKey).push(item);
       }
     }
   });
 
-  // Build interest map by bill_no
+  // Build interest map by branch+bill_no and fallback bill_no
   const interestMap = new Map();
   interests.forEach(i => {
     if (i.bill_no) {
       const key = normalizeKey(i.bill_no);
+      const brKey = i.branch_id ? `${i.branch_id.trim().toUpperCase()}::${key}` : null;
       const val = parseFloat(i.interest_value) || 0;
-      if (!interestMap.has(key)) {
-        interestMap.set(key, { total: val, count: 1, lastPaymentDate: i.date, notes: i.notes || '' });
-      } else {
-        const curr = interestMap.get(key);
-        curr.total += val;
-        curr.count += 1;
+      for (const k of [brKey, key].filter(Boolean)) {
+        if (!interestMap.has(k)) {
+          interestMap.set(k, { total: val, count: 1, lastPaymentDate: i.date, notes: i.notes || '' });
+        } else {
+          const curr = interestMap.get(k);
+          curr.total += val;
+          curr.count += 1;
+        }
       }
     }
   });
 
-  function findStockItemForBill(billNo) {
+  function findStockItemForBill(billNo, customerBranchId) {
     if (!billNo) return null;
-    const rawKey = billNo.trim().toLowerCase();
-    if (stockExactMap.has(rawKey)) return stockExactMap.get(rawKey);
-
     const normKey = normalizeKey(billNo);
-    if (stockNormMap.has(normKey)) return stockNormMap.get(normKey);
-
     const stripped = normalizeKey(stripBranchPrefix(billNo));
-    if (stripped && stockSuffixMap.has(stripped)) return stockSuffixMap.get(stripped);
+    const prefBr = (customerBranchId || '').trim().toUpperCase();
 
-    // Try finding by suffix match
-    if (stripped && stripped.length >= 3) {
-      for (const [key, item] of stockNormMap.entries()) {
-        if (key.endsWith(stripped) || stripped.endsWith(key)) {
-          return item;
-        }
-      }
+    if (prefBr) {
+      if (stockByBranchAndBill.has(`${prefBr}::${normKey}`)) return stockByBranchAndBill.get(`${prefBr}::${normKey}`);
+      if (stripped && stockByBranchAndBill.has(`${prefBr}::${stripped}`)) return stockByBranchAndBill.get(`${prefBr}::${stripped}`);
     }
 
+    const candidates = stockByNormMap.get(normKey) || [];
+    if (candidates.length === 1) return candidates[0];
     return null;
   }
 
@@ -138,12 +136,12 @@ async function exportStockCustomersExcel() {
 
     rawBills.forEach(billNo => {
       processedBills.add(normalizeKey(billNo));
-      const stock = findStockItemForBill(billNo);
-      const branchId = stock?.branch_id || (billNo.match(/^[a-zA-Z]+/)?.[0] || '-').toUpperCase();
+      const stock = findStockItemForBill(billNo, cust.branch_id);
+      const branchId = cust.branch_id ? cust.branch_id.trim().toUpperCase() : (stock?.branch_id || (billNo.match(/^[a-zA-Z]+/)?.[0] || '-').toUpperCase());
       const branchName = branchMap[branchId] || branchId;
 
       const normBill = normalizeKey(billNo);
-      const interestInfo = interestMap.get(normBill);
+      const interestInfo = interestMap.get(`${branchId}::${normBill}`) || interestMap.get(normBill);
 
       billWiseRows.push({
         'Bill Number': billNo,
@@ -176,8 +174,9 @@ async function exportStockCustomersExcel() {
     
     // Find branches associated
     const branchesFound = new Set();
+    if (cust.branch_id) branchesFound.add(cust.branch_id.trim().toUpperCase());
     rawBills.forEach(b => {
-      const st = findStockItemForBill(b);
+      const st = findStockItemForBill(b, cust.branch_id);
       if (st?.branch_id) branchesFound.add(st.branch_id);
     });
 
@@ -198,42 +197,44 @@ async function exportStockCustomersExcel() {
   // ----------------------------------------------------
   // SHEET 3: Complete Stock Inventory with Customer Link Status
   // ----------------------------------------------------
-  // Build fast reverse lookup from bill to customer
-  const billToCustomerMap = new Map();
+  // Build fast branch-scoped reverse lookup from (branch_id::bill) to customer
+  const billToCustomerByBranch = new Map();
+  const billToCustomersAny = new Map();
   customers.forEach(cust => {
     if (!cust.bill_numbers) return;
+    const custBranch = (cust.branch_id || '').trim().toUpperCase();
     const parts = cust.bill_numbers.split(',').map(s => s.trim()).filter(Boolean);
     parts.forEach(b => {
       const norm = normalizeKey(b);
-      billToCustomerMap.set(norm, cust);
       const stripped = normalizeKey(stripBranchPrefix(b));
-      if (stripped && stripped.length >= 3) {
-        billToCustomerMap.set(stripped, cust);
+      if (custBranch && norm) {
+        billToCustomerByBranch.set(`${custBranch}::${norm}`, cust);
+      }
+      if (custBranch && stripped && stripped.length >= 3) {
+        billToCustomerByBranch.set(`${custBranch}::${stripped}`, cust);
+      }
+      if (norm && !custBranch) {
+        billToCustomersAny.set(norm, cust);
       }
     });
   });
 
-  function findCustomerForStock(stockBill) {
+  function findCustomerForStock(stockBill, stockBranchId) {
     if (!stockBill) return null;
+    const br = (stockBranchId || '').trim().toUpperCase();
     const norm = normalizeKey(stockBill);
-    if (billToCustomerMap.has(norm)) return billToCustomerMap.get(norm);
-
     const stripped = normalizeKey(stripBranchPrefix(stockBill));
-    if (stripped && billToCustomerMap.has(stripped)) return billToCustomerMap.get(stripped);
-
-    // Check suffix
-    if (stripped && stripped.length >= 3) {
-      for (const [key, cust] of billToCustomerMap.entries()) {
-        if (key.endsWith(stripped) || stripped.endsWith(key)) {
-          return cust;
-        }
-      }
+    if (br) {
+      if (billToCustomerByBranch.has(`${br}::${norm}`)) return billToCustomerByBranch.get(`${br}::${norm}`);
+      if (stripped && billToCustomerByBranch.has(`${br}::${stripped}`)) return billToCustomerByBranch.get(`${br}::${stripped}`);
     }
+    if (billToCustomersAny.has(norm)) return billToCustomersAny.get(norm);
+    if (stripped && billToCustomersAny.has(stripped)) return billToCustomersAny.get(stripped);
     return null;
   }
 
   const stockInventoryRows = stockItems.map(item => {
-    const cust = findCustomerForStock(item.bill_no);
+    const cust = findCustomerForStock(item.bill_no, item.branch_id);
     const branchName = branchMap[item.branch_id?.toUpperCase()] || item.branch_id || '-';
 
     return {
@@ -273,7 +274,7 @@ async function exportStockCustomersExcel() {
     branchSummaryMap[b].totalValuation += (parseFloat(item.price) || 0);
     branchSummaryMap[b].totalWeight += (parseFloat(item.weight) || 0);
 
-    const cust = findCustomerForStock(item.bill_no);
+    const cust = findCustomerForStock(item.bill_no, item.branch_id);
     if (cust) {
       branchSummaryMap[b].linkedItems++;
     }

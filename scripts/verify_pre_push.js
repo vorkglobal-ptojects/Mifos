@@ -19,6 +19,7 @@
 
 const { execSync } = require('child_process');
 const https = require('https');
+const fs = require('fs');
 const path = require('path');
 
 const BASE_HOST = 'www.goldloan.app';
@@ -226,6 +227,67 @@ async function runVerification() {
     logPass(`Change Requests API returned HTTP 200 (${tickets} pending tickets)`);
   } else {
     logFail(`Change Requests API returned HTTP ${crRes.status}`);
+    failureCount++;
+  }
+
+  // --------------------------------------------------------------------------
+  // STEP 8: Regression Guards (Cross-Branch Isolation & Modal Overflow Prevention)
+  // --------------------------------------------------------------------------
+  logStep(8, 'Verifying Cross-Branch Isolation & Modal Layout Safety Rules');
+  try {
+    const rootDir = path.resolve(__dirname, '..');
+    const dialogTsx = fs.readFileSync(path.join(rootDir, 'frontend/src/components/ui/dialog.tsx'), 'utf8');
+    if (!dialogTsx.includes('grid-cols-[minmax(0,1fr)]') || !dialogTsx.includes('overflow-x-hidden')) {
+      logFail('REGRESSION: dialog.tsx missing grid-cols-[minmax(0,1fr)] or overflow-x-hidden!');
+      failureCount++;
+    } else {
+      const bareDialogViolations = [];
+      const walkTsx = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walkTsx(full);
+          else if (full.endsWith('.tsx')) {
+            const lines = fs.readFileSync(full, 'utf8').split(/\r?\n/);
+            lines.forEach((line, idx) => {
+              if (line.includes('<DialogContent')) {
+                const snip = lines.slice(idx, idx + 4).join(' ');
+                const m = snip.match(/className=["'{`]([^"'}]+)/);
+                const cls = m ? m[1] : snip;
+                const bare = cls.match(/(?:^|\s)max-w-(?!\[calc|full|none|prose|screen|\[9[0-9]vw\])[^\s"'}]+/g);
+                if (bare) {
+                  bareDialogViolations.push(`${path.relative(rootDir, full)}:${idx + 1} (${bare.map(b => b.trim()).join(', ')})`);
+                }
+              }
+            });
+          }
+        }
+      };
+      walkTsx(path.join(rootDir, 'frontend/src'));
+      if (bareDialogViolations.length > 0) {
+        logFail(`REGRESSION: Bare max-w-* on DialogContent without responsive prefix: ${bareDialogViolations.join('; ')}`);
+        failureCount++;
+      } else {
+        logPass('All DialogContent modals pass mobile & desktop grid/width overflow safety rules');
+      }
+    }
+
+    const scRoute = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/stock-customers/route.ts'), 'utf8');
+    const clRoute = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/clients/route.ts'), 'utf8');
+    const pwRoute = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/pawns/route.ts'), 'utf8');
+    const isolationChecks = [
+      { ok: scRoute.includes('branchBillMap') && scRoute.includes(".eq('branch_id', effectiveBranch)"), name: 'stock-customers API branch scoping' },
+      { ok: clRoute.includes(".eq('branch_id', cleanBranchId)") && clRoute.includes('DUMMY_NICS'), name: 'clients API branch scoping & dummy NIC guard' },
+      { ok: pwRoute.includes(".eq('branch_id', cleanBranch)") && pwRoute.includes('uuidBranch !== targetBranchId'), name: 'pawns API cross-branch client guard' },
+    ];
+    const failedIso = isolationChecks.filter(c => !c.ok);
+    if (failedIso.length > 0) {
+      logFail(`REGRESSION: Missing cross-branch isolation guard in: ${failedIso.map(f => f.name).join(', ')}`);
+      failureCount++;
+    } else {
+      logPass('All Customer/Pawning/Stock APIs enforce strict (branch_id, NIC/bill_no) isolation');
+    }
+  } catch (ruleErr) {
+    logFail(`Rule verification exception: ${ruleErr.message}`);
     failureCount++;
   }
 

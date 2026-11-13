@@ -93,30 +93,24 @@ async function runRegistration() {
 
   console.log(`Initial State: ${existingClients.length} clients in system, ${stockCustomers.length} stock customers.`);
 
-  // Lookup map for stock items
-  const stockBranchMap = new Map();
+  // Lookup map for stock items (branch-collision safe: track Set of branches per bill)
+  const stockBranchesByBill = new Map();
   stockItems.forEach(s => {
     if (s.bill_no && s.branch_id) {
       const norm = s.bill_no.trim().toLowerCase().replace(/[\s\-_/]+/g, '');
-      stockBranchMap.set(norm, normalizeBranchId(s.branch_id));
+      if (!stockBranchesByBill.has(norm)) stockBranchesByBill.set(norm, new Set());
+      stockBranchesByBill.get(norm).add(normalizeBranchId(s.branch_id));
     }
   });
 
-  // Track already registered NICs, phones, and branch_national_id pairs
-  const registeredNics = new Set();
-  const registeredPhones = new Set();
+  // Track branch-scoped (branch_id, national_id) pairs so multi-branch customers never collide
   const registeredBranchNics = new Set();
 
   existingClients.forEach(c => {
-    if (c.national_id) {
+    if (c.national_id && c.branch_id) {
       const clean = cleanNationalId(c.national_id) || c.national_id.trim().toUpperCase();
-      registeredNics.add(clean);
-      if (c.branch_id) {
-        registeredBranchNics.add(`${normalizeBranchId(c.branch_id)}__${clean}`);
-      }
+      registeredBranchNics.add(`${normalizeBranchId(c.branch_id)}__${clean}`);
     }
-    const p = cleanPhone(c.phone);
-    if (p) registeredPhones.add(p);
   });
 
   const skipped = [];
@@ -127,23 +121,29 @@ async function runRegistration() {
     const validPhone = cleanPhone(sc.tp);
     const { firstName, lastName } = splitName(sc.name);
 
-    // Determine branch from bills
-    let branch = null;
-    if (sc.bill_numbers) {
-      const parts = sc.bill_numbers.split(',').map(s => s.trim()).filter(Boolean);
-      for (const p of parts) {
-        const norm = p.toLowerCase().replace(/[\s\-_/]+/g, '');
-        const b = stockBranchMap.get(norm);
-        if (b && validBranches.has(b)) {
-          branch = b;
-          break;
-        }
-        const prefix = p.match(/^[a-zA-Z0-9]+/)?.[0];
-        if (prefix) {
-          const normPref = normalizeBranchId(prefix);
-          if (validBranches.has(normPref)) {
-            branch = normPref;
-            break;
+    // Determine branch from stock_customers.branch_id first, then unambiguous stock_items bills
+    let branch = sc.branch_id ? normalizeBranchId(sc.branch_id) : null;
+    if (!branch || !validBranches.has(branch) || branch === 'HQ') {
+      branch = null;
+      if (sc.bill_numbers) {
+        const parts = sc.bill_numbers.split(',').map(s => s.trim()).filter(Boolean);
+        for (const p of parts) {
+          const norm = p.toLowerCase().replace(/[\s\-_/]+/g, '');
+          const branches = stockBranchesByBill.get(norm);
+          if (branches && branches.size === 1) {
+            const b = [...branches][0];
+            if (validBranches.has(b)) {
+              branch = b;
+              break;
+            }
+          }
+          const prefix = p.match(/^[a-zA-Z0-9]+/)?.[0];
+          if (prefix) {
+            const normPref = normalizeBranchId(prefix);
+            if (validBranches.has(normPref)) {
+              branch = normPref;
+              break;
+            }
           }
         }
       }
@@ -152,18 +152,17 @@ async function runRegistration() {
       branch = 'HQ';
     }
 
-    // Check if already registered
+    // Check if already registered in THIS branch
     let skipReason = null;
-    if (genuineNic && registeredNics.has(genuineNic)) {
-      skipReason = `NIC already registered (${genuineNic})`;
-    } else if (validPhone && registeredPhones.has(validPhone)) {
-      skipReason = `Phone already registered (${validPhone})`;
+    if (genuineNic && registeredBranchNics.has(`${branch}__${genuineNic}`)) {
+      skipReason = `NIC already registered in branch ${branch} (${genuineNic})`;
     }
 
     if (skipReason) {
       skipped.push({
         id: sc.id,
         name: sc.name,
+        branch,
         nic: sc.nic,
         phone: sc.tp,
         reason: skipReason
@@ -209,9 +208,6 @@ async function runRegistration() {
     };
 
     toInsert.push(newClient);
-
-    if (genuineNic) registeredNics.add(genuineNic);
-    if (validPhone) registeredPhones.add(validPhone);
     registeredBranchNics.add(branchKey);
   });
 

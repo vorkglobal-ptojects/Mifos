@@ -1153,7 +1153,7 @@ export default function ApprovalsPage() {
       {/* ── COMPREHENSIVE MANAGER REVIEW MODAL ── */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={isReviewModalOpen} onOpenChange={setIsReviewModalOpen}>
-        <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-0 rounded-3xl border-slate-200">
+        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[92vh] overflow-y-auto overflow-x-hidden p-0 rounded-3xl border-slate-200">
           
           {dossierLoading ? (
             <div className="p-16 flex flex-col items-center justify-center space-y-4">
@@ -1167,10 +1167,10 @@ export default function ApprovalsPage() {
               <p className="text-xs text-slate-500">Could not retrieve dossier details for this transaction.</p>
             </div>
           ) : (
-            <div className="space-y-6 pb-6">
+            <div className="min-w-0 space-y-6 pb-6">
 
               {/* Dossier Header Banner */}
-              <div className="p-6 bg-slate-900 text-white rounded-t-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800">
+              <div className="p-6 pr-14 bg-slate-900 text-white rounded-t-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-2.5 py-0.5 bg-amber-500 text-slate-950 font-black text-[10px] uppercase rounded-md">
@@ -1746,7 +1746,7 @@ export default function ApprovalsPage() {
       {/* ── RETURN / REJECT REASON MODAL ── */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={isReturnModalOpen} onOpenChange={setIsReturnModalOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+        <DialogContent className="w-[95vw] sm:max-w-md rounded-3xl border-slate-200 p-6 space-y-4 overflow-x-hidden">
           <DialogHeader className="space-y-1">
             <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto sm:mx-0">
               <RotateCcw className="w-6 h-6" />
@@ -1796,7 +1796,7 @@ export default function ApprovalsPage() {
       {/* ── RESOLVE & RESUBMIT FOR AUDIT MODAL ── */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={isResubmitModalOpen} onOpenChange={setIsResubmitModalOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+        <DialogContent className="w-[95vw] sm:max-w-md rounded-3xl border-slate-200 p-6 space-y-4 overflow-x-hidden">
           <DialogHeader className="space-y-1">
             <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mx-auto sm:mx-0">
               <RefreshCcw className="w-6 h-6" />
@@ -1846,7 +1846,7 @@ export default function ApprovalsPage() {
       {/* ── FINAL APPROVE CONFIRMATION MODAL ── */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={isApproveConfirmOpen} onOpenChange={setIsApproveConfirmOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+        <DialogContent className="w-[95vw] sm:max-w-md rounded-3xl border-slate-200 p-6 space-y-4 overflow-x-hidden">
           <DialogHeader className="space-y-1">
             <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mx-auto sm:mx-0">
               <CheckCircle2 className="w-6 h-6" />
@@ -1899,7 +1899,7 @@ export default function ApprovalsPage() {
       {/* ── CHANGE REQUEST TICKET REVIEW MODAL (MAKER-CHECKER) ── */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={isTicketReviewModalOpen} onOpenChange={setIsTicketReviewModalOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border-slate-200 p-0">
+        <DialogContent className="w-[95vw] sm:max-w-4xl max-h-[90dvh] overflow-y-auto overflow-x-hidden rounded-3xl border-slate-200 p-0">
           {selectedTicket && (() => {
             const userRoleUpper = (user?.role || '').toUpperCase();
             const canEditProposed =
@@ -1932,10 +1932,10 @@ export default function ApprovalsPage() {
               : [];
 
             return (
-              <div className="space-y-5 pb-6">
+              <div className="min-w-0 space-y-5 pb-6">
                 {/* Header Banner */}
-                <div className="p-6 bg-slate-900 text-white rounded-t-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800">
-                  <div className="space-y-1">
+                <div className="p-6 pr-14 bg-slate-900 text-white rounded-t-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800">
+                  <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="px-2.5 py-0.5 bg-purple-500 text-white font-black text-[10px] uppercase rounded-md">
                         Maker-Checker Review
@@ -1961,7 +1961,7 @@ export default function ApprovalsPage() {
                     </p>
                   </div>
 
-                  <div className="text-right sm:border-l sm:border-slate-800 sm:pl-6">
+                  <div className="text-left sm:text-right sm:border-l sm:border-slate-800 sm:pl-6 shrink-0">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block">Target Reference</span>
                     <div className="text-xl font-black text-amber-400 font-mono">
                       {selectedTicket.reference_no}
@@ -1972,7 +1972,7 @@ export default function ApprovalsPage() {
                   </div>
                 </div>
 
-                <div className="px-6 space-y-4">
+                <div className="px-4 sm:px-6 min-w-0 space-y-4">
                   {/* Staff Justification */}
                   <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-1">
                     <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">
@@ -1984,7 +1984,7 @@ export default function ApprovalsPage() {
                   </div>
 
                   {/* Comparison of Current vs Proposed Values */}
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="p-4 min-w-0 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
@@ -2045,8 +2045,8 @@ export default function ApprovalsPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="space-y-2.5">
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                      <div className="min-w-0 space-y-2.5">
+                        <div className="w-full overflow-x-auto rounded-xl border border-slate-200">
                           <table className="w-full text-xs border-collapse">
                             <thead>
                               <tr className="border-b border-slate-200 bg-slate-100/80 text-slate-500 uppercase text-[10px] font-black">
@@ -2068,15 +2068,15 @@ export default function ApprovalsPage() {
 
                                 return (
                                   <tr key={key} className={isModifiedFromTeller ? 'bg-purple-50/40' : isChanged ? 'bg-emerald-50/40' : ''}>
-                                    <td className="py-2.5 px-3 font-bold text-slate-700 capitalize whitespace-nowrap">
+                                    <td className="py-2.5 px-3 font-bold text-slate-700 capitalize align-top whitespace-nowrap">
                                       {key.replace(/_/g, ' ')}
                                     </td>
-                                    <td className={`py-2.5 px-3 font-mono whitespace-nowrap ${isChanged ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
+                                    <td className={`py-2.5 px-3 font-mono align-top break-words max-w-[220px] ${isChanged ? 'text-slate-400 line-through' : 'text-slate-600'}`}>
                                       {curr !== undefined && curr !== null ? String(curr) : '—'}
                                     </td>
-                                    <td className="py-2 px-3 font-mono font-bold">
+                                    <td className="py-2 px-3 font-mono font-bold align-top min-w-0">
                                       {canEditProposed ? (
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
                                           {key === 'branch_id' ? (
                                             <select
                                               value={strVal}
@@ -2086,7 +2086,7 @@ export default function ApprovalsPage() {
                                                   [key]: e.target.value
                                                 }))
                                               }
-                                              className="w-full min-w-[140px] px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                                              className="w-full min-w-[120px] px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
                                             >
                                               {strVal && !CANONICAL_BRANCHES.some((b) => b.id === strVal) && (
                                                 <option value={strVal}>{strVal}</option>
@@ -2115,7 +2115,7 @@ export default function ApprovalsPage() {
                                                 }))
                                               }
                                               placeholder="Enter value..."
-                                              className={`w-full min-w-[140px] px-2.5 py-1.5 bg-white border rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-2 transition-all ${
+                                              className={`w-full min-w-[120px] px-2.5 py-1.5 bg-white border rounded-lg text-xs font-mono font-bold focus:outline-none focus:ring-2 transition-all ${
                                                 isModifiedFromTeller
                                                   ? 'border-purple-400 text-purple-900 focus:ring-purple-500/20 focus:border-purple-600'
                                                   : isChanged
@@ -2135,7 +2135,7 @@ export default function ApprovalsPage() {
                                           ) : null}
                                         </div>
                                       ) : (
-                                        <span className="text-emerald-700 font-black">
+                                        <span className="text-emerald-700 font-black break-words">
                                           {String(val)}
                                           {isChanged && (
                                             <span className="ml-2 px-1.5 py-0.5 text-[9px] bg-emerald-100 text-emerald-800 rounded uppercase font-sans">
@@ -2153,7 +2153,7 @@ export default function ApprovalsPage() {
                         </div>
 
                         {canEditProposed && addableFields.length > 0 && (
-                          <div className="flex items-center justify-end gap-2 pt-1">
+                          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
                             <span className="text-[11px] font-bold text-slate-500">
                               Need to adjust another field?
                             </span>
@@ -2167,7 +2167,7 @@ export default function ApprovalsPage() {
                                   [field]: selectedTicket.current_data?.[field] ?? ''
                                 }));
                               }}
-                              className="px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer focus:outline-none focus:border-purple-500"
+                              className="max-w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-xl text-[11px] font-bold text-slate-700 cursor-pointer focus:outline-none focus:border-purple-500"
                             >
                               <option value="">+ Add Field from Record...</option>
                               {addableFields.map((fieldKey) => (
@@ -2209,25 +2209,25 @@ export default function ApprovalsPage() {
                 </div>
 
                 {/* Footer Actions */}
-                <div className="px-6 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="px-4 sm:px-6 pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <Button
                     variant="outline"
                     onClick={() => setIsTicketReviewModalOpen(false)}
-                    className="w-full sm:w-auto rounded-xl font-bold"
+                    className="w-full sm:w-auto rounded-xl font-bold shrink-0"
                   >
                     Close
                   </Button>
 
                   {selectedTicket.status === 'PENDING' && (
-                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end min-w-0">
                       {hasProposedEdits && (
                         <Button
                           variant="outline"
                           disabled={isTicketActionLoading}
                           onClick={handleSaveTicketProposedEdits}
-                          className="border-purple-300 text-purple-700 hover:bg-purple-50 font-black text-xs uppercase tracking-wider rounded-xl px-3.5 h-10 cursor-pointer"
+                          className="w-full sm:w-auto border-purple-300 text-purple-700 hover:bg-purple-50 font-black text-xs uppercase tracking-wider rounded-xl px-3.5 h-10 cursor-pointer"
                         >
-                          <Save className="w-4 h-4 mr-1.5" /> Save Edits
+                          <Save className="w-4 h-4 mr-1.5 shrink-0" /> Save Edits
                         </Button>
                       )}
                       <Button
@@ -2237,9 +2237,9 @@ export default function ApprovalsPage() {
                           setTicketRejectReason('');
                           setIsRejectTicketModalOpen(true);
                         }}
-                        className="border-rose-300 text-rose-700 hover:bg-rose-50 font-black text-xs uppercase tracking-wider rounded-xl px-4 h-10 cursor-pointer"
+                        className="w-full sm:w-auto border-rose-300 text-rose-700 hover:bg-rose-50 font-black text-xs uppercase tracking-wider rounded-xl px-4 h-10 cursor-pointer"
                       >
-                        <XCircle className="w-4 h-4 mr-1.5" /> Reject Ticket
+                        <XCircle className="w-4 h-4 mr-1.5 shrink-0" /> Reject Ticket
                       </Button>
                       <Button
                         disabled={isTicketActionLoading || isOwnChangeTicket(selectedTicket)}
@@ -2251,18 +2251,20 @@ export default function ApprovalsPage() {
                             canEditProposed ? editableProposedData : undefined
                           )
                         }
-                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl px-5 h-10 cursor-pointer shadow-md"
+                        className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl px-5 h-10 cursor-pointer shadow-md"
                       >
                         {isTicketActionLoading ? (
-                          <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin" />
+                          <RefreshCcw className="w-4 h-4 mr-1.5 animate-spin shrink-0" />
                         ) : (
-                          <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                          <CheckCircle2 className="w-4 h-4 mr-1.5 shrink-0" />
                         )}
-                        {isOwnChangeTicket(selectedTicket)
-                          ? 'Cannot Approve Own Ticket'
-                          : hasProposedEdits
-                          ? 'Approve & Apply Edited Changes'
-                          : 'Approve & Apply Changes'}
+                        <span className="truncate">
+                          {isOwnChangeTicket(selectedTicket)
+                            ? 'Cannot Approve Own Ticket'
+                            : hasProposedEdits
+                            ? 'Approve & Apply Edited Changes'
+                            : 'Approve & Apply Changes'}
+                        </span>
                       </Button>
                     </div>
                   )}
@@ -2277,7 +2279,7 @@ export default function ApprovalsPage() {
       {/* ── REJECT CHANGE TICKET MODAL (MAKER-CHECKER) ── */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={isRejectTicketModalOpen} onOpenChange={setIsRejectTicketModalOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-slate-200 p-6 space-y-4">
+        <DialogContent className="w-[95vw] sm:max-w-md rounded-3xl border-slate-200 p-6 space-y-4 overflow-x-hidden">
           <DialogHeader className="space-y-1">
             <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-600 mx-auto sm:mx-0">
               <XCircle className="w-6 h-6" />
@@ -2327,7 +2329,7 @@ export default function ApprovalsPage() {
       {/* ── IMAGE ZOOM LIGHTBOX ── */}
       {/* ══════════════════════════════════════════════════════════════════════════ */}
       <Dialog open={!!previewImage} onOpenChange={() => setPreviewImage(null)}>
-        <DialogContent className="max-w-4xl p-2 bg-black/95 border-none rounded-3xl">
+        <DialogContent className="w-[95vw] sm:max-w-4xl p-2 bg-black/95 border-none rounded-3xl overflow-x-hidden">
           <div className="relative flex items-center justify-center p-2 min-h-[60vh]">
             {previewImage && (
               <img 

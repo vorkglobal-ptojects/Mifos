@@ -343,39 +343,115 @@ export async function POST(request: Request) {
       targetBranchId = normSess;
     }
 
-    // 1. Resolve valid Client UUID (with branch scoping for book ledger IDs)
+    // 1. Resolve valid Client UUID (strictly branch-scoped so clients never cross branches)
+    const DUMMY_NICS = new Set(['0', '00', '000', '0000', '-', '--', 'N/A', 'NA', 'NONE', 'NULL', 'UNKNOWN', '.']);
+    const isDummyClientNic = (val: string) => {
+      const t = val.trim();
+      if (!t) return true;
+      const u = t.toUpperCase();
+      return DUMMY_NICS.has(u) || /^0+$/.test(t) || u.startsWith('PENDING-') || !/[A-Za-z0-9]/.test(t);
+    };
+
     let targetClientId = clientId;
     let fullClientObj: any = null;
 
-    if (!isUUID(clientId)) {
+    if (isUUID(clientId)) {
+      const { data: uuidClient } = await adminSupabase
+        .from('clients')
+        .select('*')
+        .eq('id', clientId)
+        .maybeSingle();
+      if (uuidClient) {
+        const uuidBranch = uuidClient.branch_id ? normalizeBranchId(uuidClient.branch_id) : '';
+        if (uuidBranch && targetBranchId && uuidBranch !== targetBranchId) {
+          // Caller passed a client UUID from another branch (e.g. multi-branch search dropdown).
+          // Find or create a branch-scoped client row under targetBranchId instead of cross-linking!
+          const srcNic = String(uuidClient.national_id || '').trim();
+          const hasRealNic = !isDummyClientNic(srcNic) && isNationalId(srcNic);
+          let sameBranchClient: any = null;
+          if (hasRealNic) {
+            const normSrcNic = normalizeNationalId(srcNic);
+            const { data: branchMatch } = await adminSupabase
+              .from('clients')
+              .select('*')
+              .eq('branch_id', targetBranchId)
+              .ilike('national_id', normSrcNic)
+              .limit(1)
+              .maybeSingle();
+            sameBranchClient = branchMatch;
+          }
+          if (sameBranchClient) {
+            targetClientId = sameBranchClient.id;
+            fullClientObj = sameBranchClient;
+          } else {
+            const scopedId = crypto.randomUUID();
+            const newNic = hasRealNic
+              ? normalizeNationalId(srcNic)
+              : `PENDING-${targetBranchId}-${scopedId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+            const { data: clonedClient, error: cloneErr } = await adminSupabase
+              .from('clients')
+              .insert([{
+                id: scopedId,
+                national_id: newNic,
+                first_name: (clientName && clientName.trim() !== '' && clientName !== 'Valued Customer')
+                  ? clientName.trim()
+                  : (uuidClient.first_name || 'Valued Customer'),
+                last_name: uuidClient.last_name || '.',
+                phone: clientPhone || uuidClient.phone || null,
+                address: clientAddress || uuidClient.address || null,
+                branch_id: targetBranchId,
+                created_by_user_id: targetUserId,
+                status: 'ACTIVE',
+                created_at: new Date().toISOString()
+              }])
+              .select()
+              .single();
+            if (!cloneErr && clonedClient) {
+              targetClientId = clonedClient.id;
+              fullClientObj = clonedClient;
+              invalidateClientsCache();
+            } else {
+              fullClientObj = uuidClient;
+            }
+          }
+        } else {
+          fullClientObj = uuidClient;
+        }
+      }
+    } else {
       const trimmedId = String(clientId).trim();
-      const isGovId = isNationalId(trimmedId);
-      const effectiveLookupId = isGovId ? normalizeNationalId(trimmedId) : formatBranchScopedId(trimmedId, targetBranchId);
+      const isDummy = isDummyClientNic(trimmedId);
+      const isGovId = !isDummy && isNationalId(trimmedId);
+      const effectiveLookupId = isDummy
+        ? `PENDING-${targetBranchId}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`
+        : isGovId
+        ? normalizeNationalId(trimmedId)
+        : formatBranchScopedId(trimmedId, targetBranchId);
       const cleanLookup = String(effectiveLookupId || '').replace(/[,()"]/g, '').trim();
       const cleanTrimmed = String(trimmedId || '').replace(/[,()"]/g, '').trim();
       const cleanBranch = String(targetBranchId || '').replace(/[,()"]/g, '').trim();
 
       let existingClients = null;
-      let snakeQuery = adminSupabase.from('clients').select('*');
-      if (isGovId) {
-        snakeQuery = snakeQuery.or(`national_id.eq."${cleanLookup}",national_id.ilike."%${cleanTrimmed}%"`);
-      } else {
-        snakeQuery = snakeQuery.or(`national_id.eq."${cleanLookup}",and(national_id.eq."${cleanTrimmed}",branch_id.eq."${cleanBranch}")`);
-      }
-      const { data: snakeExisting } = await snakeQuery.limit(1);
-
-      if (snakeExisting && snakeExisting.length > 0) {
-        existingClients = snakeExisting;
-      } else {
-        let camelQuery = adminSupabase.from('clients').select('*');
+      if (!isDummy) {
+        let snakeQuery = adminSupabase.from('clients').select('*');
+        if (cleanBranch) snakeQuery = snakeQuery.eq('branch_id', cleanBranch);
         if (isGovId) {
-          camelQuery = camelQuery.or(`nationalId.eq."${cleanLookup}",nationalId.ilike."%${cleanTrimmed}%"`);
+          snakeQuery = snakeQuery.or(`national_id.eq."${cleanLookup}",national_id.ilike."${cleanTrimmed}"`);
         } else {
-          camelQuery = camelQuery.or(`nationalId.eq."${cleanLookup}",and(nationalId.eq."${cleanTrimmed}",branchId.eq."${cleanBranch}")`);
+          snakeQuery = snakeQuery.or(`national_id.eq."${cleanLookup}",national_id.ilike."${cleanTrimmed}"`);
         }
-        const { data: camelExisting } = await camelQuery.limit(1);
-        if (camelExisting && camelExisting.length > 0) {
-          existingClients = camelExisting;
+        const { data: snakeExisting } = await snakeQuery.limit(1);
+
+        if (snakeExisting && snakeExisting.length > 0) {
+          existingClients = snakeExisting;
+        } else {
+          let camelQuery = adminSupabase.from('clients').select('*');
+          if (cleanBranch) camelQuery = camelQuery.eq('branchId', cleanBranch);
+          camelQuery = camelQuery.or(`nationalId.eq."${cleanLookup}",nationalId.ilike."${cleanTrimmed}"`);
+          const { data: camelExisting } = await camelQuery.limit(1);
+          if (camelExisting && camelExisting.length > 0) {
+            existingClients = camelExisting;
+          }
         }
       }
 
@@ -521,9 +597,13 @@ export async function POST(request: Request) {
     // Format bill_no with branch prefix behind the scenes (e.g. "KDW-3R 14543")
     const scopedBillNo = formatBranchScopedBillNo(billNo, targetBranchId);
 
-    // Auto-generate or preserve Unique Order Tag (Pattern C: RC-[Branch]-[NIC Part]-[Bill #])
-    const effectiveNic = fullClientObj?.national_id || fullClientObj?.nationalId || (isNationalId(clientId) ? clientId : '');
-    const finalUniqueTag = (unique_tag || uniqueTag || '').trim() || generateUniqueOrderTag(targetBranchId, effectiveNic, scopedBillNo || billNo);
+    // Auto-generate or preserve valid Unique Order Tag (Pattern C: RC-[Branch]-[NIC Part]-[Bill #])
+    const effectiveNic = fullClientObj?.national_id || (isNationalId(clientId) ? clientId : '');
+    const rawProvidedTag = String(unique_tag || uniqueTag || '').trim();
+    const isValidProvidedTag = /^RC-[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9.]+$/i.test(rawProvidedTag);
+    const finalUniqueTag = isValidProvidedTag
+      ? rawProvidedTag.toUpperCase()
+      : generateUniqueOrderTag(targetBranchId, effectiveNic, scopedBillNo || billNo);
 
     // 2. Insert pawn ticket into DB
     const pawnPayload: any = {

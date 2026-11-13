@@ -1770,7 +1770,7 @@ export default function AuditorVerificationPage() {
 
       {/* Image Preview Modal (Full Zoom) */}
       <Dialog open={Boolean(previewImage)} onOpenChange={(v) => !v && setPreviewImage(null)}>
-        <DialogContent className="max-w-4xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-black/95 border-slate-800 rounded-3xl">
+        <DialogContent className="w-[95vw] sm:max-w-4xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-black/95 border-slate-800 rounded-3xl">
           <div className="p-4 pr-12 flex items-center justify-between border-b border-white/10 text-white shrink-0">
             <span className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
               <Camera className="w-4 h-4 text-amber-400" /> Evidence Photo Inspection
@@ -1790,7 +1790,7 @@ export default function AuditorVerificationPage() {
 
       {/* AUDITOR ISSUE / ERROR NOTE MODAL */}
       <Dialog open={isIssueModalOpen} onOpenChange={setIsIssueModalOpen}>
-        <DialogContent className="max-w-xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
+        <DialogContent className="w-[95vw] sm:max-w-xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
           {/* Header Bar */}
           <div className="h-2.5 bg-gradient-to-r from-rose-500 via-rose-600 to-red-500 shrink-0" />
           
@@ -1898,7 +1898,7 @@ export default function AuditorVerificationPage() {
 
       {/* AUDITOR APPROVAL CONFIRMATION MODAL */}
       <Dialog open={isConfirmApprovalModalOpen} onOpenChange={setIsConfirmApprovalModalOpen}>
-        <DialogContent className="max-w-xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
+        <DialogContent className="w-[95vw] sm:max-w-xl p-0 max-h-[90dvh] flex flex-col gap-0 overflow-hidden bg-white border border-slate-200 rounded-3xl shadow-2xl">
           {/* Header Bar */}
           <div className="h-2.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-green-500 shrink-0" />
           

@@ -406,7 +406,7 @@ export default function PacketQrScannerModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent 
-        className="w-[96vw] max-w-lg sm:max-w-xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col p-3.5 sm:p-5 md:p-6 bg-white/95 backdrop-blur-2xl border border-white/60 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="w-[96vw] sm:max-w-xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col p-3.5 sm:p-5 md:p-6 bg-white/95 backdrop-blur-2xl border border-white/60 shadow-2xl rounded-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Scoped CSS for html5-qrcode responsive scaling on mobile & tablets */}
         <style dangerouslySetInnerHTML={{ __html: `

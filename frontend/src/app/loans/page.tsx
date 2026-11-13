@@ -1042,7 +1042,7 @@ export default function PawnesPage() {
     setClientPhone(cPhone);
     setClientAddress(cAddress);
     
-    // Parse description for bill prefix and bill no if present
+    // Parse description (or stored bill_no fallback) for bill prefix and bill no
     const desc = pawn.description || '';
     const match = desc.match(/^([A-Za-z0-9]+)\s+([0-9]+)\s*\|?\s*(.*)/);
     if (match) {
@@ -1050,6 +1050,14 @@ export default function PawnesPage() {
       setBillNo(match[2]);
       setDescription(match[3] || desc);
     } else {
+      const cleanBillFallback = stripBranchPrefix(pawn.bill_no || '');
+      const billMatch = cleanBillFallback.match(/^([A-Za-z0-9]+)\s+([0-9]+)$/);
+      if (billMatch) {
+        if (BILL_PREFIXES.includes(billMatch[1])) setBillPrefix(billMatch[1]);
+        setBillNo(billMatch[2]);
+      } else {
+        setBillNo(cleanBillFallback);
+      }
       setDescription(desc);
     }
 
@@ -1109,6 +1117,7 @@ export default function PawnesPage() {
     try {
       const cleanBill = billNo.trim();
       if (!cleanBill) {
+        toast.dismiss(toastId);
         toast.error('Bill / Ticket number is required', { description: 'Please enter a valid bill number before issuing the loan.' });
         setIsSaving(false);
         return;
@@ -1262,7 +1271,7 @@ export default function PawnesPage() {
     setAmount(String(loanAmount));
     
     // Auto-update description if empty
-    setDescription(prev => prev === '' ? `${goldPurity} Gold Collateral, ${weight} mg` : prev);
+    setDescription(prev => prev === '' ? `${goldPurity} Gold Collateral, ${weight} g` : prev);
 
     toast.success('Gold valuation applied!', {
       description: `Appraisal: Rs. ${appraisedVal.toLocaleString()} | Loan Amount: Rs. ${loanAmount.toLocaleString()}`
@@ -4032,7 +4041,7 @@ function PawnDetailsModal({
 
   return (
     <Dialog open={!!pawn} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-4xl max-w-4xl w-[95vw] max-h-[92dvh] border border-slate-700 shadow-2xl rounded-3xl p-5 bg-slate-950 text-slate-100 flex flex-col gap-0 overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl w-[95vw] max-h-[92dvh] border border-slate-700 shadow-2xl rounded-3xl p-5 bg-slate-950 text-slate-100 flex flex-col gap-0 overflow-y-auto overflow-x-hidden">
         {/* Modal Header */}
         <DialogHeader className="border-b border-slate-800 pb-3 pr-10 shrink-0">
           <div className="flex items-center justify-between flex-wrap gap-3">
@@ -4590,7 +4599,7 @@ function RedemptionReceiptModal({
           .right { text-align: right; }
           .bold { font-weight: bold; }
           .sep { border-top: 1px dashed #000; margin: 8px 0; }
-          .row { display: flex; justify-space-between; margin-bottom: 4px; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
         </style>
       </head>
       <body>
@@ -4629,7 +4638,7 @@ function RedemptionReceiptModal({
 
   return (
     <Dialog open={!!data} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="sm:max-w-5xl max-w-5xl w-[95vw] max-h-[94vh] border border-slate-700 shadow-2xl rounded-3xl p-5 bg-slate-950 text-slate-100 flex flex-col overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl w-[95vw] max-h-[94vh] border border-slate-700 shadow-2xl rounded-3xl p-5 bg-slate-950 text-slate-100 flex flex-col overflow-y-auto overflow-x-hidden">
         
         {/* Modal Header */}
         <DialogHeader className="border-b border-slate-800 pb-3 shrink-0">

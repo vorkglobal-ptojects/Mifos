@@ -711,9 +711,17 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
       setShowSuggestions(false);
       return;
     }
-    const matches = stockCustomers.filter(c => 
-      c.name.toLowerCase().includes(val.toLowerCase())
-    );
+    const activeBranchFilter =
+      selectedBranches.length === 1 && selectedBranches[0] !== 'ALL'
+        ? normalizeBranchId(selectedBranches[0])
+        : (branchId && normalizeBranchId(branchId) !== 'HQ' ? normalizeBranchId(branchId) : '');
+    const matches = stockCustomers.filter(c => {
+      if (!c.name.toLowerCase().includes(val.toLowerCase())) return false;
+      if (activeBranchFilter && activeBranchFilter !== 'HQ' && c.branch_id) {
+        return normalizeBranchId(c.branch_id) === activeBranchFilter;
+      }
+      return true;
+    });
     setNameSuggestions(matches);
     setShowSuggestions(matches.length > 0);
   };
@@ -737,8 +745,13 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
       return;
     }
 
-    const effectiveBranch = normalizeBranchId(branchId || 'HQ');
+    const isEdit = isEditingCustomer && selectedCustomer?.id && !String(selectedCustomer.id).startsWith('pawn-');
+    const resolvedBranchRaw = isEdit
+      ? (selectedCustomer?.branch_id || (selectedBranches.length === 1 && selectedBranches[0] !== 'ALL' ? selectedBranches[0] : '') || branchId || 'HQ')
+      : ((selectedBranches.length === 1 && selectedBranches[0] !== 'ALL' ? selectedBranches[0] : '') || branchId || 'HQ');
+    const effectiveBranch = normalizeBranchId(resolvedBranchRaw);
     const payload = {
+      ...(isEdit ? { id: selectedCustomer.id } : {}),
       name: custName.trim(),
       address: custAddress.trim(),
       address_2: custAddress2.trim() || null,
@@ -749,7 +762,6 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
     };
 
     try {
-      const isEdit = isEditingCustomer && selectedCustomer?.id && !String(selectedCustomer.id).startsWith('pawn-');
       const url = isEdit ? `/api/stock-customers/${selectedCustomer.id}` : '/api/stock-customers';
       const method = isEdit ? 'PUT' : 'POST';
 

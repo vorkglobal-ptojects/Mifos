@@ -129,6 +129,14 @@ export async function POST(request: Request) {
 
     const isPostHead = !session.branchId || normalizeBranchId(session.branchId) === 'HQ' || session.branchId.toUpperCase() === 'HEAD OFFICE';
     if (!isPostHead && session.role !== 'ADMIN') {
+      const requestedNorm = branch_id ? normalizeBranchId(branch_id) : normalizeBranchId(session.branchId);
+      const sessionNorm = normalizeBranchId(session.branchId);
+      if (requestedNorm && sessionNorm && requestedNorm !== sessionNorm) {
+        return NextResponse.json(
+          { error: `Forbidden. Your account (${sessionNorm}) cannot save a ledger for branch ${requestedNorm}.` },
+          { status: 403 }
+        );
+      }
       branch_id = session.branchId;
     }
     if (session.user?.email) {
@@ -327,6 +335,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       ledger_id: ledgerId,
+      branch_id: canonicalBranchId,
       calculated_closing_cash: calculatedClosingCash,
       calculated_closing_capital: calculatedClosingCapital,
       cash_status: cashMismatch ? 'MISMATCH' : 'OK',

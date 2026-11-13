@@ -12,15 +12,17 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const branchFilter = searchParams.get('branch') || (session.role === 'TELLER' ? session.trustedBranchId : 'ALL');
+    const rawBranchParam = searchParams.get('branch');
+    const branchFilter = session.role === 'TELLER'
+      ? normalizeBranchId(session.trustedBranchId)
+      : (rawBranchParam && rawBranchParam !== 'ALL' ? normalizeBranchId(rawBranchParam) : 'ALL');
 
     // 1. Fetch Latest Branch Cash Positions from daily_ledgers
-    const today = new Date().toISOString().split('T')[0];
     let ledgersQuery = adminSupabase
       .from('daily_ledgers')
       .select('branch_id, ledger_date, closing_balance, actual_cash_count, variance, status, updated_at')
       .order('ledger_date', { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (branchFilter !== 'ALL') {
       ledgersQuery = ledgersQuery.eq('branch_id', branchFilter);
