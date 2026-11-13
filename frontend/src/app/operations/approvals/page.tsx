@@ -22,6 +22,19 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const ITEM_TYPE_OPTIONS = [
+  { code: 'CH', label: 'Chain' },
+  { code: 'PP', label: 'Pendant' },
+  { code: 'PR', label: 'Ring' },
+  { code: 'NL', label: 'Necklace' },
+  { code: 'EAR', label: 'Earrings' },
+  { code: 'BRC', label: 'Bracelet' },
+  { code: 'BKT', label: 'Bangles' },
+  { code: 'BGL', label: 'Bangle' },
+  { code: 'COIN', label: 'Gold Coin / Bar' },
+  { code: 'OTHER', label: 'Other' }
+];
+
 interface PawnItem {
   id: string;
   item_type?: string;
@@ -2094,6 +2107,26 @@ export default function ApprovalsPage() {
                                               {CANONICAL_BRANCHES.map((b) => (
                                                 <option key={b.id} value={b.id}>
                                                   {b.id} - {b.name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          ) : key === 'item_type' || key === 'itemType' ? (
+                                            <select
+                                              value={strVal}
+                                              onChange={(e) =>
+                                                setEditableProposedData((prev) => ({
+                                                  ...prev,
+                                                  [key]: e.target.value
+                                                }))
+                                              }
+                                              className="w-full min-w-[140px] px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                                            >
+                                              {strVal && !ITEM_TYPE_OPTIONS.some((opt) => opt.code === strVal) && (
+                                                <option value={strVal}>{strVal}</option>
+                                              )}
+                                              {ITEM_TYPE_OPTIONS.map((opt) => (
+                                                <option key={opt.code} value={opt.code}>
+                                                  {opt.code} - {opt.label}
                                                 </option>
                                               ))}
                                             </select>

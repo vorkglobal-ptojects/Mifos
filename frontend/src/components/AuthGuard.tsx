@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -11,37 +10,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
-    const refreshToken = localStorage.getItem('refresh_token');
     const storedUser = localStorage.getItem('user');
 
     const isAuth = Boolean(token && storedUser);
-
-    if (isAuth && token && refreshToken && pathname !== '/login') {
-      supabase.auth.getSession().then(({ data }) => {
-        if (!data?.session) {
-          supabase.auth.setSession({ access_token: token, refresh_token: refreshToken })
-            .catch((err: any) => {
-              if (err?.message?.includes('Refresh Token') || err?.name === 'AuthApiError' || err?.status === 400) {
-                localStorage.removeItem('auth_token');
-                localStorage.removeItem('refresh_token');
-                localStorage.removeItem('sb-access-token');
-                localStorage.removeItem('sb-refresh-token');
-                localStorage.removeItem('user');
-                supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-                router.replace('/login?expired=true');
-              }
-            });
-        }
-      }).catch((err: any) => {
-        if (err?.message?.includes('Refresh Token') || err?.name === 'AuthApiError') {
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('refresh_token');
-          localStorage.removeItem('user');
-          supabase.auth.signOut({ scope: 'local' }).catch(() => {});
-          router.replace('/login?expired=true');
-        }
-      });
-    }
 
     setTimeout(() => {
       setIsAuthenticated(prev => (prev !== isAuth ? isAuth : prev));
