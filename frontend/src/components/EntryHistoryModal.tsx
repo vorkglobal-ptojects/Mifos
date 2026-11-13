@@ -208,7 +208,7 @@ export function EntryHistoryModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl w-[95vw] h-[92vh] max-h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-50 border-slate-200 text-slate-800 shadow-2xl rounded-2xl">
+      <DialogContent className="sm:max-w-6xl w-[95vw] h-[92vh] max-h-[92vh] flex flex-col p-0 overflow-hidden bg-slate-50 border-slate-200 text-slate-800 shadow-2xl rounded-2xl">
         {/* Header Bar */}
         <DialogHeader className="px-6 py-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white shrink-0 border-b border-slate-700">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
