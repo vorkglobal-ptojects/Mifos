@@ -48,6 +48,7 @@ export default function LoginPage() {
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('sb-access-token');
         localStorage.removeItem('sb-refresh-token');
+        localStorage.removeItem('last_activity');
         document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
         document.cookie = 'auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
         document.cookie = 'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
@@ -256,6 +257,7 @@ export default function LoginPage() {
       }
       localStorage.setItem('user_branch', effectiveBranch);
       localStorage.setItem('user_role', userRole);
+      localStorage.setItem('last_activity', Date.now().toString());
       const cleanDisplayName = userRole === 'ADMIN' ? 'Admin' : (authUser?.user_metadata?.full_name || authUser?.email?.split('@')[0] || 'User');
       localStorage.setItem('user_name', cleanDisplayName);
       localStorage.setItem('user', JSON.stringify({
