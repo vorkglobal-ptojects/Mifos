@@ -7,6 +7,7 @@ import {
   ChangeRecordData
 } from '@/lib/change-requests';
 import { normalizeBranchId } from '@/lib/branch-mapping';
+import { CUSTOMER_DELETE_BLOCK_MESSAGE } from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -171,6 +172,15 @@ export async function POST(request: Request) {
       return NextResponse.json({
         error: 'Missing required fields: entity_type, action_type, entity_id, and a mandatory reason are required.'
       }, { status: 400 });
+    }
+
+    if (
+      String(entity_type).toUpperCase() === 'CLIENT' &&
+      String(action_type).toUpperCase() === 'DELETE'
+    ) {
+      return NextResponse.json({
+        error: CUSTOMER_DELETE_BLOCK_MESSAGE
+      }, { status: 403 });
     }
 
     const targetBranch = normalizeBranchId(branch_id || session.branchId || 'HQ');

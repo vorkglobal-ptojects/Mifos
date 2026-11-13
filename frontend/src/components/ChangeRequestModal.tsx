@@ -49,6 +49,7 @@ export default function ChangeRequestModal({
   // Helper for action label
   const isDelete = actionType === 'DELETE' || actionType === 'VOID_INTEREST';
   const isRestore = actionType === 'RESTORE';
+  const isBlockedClientDelete = entityType === 'CLIENT' && actionType === 'DELETE';
 
   const actionTitle = isDelete 
     ? `Request Deletion / Void (${referenceNo})`
@@ -58,6 +59,10 @@ export default function ChangeRequestModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBlockedClientDelete) {
+      toast.error('Customer deletion is permanently disabled.');
+      return;
+    }
     if (!reason.trim()) {
       toast.error('A clear explanation / reason is mandatory for Manager review.');
       return;
@@ -149,7 +154,22 @@ export default function ChangeRequestModal({
                 <div>Expenses Total: <strong>Rs. {Number(currentData.expenses_total || 0).toLocaleString()}</strong></div>
               </div>
             )}
+
+            {entityType === 'CLIENT' && (
+              <div className="grid grid-cols-2 gap-2 text-slate-600 pt-1 border-t border-slate-200/60">
+                <div className="truncate">Name: <strong>{currentData.first_name || currentData.name || '—'}</strong></div>
+                <div>NIC: <strong>{currentData.national_id || currentData.nic || '—'}</strong></div>
+                <div>Phone: <strong>{currentData.phone || currentData.tp || '—'}</strong></div>
+                <div className="truncate">Address: <strong>{currentData.address || '—'}</strong></div>
+              </div>
+            )}
           </div>
+
+          {isBlockedClientDelete && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">
+              Customer profiles cannot be deleted. Please edit the customer details instead.
+            </div>
+          )}
 
           {/* Form Fields for UPDATE actions */}
           {!isDelete && !isRestore && (
@@ -157,12 +177,31 @@ export default function ChangeRequestModal({
               {entityType === 'PAWN' && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Bill Number</Label>
+                    <Input
+                      placeholder={String(currentData.bill_no || '')}
+                      value={proposedData.bill_no ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, bill_no: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
                     <Label className="text-xs font-bold text-slate-700">Proposed Loan Amount (Rs.)</Label>
                     <Input
                       type="number"
                       placeholder={String(currentData.disbursed_amount || '')}
                       value={proposedData.disbursed_amount ?? ''}
                       onChange={e => setProposedData({ ...proposedData, disbursed_amount: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Appraised Value (Rs.)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.appraised_value || '')}
+                      value={proposedData.appraised_value ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, appraised_value: e.target.value })}
                       className="h-9 rounded-xl text-xs"
                     />
                   </div>
@@ -177,11 +216,48 @@ export default function ChangeRequestModal({
                       className="h-9 rounded-xl text-xs"
                     />
                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Period (Months)</Label>
+                    <Input
+                      type="number"
+                      placeholder={String(currentData.period_months || '3')}
+                      value={proposedData.period_months ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, period_months: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Collateral Description</Label>
+                    <Input
+                      placeholder={String(currentData.description || '')}
+                      value={proposedData.description ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, description: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
                 </div>
               )}
 
               {entityType === 'STOCK' && (
                 <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Bill Number</Label>
+                    <Input
+                      placeholder={String(currentData.bill_no || '')}
+                      value={proposedData.bill_no ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, bill_no: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold text-slate-700">Item Type</Label>
+                    <Input
+                      placeholder={String(currentData.item_type || '')}
+                      value={proposedData.item_type ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, item_type: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-bold text-slate-700">Proposed Stock Price (Rs.)</Label>
                     <Input
@@ -200,6 +276,15 @@ export default function ChangeRequestModal({
                       placeholder={String(currentData.weight || '')}
                       value={proposedData.weight ?? ''}
                       onChange={e => setProposedData({ ...proposedData, weight: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs font-bold text-slate-700">Stock Date</Label>
+                    <Input
+                      type="date"
+                      value={proposedData.date ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, date: e.target.value })}
                       className="h-9 rounded-xl text-xs"
                     />
                   </div>
@@ -308,10 +393,19 @@ export default function ChangeRequestModal({
 
               {entityType === 'CLIENT' && (
                 <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs font-bold text-slate-700">Customer Name (Full / With Initials)</Label>
+                    <Input
+                      placeholder={String(currentData.first_name || currentData.name || '')}
+                      value={proposedData.first_name ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, first_name: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-bold text-slate-700">Corrected NIC Number</Label>
                     <Input
-                      placeholder={String(currentData.national_id || '')}
+                      placeholder={String(currentData.national_id || currentData.nic || '')}
                       value={proposedData.national_id ?? ''}
                       onChange={e => setProposedData({ ...proposedData, national_id: e.target.value })}
                       className="h-9 rounded-xl text-xs"
@@ -320,9 +414,18 @@ export default function ChangeRequestModal({
                   <div className="space-y-1">
                     <Label className="text-xs font-bold text-slate-700">Corrected Phone</Label>
                     <Input
-                      placeholder={String(currentData.phone || '')}
+                      placeholder={String(currentData.phone || currentData.tp || '')}
                       value={proposedData.phone ?? ''}
                       onChange={e => setProposedData({ ...proposedData, phone: e.target.value })}
+                      className="h-9 rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs font-bold text-slate-700">Corrected Address</Label>
+                    <Input
+                      placeholder={String(currentData.address || '')}
+                      value={proposedData.address ?? ''}
+                      onChange={e => setProposedData({ ...proposedData, address: e.target.value })}
                       className="h-9 rounded-xl text-xs"
                     />
                   </div>
@@ -353,7 +456,7 @@ export default function ChangeRequestModal({
             </Button>
             <Button
               type="submit"
-              disabled={loading || !reason.trim()}
+              disabled={loading || !reason.trim() || isBlockedClientDelete}
               size="sm"
               className={isDelete ? "bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5" : "bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5"}
             >

@@ -370,13 +370,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Forbidden. Auditors cannot delete daily ledgers.' }, { status: 403 });
     }
     if (session.role === 'TELLER') {
-      const isTellerHq = !session.branchId || normalizeBranchId(session.branchId) === 'HQ';
-      if (!isTellerHq && normalizeBranchId(ledger.branch_id) !== normalizeBranchId(session.branchId)) {
-        return NextResponse.json({ error: 'Forbidden. You cannot delete a daily ledger belonging to another branch.' }, { status: 403 });
-      }
-      if (ledger.status === 'LOCKED') {
-        return NextResponse.json({ error: 'Forbidden. Tellers cannot delete locked daily ledgers.' }, { status: 403 });
-      }
+      return NextResponse.json({
+        error: 'Direct daily ledger deletion is strictly prohibited for Tellers. Please submit a Change Request Ticket for Manager approval.'
+      }, { status: 403 });
     }
 
     const { error } = await adminSupabase.from('daily_ledgers').delete().eq('id', id);

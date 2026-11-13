@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { getBranchSearchTerms, normalizeBranchId, stripBranchPrefix, extractNumericBillNo, isSameNumericBill } from '@/lib/branch-mapping';
 import { recordAuditLog } from '@/lib/audit-logger';
+import { syncPawnAndStockUpdate } from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -308,70 +309,22 @@ export async function PUT(request: Request) {
     if (withdrawal_date !== undefined) updatePayload.withdrawal_date = withdrawal_date;
     if (withdrawal_reason !== undefined) updatePayload.withdrawal_reason = withdrawal_reason;
     if (withdrawal_notes !== undefined) updatePayload.withdrawal_notes = withdrawal_notes;
-
-    const { data, error } = await adminSupabase
-      .from('stock_items')
-      .update(updatePayload)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[Stock PUT Error]:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (status === 'Withdrawn') {
+      updatePayload.redeemed_by = (session as any)?.profile?.name || session?.user?.email || 'Vault Cashier';
+      updatePayload.redeem_amount = updatePayload.price ?? currentStockItem?.price ?? 0;
     }
 
-    // Sync Pawn status if stock item is Withdrawn or Restored
-    try {
-      const targetBill = data.bill_no || currentStockItem?.bill_no;
-      const targetBranch = data.branch_id || currentStockItem?.branch_id;
-      if (targetBill && targetBranch) {
-        const branchTerms = getBranchSearchTerms(targetBranch);
-        const numericPart = extractNumericBillNo(targetBill);
-        
-        if (status === 'Withdrawn') {
-          // If reason is Pawn Redeemed (Closed), mark pawn as REDEEMED
-          const { data: matchedPawns } = await adminSupabase
-            .from('pawns')
-            .select('id, bill_no, status')
-            .in('branch_id', branchTerms)
-            .ilike('bill_no', `%${numericPart || targetBill}%`)
-            .eq('status', 'ACTIVE')
-            .limit(5);
+    const { stock: syncedStock } = await syncPawnAndStockUpdate({
+      source: 'STOCK',
+      stockId: id,
+      branchId: currentStockItem.branch_id || session.branchId,
+      updates: updatePayload,
+      allowLockedLedger: session.role === 'ADMIN',
+      actorSession: session,
+      reason: withdrawal_reason || 'Direct stock update',
+    });
 
-          const exactPawn = (matchedPawns || []).find((p: any) => isSameNumericBill(p.bill_no, targetBill));
-          if (exactPawn) {
-            await adminSupabase.from('pawns').update({
-              status: 'REDEEMED',
-              redeemed_at: withdrawal_date ? new Date(withdrawal_date).toISOString() : new Date().toISOString(),
-              redeemed_by: (session as any)?.profile?.name || session?.user?.email || 'Vault Cashier',
-              redeem_amount: currentStockItem?.price || data.price || 0
-            }).eq('id', exactPawn.id);
-          }
-        } else if (status === 'Active') {
-          // If restored to Active, restore pawn if it was REDEEMED
-          const { data: matchedPawns } = await adminSupabase
-            .from('pawns')
-            .select('id, bill_no, status')
-            .in('branch_id', branchTerms)
-            .ilike('bill_no', `%${numericPart || targetBill}%`)
-            .eq('status', 'REDEEMED')
-            .limit(5);
-
-          const exactPawn = (matchedPawns || []).find((p: any) => isSameNumericBill(p.bill_no, targetBill));
-          if (exactPawn) {
-            await adminSupabase.from('pawns').update({
-              status: 'ACTIVE',
-              redeemed_at: null,
-              redeemed_by: null,
-              redeem_amount: null
-            }).eq('id', exactPawn.id);
-          }
-        }
-      }
-    } catch (syncErr) {
-      console.warn('[Pawn status sync warning during stock update]:', syncErr);
-    }
+    const data = syncedStock || currentStockItem;
 
     // Record Security Audit Log for Stock operations
     try {
@@ -425,7 +378,8 @@ export async function PUT(request: Request) {
     });
   } catch (err: any) {
     console.error('Stock PUT exception:', err);
-    return NextResponse.json({ error: err.message || 'Failed to update stock item' }, { status: 500 });
+    const msg = err?.message || 'Failed to update stock item';
+    return NextResponse.json({ error: msg }, { status: msg.includes('LOCKED') ? 403 : 500 });
   }
 }
 

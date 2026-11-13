@@ -4,6 +4,7 @@ import { oldSupabase } from '@/lib/old-supabase-server';
 import { recordAuditLog } from '@/lib/audit-logger';
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { getBranchSearchTerms, normalizeBranchId, stripBranchPrefix } from '@/lib/branch-mapping';
+import { syncPawnAndStockDelete } from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,32 +46,35 @@ export async function POST(req: Request) {
     }
     const existingItem = existingItems && existingItems.length > 0 ? existingItems[0] : null;
 
-    // 2. Perform deletion from stock_items by exact ID (or branch-scoped fallback when unique)
+    // 2. Perform synchronized cross-module deletion for main database or legacy delete for oldSupabase
     let deleteResult;
-    if (id) {
-      deleteResult = await client
-        .from('stock_items')
-        .delete()
-        .eq('id', id)
-        .select();
-    } else if (existingItem?.id) {
-      deleteResult = await client
-        .from('stock_items')
-        .delete()
-        .eq('id', existingItem.id)
-        .select();
-    } else if (bill_no && branch_id) {
-      deleteResult = await client
-        .from('stock_items')
-        .delete()
-        .ilike('bill_no', String(bill_no).trim())
-        .in('branch_id', getBranchSearchTerms(normalizeBranchId(String(branch_id))))
-        .select();
-    }
+    if (isOld) {
+      if (id) {
+        deleteResult = await client.from('stock_items').delete().eq('id', id).select();
+      } else if (existingItem?.id) {
+        deleteResult = await client.from('stock_items').delete().eq('id', existingItem.id).select();
+      } else if (bill_no && branch_id) {
+        deleteResult = await client
+          .from('stock_items')
+          .delete()
+          .ilike('bill_no', String(bill_no).trim())
+          .in('branch_id', getBranchSearchTerms(normalizeBranchId(String(branch_id))))
+          .select();
+      }
 
-    if (deleteResult?.error) {
-      console.error("[Stock Delete Error]:", deleteResult.error);
-      return NextResponse.json({ error: deleteResult.error.message }, { status: 500 });
+      if (deleteResult?.error) {
+        console.error("[Stock Delete Error]:", deleteResult.error);
+        return NextResponse.json({ error: deleteResult.error.message }, { status: 500 });
+      }
+    } else {
+      await syncPawnAndStockDelete({
+        branchId: existingItem?.branch_id || branch_id,
+        stockId: existingItem?.id || id,
+        billNo: existingItem?.bill_no || bill_no,
+        allowLockedLedger: session.role === 'ADMIN',
+        actorSession: session,
+        reason: 'Direct stock item delete',
+      });
     }
 
     // 3. Record Audit Log

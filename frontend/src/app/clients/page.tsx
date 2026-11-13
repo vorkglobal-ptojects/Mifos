@@ -86,12 +86,20 @@ export default function ClientsPage() {
   const [userId, setUserId] = useState('');
   const [userRole, setUserRole] = useState('');
   const [editingClient, setEditingClient] = useState<any>(null);
-  const [clientDeleteModal, setClientDeleteModal] = useState<{
+  const [clientChangeModal, setClientChangeModal] = useState<{
     isOpen: boolean;
-    client: any;
+    entityId: string;
+    referenceNo: string;
+    branchId: string;
+    currentData: Record<string, any>;
+    initialProposedData?: Record<string, any>;
   }>({
     isOpen: false,
-    client: null
+    entityId: '',
+    referenceNo: '',
+    branchId: 'HQ',
+    currentData: {},
+    initialProposedData: {},
   });
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
   const [isBranchFilterOpen, setIsBranchFilterOpen] = useState(false);
@@ -509,6 +517,32 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
       return;
     }
 
+    // Maker-Checker: Tellers must submit Customer Profile edits for Manager/Admin approval
+    if (editingClient && userRole === 'TELLER') {
+      const targetBranch = normalizeBranchId(
+        editingClient.branch_id || editingClient.branchId || branchId || 'HQ'
+      );
+      const normNic = normalizeNationalId(nic);
+      const refNic = stripBranchPrefix(
+        editingClient.national_id || editingClient.nationalId || normNic || firstName || 'CLIENT'
+      );
+      setIsOpen(false);
+      setClientChangeModal({
+        isOpen: true,
+        entityId: editingClient.id,
+        referenceNo: refNic,
+        branchId: targetBranch,
+        currentData: editingClient,
+        initialProposedData: {
+          first_name: firstName.trim(),
+          national_id: normNic,
+          phone: formattedPhone,
+          address: (address || '').trim(),
+        },
+      });
+      return;
+    }
+
     if (!nicFrontImage || !nicBackImage || !signatureImage) {
       toast.error("capture the pictures", {
         description: "Please capture NIC Front, NIC Back, and Signature pictures before proceeding."
@@ -611,7 +645,11 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
         });
       }
 
-      await loadClients(undefined, true);
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
+      await Promise.all([loadClients(undefined, true), loadCustomerData(true)]);
     } catch(err: any) {
       console.error(err);
       toast.error("Error saving customer", {
@@ -648,24 +686,8 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
     setIsOpen(true);
   };
 
-  const handleDelete = async (client: any) => {
-    if (userRole === 'TELLER') {
-      setClientDeleteModal({ isOpen: true, client });
-      return;
-    }
-    if (!confirm(`Are you sure you want to remove ${client.first_name || client.firstName}?`)) return;
-
-    const toastId = toast.loading("Deleting customer...");
-    try {
-      const headers = getAuthHeaders();
-
-      const res = await fetch(`/api/clients/${client.id}`, { method: 'DELETE', headers });
-      if (!res.ok) throw new Error("Delete failed");
-      toast.success("Customer removed successfully", { id: toastId });
-      loadClients();
-    } catch (err) {
-      toast.error("Could not delete customer", { id: toastId });
-    }
+  const handleDelete = async (_client: any) => {
+    toast.error('Customer records cannot be deleted.');
   };
 
   // Existing Shop Bills Customer operations & logic
@@ -750,6 +772,31 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
       ? (selectedCustomer?.branch_id || (selectedBranches.length === 1 && selectedBranches[0] !== 'ALL' ? selectedBranches[0] : '') || branchId || 'HQ')
       : ((selectedBranches.length === 1 && selectedBranches[0] !== 'ALL' ? selectedBranches[0] : '') || branchId || 'HQ');
     const effectiveBranch = normalizeBranchId(resolvedBranchRaw);
+
+    // Maker-Checker: Tellers cannot directly edit existing customer profiles
+    if (isEdit && userRole === 'TELLER') {
+      setShowAddCustomerModal(false);
+      setClientChangeModal({
+        isOpen: true,
+        entityId: selectedCustomer.id,
+        referenceNo: custNic.trim() || selectedCustomer.nic || custName.trim() || 'CUSTOMER',
+        branchId: effectiveBranch,
+        currentData: {
+          ...selectedCustomer,
+          first_name: selectedCustomer.name,
+          national_id: selectedCustomer.nic,
+          phone: selectedCustomer.tp,
+        },
+        initialProposedData: {
+          first_name: custName.trim(),
+          national_id: custNic.trim(),
+          phone: custTp.trim(),
+          address: custAddress.trim(),
+        },
+      });
+      return;
+    }
+
     const payload = {
       ...(isEdit ? { id: selectedCustomer.id } : {}),
       name: custName.trim(),
@@ -783,38 +830,18 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
 
       toast.success(isEdit ? "Customer profile updated successfully!" : "Customer profile created successfully!");
       setShowAddCustomerModal(false);
-      await loadCustomerData(true);
-      await loadClients(undefined, true);
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
+      await Promise.all([loadClients(undefined, true), loadCustomerData(true)]);
     } catch (err: any) {
       toast.error("Error saving customer profile: " + err.message);
     }
   };
 
-  const handleDeleteCustomer = async (id: string) => {
-    if (userRole === 'TELLER') {
-      const targetCust = clients.find((c: any) => c.id === id);
-      setClientDeleteModal({ isOpen: true, client: targetCust || { id } });
-      return;
-    }
-    if (!confirm("Are you sure you want to delete this customer profile?")) return;
-    try {
-      if (isUsingSupabase) {
-        const headers = getAuthHeaders();
-        const res = await fetch(`/api/stock-customers/${id}`, { method: 'DELETE', headers });
-        if (!res.ok) throw new Error("Delete failed");
-        toast.success("Customer profile deleted from Supabase!");
-      } else {
-        const local = localStorage.getItem('local_stock_customers');
-        if (local) {
-          const list = JSON.parse(local).filter((c: any) => c.id !== id);
-          localStorage.setItem('local_stock_customers', JSON.stringify(list));
-        }
-        toast.success("Customer profile deleted (Local Storage)!");
-      }
-      loadCustomerData(true);
-    } catch (err: any) {
-      toast.error("Error deleting customer: " + err.message);
-    }
+  const handleDeleteCustomer = async (_id: string) => {
+    toast.error('Customer records cannot be deleted.');
   };
 
   const filteredClients = clients
@@ -1748,9 +1775,6 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
                         <DropdownMenuItem onClick={() => openAgreementDialog(client)} className="gap-3 px-4 py-3 rounded-xl font-bold text-slate-700 hover:bg-amber-50 hover:text-amber-900 transition-colors cursor-pointer outline-none">
                           <FileText className="w-4 h-4 text-blue-600" /> Loan Agreement
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleDelete(client)} className="gap-3 px-4 py-3 rounded-xl font-bold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer">
-                          <Trash2 className="w-4 h-4" /> Delete Record
-                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>
@@ -1861,15 +1885,6 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
                                 title="Edit Customer Profile"
                               >
                                 <Edit className="w-3.5 h-3.5" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteCustomer(cust.id)}
-                                className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 rounded-lg"
-                                title="Delete Customer Profile"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </div>
                           </TableCell>
@@ -2274,6 +2289,27 @@ localStorage.setItem(CACHE_KEY, JSON.stringify(allCustomers));
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Maker-Checker Change Request Modal for Teller Customer Profile Edits */}
+      <ChangeRequestModal
+        isOpen={clientChangeModal.isOpen}
+        onClose={() => setClientChangeModal(prev => ({ ...prev, isOpen: false }))}
+        entityType="CLIENT"
+        actionType="UPDATE"
+        entityId={clientChangeModal.entityId}
+        referenceNo={clientChangeModal.referenceNo}
+        branchId={clientChangeModal.branchId}
+        currentData={clientChangeModal.currentData}
+        initialProposedData={clientChangeModal.initialProposedData}
+        onSubmitted={() => {
+          try {
+            localStorage.removeItem('local_stock_customers');
+            localStorage.removeItem('local_stock_customers_timestamp');
+          } catch {}
+          loadClients(undefined, true);
+          loadCustomerData(true);
+        }}
+      />
 
     </div>
   )

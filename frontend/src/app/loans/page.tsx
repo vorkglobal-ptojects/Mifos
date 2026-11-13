@@ -414,7 +414,10 @@ export default function PawnesPage() {
   const getCustomerName = (pawn: any): string => {
     if (!pawn) return '';
 
+    const pBranch = normalizeBranchId(pawn.branch_id || pawn.branchId || '');
     const pawnCidStr = String(pawn.client_id || '').toLowerCase().trim();
+    const scopedLookup = (key: string) =>
+      (key ? ((pBranch ? clientsMap[`${pBranch}::${key}`] : '') || clientsMap[key]) : '');
 
     const directName = pawn.client_name || pawn.customer_name || pawn.customerName || pawn.clientName;
     if (directName && !isNicFormat(directName)) return directName;
@@ -428,17 +431,23 @@ export default function PawnesPage() {
       if (cName && !isNicFormat(cName)) return cName;
     }
 
-    if (pawnCidStr && clientsMap[pawnCidStr]) {
-      const mappedName = clientsMap[pawnCidStr];
-      if (mappedName && !isNicFormat(mappedName)) return mappedName;
+    const mappedFromCid = scopedLookup(pawnCidStr);
+    if (mappedFromCid && !isNicFormat(mappedFromCid)) {
+      return mappedFromCid;
     }
 
     if (clientsList && clientsList.length > 0 && pawnCidStr) {
-      const matchedClient = clientsList.find((c: any) => {
+      const isIdOrNicMatch = (c: any) => {
         const cId = String(c.id || '').toLowerCase().trim();
         const cNic = String(c.nationalId || c.national_id || c.nic || '').toLowerCase().trim();
-        return cId === pawnCidStr || cNic === pawnCidStr;
-      });
+        const cNum = String(c.clientNumber || c.client_number || '').toLowerCase().trim();
+        return cId === pawnCidStr || cNic === pawnCidStr || (cNum && cNum === pawnCidStr);
+      };
+      const matchedClient =
+        (pBranch
+          ? clientsList.find((c: any) => normalizeBranchId(c.branchId || c.branch_id || '') === pBranch && isIdOrNicMatch(c))
+          : null) ||
+        clientsList.find(isIdOrNicMatch);
       if (matchedClient) {
         const matchedName = `${matchedClient.firstName || matchedClient.first_name || ''} ${matchedClient.lastName || matchedClient.last_name || ''}`.trim() || matchedClient.name || matchedClient.full_name;
         if (matchedName && !isNicFormat(matchedName)) return matchedName;
@@ -486,7 +495,13 @@ export default function PawnesPage() {
         setClientsList(data);
         const map: Record<string, string> = {};
         const nMap: Record<string, string> = {};
+        const setScopedKey = (target: Record<string, string>, br: string, key: string, value: string) => {
+          if (!key || !value) return;
+          if (br) target[`${br}::${key}`] = value;
+          if (!target[key]) target[key] = value;
+        };
         data.forEach(c => {
+          const cBr = normalizeBranchId(c.branchId || c.branch_id || '');
           const rawName = `${c.firstName || c.first_name || ''} ${c.lastName || c.last_name || ''}`.trim();
           const name = rawName || c.name || c.full_name || c.customer_name || c.client_name || 'Client';
           const rawNic = String(c.nationalId || c.national_id || c.nic || c.id || '').trim();
@@ -494,35 +509,37 @@ export default function PawnesPage() {
           const phone = String(c.phone || c.mobile || '').replace(/\D/g, '');
 
           if (rawNic) {
-            map[rawNic.toLowerCase()] = name;
-            nMap[rawNic.toLowerCase()] = cleanNic || rawNic;
+            const k = rawNic.toLowerCase();
+            setScopedKey(map, cBr, k, name);
+            setScopedKey(nMap, cBr, k, cleanNic || rawNic);
             const rDig = rawNic.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (rDig) map[rDig] = name;
+            if (rDig) setScopedKey(map, cBr, rDig, name);
           }
           if (cleanNic) {
-            map[cleanNic.toLowerCase()] = name;
-            nMap[cleanNic.toLowerCase()] = cleanNic;
+            const k = cleanNic.toLowerCase();
+            setScopedKey(map, cBr, k, name);
+            setScopedKey(nMap, cBr, k, cleanNic);
             const cDig = cleanNic.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (cDig) map[cDig] = name;
+            if (cDig) setScopedKey(map, cBr, cDig, name);
           }
           if (phone && phone.length >= 7) {
-            map[phone] = name;
-            if (phone.startsWith('0')) map[phone.slice(1)] = name;
+            setScopedKey(map, cBr, phone, name);
+            if (phone.startsWith('0')) setScopedKey(map, cBr, phone.slice(1), name);
           }
           if (c.id != null) {
             const cidStr = String(c.id).toLowerCase().trim();
-            map[cidStr] = name;
-            nMap[cidStr] = cleanNic || rawNic;
+            setScopedKey(map, cBr, cidStr, name);
+            setScopedKey(nMap, cBr, cidStr, cleanNic || rawNic);
           }
           if (c.clientNumber != null) {
             const cNumStr = String(c.clientNumber).toLowerCase().trim();
-            map[cNumStr] = name;
-            nMap[cNumStr] = cleanNic || rawNic;
+            setScopedKey(map, cBr, cNumStr, name);
+            setScopedKey(nMap, cBr, cNumStr, cleanNic || rawNic);
           }
           if (c.client_number != null) {
             const cNumStr = String(c.client_number).toLowerCase().trim();
-            map[cNumStr] = name;
-            nMap[cNumStr] = cleanNic || rawNic;
+            setScopedKey(map, cBr, cNumStr, name);
+            setScopedKey(nMap, cBr, cNumStr, cleanNic || rawNic);
           }
         });
         setClientsMap(map);
@@ -687,11 +704,19 @@ export default function PawnesPage() {
     const cleanVal = val.toLowerCase().trim();
     const cleanValDigits = cleanVal.replace(/[^a-z0-9]/g, '');
     const cleanValNumbers = cleanVal.replace(/\D/g, '');
-    let matchedName = clientsMap[cleanVal] || (cleanValDigits ? clientsMap[cleanValDigits] : '') || '';
+    const curBranch = normalizeBranchId(branchId || '');
+    const scopedNameLookup = (k: string) => (k ? ((curBranch ? clientsMap[`${curBranch}::${k}`] : '') || clientsMap[k]) : '');
+    let matchedName = scopedNameLookup(cleanVal) || (cleanValDigits ? scopedNameLookup(cleanValDigits) : '') || '';
     let matchedClient: any = null;
 
     if (cleanVal && clientsList.length > 0) {
-      matchedClient = clientsList.find(c => {
+      const orderedClients = curBranch
+        ? [
+            ...clientsList.filter(c => normalizeBranchId(c.branchId || c.branch_id || '') === curBranch),
+            ...clientsList.filter(c => normalizeBranchId(c.branchId || c.branch_id || '') !== curBranch),
+          ]
+        : clientsList;
+      matchedClient = orderedClients.find(c => {
         const rawNic = String(c.nationalId || c.national_id || c.nic || '').toLowerCase().trim();
         const cleanNic = stripBranchPrefix(rawNic).toLowerCase();
         const rawNicDigits = rawNic.replace(/[^a-z0-9]/g, '');
@@ -1021,17 +1046,25 @@ export default function PawnesPage() {
     if (pawn.branch_id) setBranchId(pawn.branch_id);
     const cid = pawn.client_id || '';
     setClientId(cid);
-    
-    let resolved = clientsMap[cid.toLowerCase()] || '';
+    const pBr = normalizeBranchId(pawn.branch_id || pawn.branchId || branchId || '');
+    const cidLower = cid.toLowerCase().trim();
+
+    let resolved = (pBr ? clientsMap[`${pBr}::${cidLower}`] : '') || clientsMap[cidLower] || '';
     let cPhone = '';
     let cAddress = '';
 
     if (pawn.clients) {
-      resolved = `${pawn.clients.firstName || ''} ${pawn.clients.lastName || ''}`.trim() || resolved;
+      resolved = `${pawn.clients.firstName || pawn.clients.first_name || ''} ${pawn.clients.lastName || pawn.clients.last_name || ''}`.trim() || resolved;
       cPhone = pawn.clients.phone || '';
       cAddress = pawn.clients.address || pawn.clients.address_line1 || '';
     } else {
-      const matchedClient = clientsList.find(c => String(c.id).toLowerCase() === cid.toLowerCase() || String(c.nationalId || c.national_id || '').toLowerCase() === cid.toLowerCase());
+      const matchesCid = (c: any) =>
+        String(c.id).toLowerCase() === cidLower ||
+        String(c.nationalId || c.national_id || '').toLowerCase() === cidLower;
+      const matchedClient =
+        (pBr
+          ? clientsList.find(c => normalizeBranchId(c.branchId || c.branch_id || '') === pBr && matchesCid(c))
+          : null) || clientsList.find(matchesCid);
       if (matchedClient) {
         cPhone = matchedClient.phone || '';
         cAddress = matchedClient.address || matchedClient.address_line1 || '';
@@ -1099,8 +1132,19 @@ export default function PawnesPage() {
     // Intercept Teller edit mutations to route through Change Request system
     if (editingPawn && userRole === 'TELLER') {
       const cleanBill = billNo.trim();
-      const finalBillNo = cleanBill ? (billPrefix ? `${billPrefix} ${cleanBill}` : cleanBill) : editingPawn.bill_no;
+      const prefixUpper = billPrefix.toUpperCase();
+      let finalBillNo = editingPawn.bill_no || '';
+      if (cleanBill) {
+        if (cleanBill.toUpperCase().startsWith(prefixUpper + ' ')) {
+          finalBillNo = cleanBill;
+        } else if (cleanBill.toUpperCase().startsWith(prefixUpper)) {
+          finalBillNo = `${billPrefix} ${cleanBill.substring(prefixUpper.length).trim()}`;
+        } else {
+          finalBillNo = billPrefix ? `${billPrefix} ${cleanBill}` : cleanBill;
+        }
+      }
       openChangeRequest(editingPawn, 'UPDATE', {
+        bill_no: finalBillNo,
         disbursed_amount: amount,
         appraised_value: editingPawn.appraised_value || appraisal || amount,
         weight_grams: weightGrams,
@@ -1223,7 +1267,11 @@ export default function PawnesPage() {
       toast.success(editingPawn ? 'Pawn ticket updated!' : 'Pawn ticket created & synced to vault stock!', { id: toastId });
       setIsOpen(false);
       resetForm();
-      await Promise.all([loadPawns(), loadClients()]);
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
+      await Promise.all([loadPawns(), loadClients(true)]);
 
       // Automatically open official Printable Pawn Agreement Receipt Modal
       if (!editingPawn && savedData) {
@@ -1246,6 +1294,10 @@ export default function PawnesPage() {
       });
       if (!res.ok) throw new Error('Delete failed');
       toast.success('Pawn ticket deleted', { id: toastId });
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
       loadPawns();
     } catch (err) {
       toast.error('Could not delete ticket', { id: toastId });
@@ -1577,8 +1629,9 @@ export default function PawnesPage() {
     // NIC Number matching (supports mapped NIC, display NIC, client join NIC, client ID, and normalized alphanumeric)
     const cleanId = String(p.client_id || '').toLowerCase().trim();
     const displayNic = String(getClientNic(p) || '').toLowerCase();
+    const pBranch = normalizeBranchId(p.branch_id || p.branchId || '');
     const rawNic = String(p.clients?.national_id || p.clients?.nationalId || p.clients?.nic || '').toLowerCase();
-    const mapNic = String(clientsNicMap[cleanId] || '').toLowerCase();
+    const mapNic = String((pBranch ? clientsNicMap[`${pBranch}::${cleanId}`] : '') || clientsNicMap[cleanId] || '').toLowerCase();
     const nicMatches = (
       displayNic.includes(searchLower) ||
       rawNic.includes(searchLower) ||
@@ -1592,7 +1645,7 @@ export default function PawnesPage() {
       ))
     );
 
-    const clientName = (getCustomerName(p) || clientsMap[cleanId] || p.clients?.first_name || p.clients?.firstName || p.clients?.name || '').toLowerCase();
+    const clientName = (getCustomerName(p) || (pBranch ? clientsMap[`${pBranch}::${cleanId}`] : '') || clientsMap[cleanId] || p.clients?.first_name || p.clients?.firstName || p.clients?.name || '').toLowerCase();
     const clientPhone = String(p.clients?.phone || p.phone || '').toLowerCase();
     const description = String(p.description || '').toLowerCase();
     const id = String(p.id || '').toLowerCase();
@@ -3090,7 +3143,7 @@ export default function PawnesPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400 text-sm">Customer:</span>
-                        <span className="text-sm font-bold text-emerald-400">{clientsMap[redeemingPawn.client_id?.toLowerCase()] || redeemingPawn.client_id}</span>
+                        <span className="text-sm font-bold text-emerald-400">{getCustomerName(redeemingPawn) || redeemingPawn.client_id}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400 text-sm">Description:</span>
@@ -3615,14 +3668,20 @@ function PawnDetailsModal({
   const resolveClientDetails = (p: any) => {
     if (!p) return { name: '', address: '', nic: '', phone: '' };
 
+    const pBr = normalizeBranchId(p.branch_id || p.branchId || '');
     const pawnCidStr = String(p.client_id || '').toLowerCase().trim();
 
-    const clientObj = clientsList?.find((c: any) => {
+    const isClientMatch = (c: any) => {
       const cId  = String(c.id || '').toLowerCase().trim();
       const cNic = String(c.nationalId || c.national_id || c.nic || '').toLowerCase().trim();
       const cNum = String(c.clientNumber || c.client_number || '').toLowerCase().trim();
       return (cId && cId === pawnCidStr) || (cNic && cNic === pawnCidStr) || (cNum && cNum === pawnCidStr);
-    });
+    };
+
+    const clientObj =
+      (pBr
+        ? clientsList?.find((c: any) => normalizeBranchId(c.branchId || c.branch_id || '') === pBr && isClientMatch(c))
+        : null) || clientsList?.find(isClientMatch);
 
     const cObjName = clientObj
       ? (`${clientObj.firstName || clientObj.first_name || ''} ${clientObj.lastName || clientObj.last_name || ''}`.trim() || clientObj.name || clientObj.full_name || clientObj.customer_name)
@@ -3632,7 +3691,8 @@ function PawnDetailsModal({
       (p.clients ? (`${p.clients.firstName || p.clients.first_name || ''} ${p.clients.lastName || p.clients.last_name || ''}`.trim() || p.clients.name || p.clients.full_name) : '') ||
       (p.client ? (`${p.client.firstName || p.client.first_name || ''} ${p.client.lastName || p.client.last_name || ''}`.trim() || p.client.name || p.client.full_name) : '');
 
-    const name = pName || (pawnCidStr && clientsMap[pawnCidStr]) || cObjName || '';
+    const scopedMapName = pawnCidStr ? ((pBr ? clientsMap[`${pBr}::${pawnCidStr}`] : '') || clientsMap[pawnCidStr]) : '';
+    const name = pName || scopedMapName || cObjName || '';
 
     const address = p.client_address || p.address || clientObj?.address || clientObj?.address_line1 || p.clients?.address || p.client?.address || '';
 

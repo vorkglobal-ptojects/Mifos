@@ -9,6 +9,7 @@ import {
   Layers, FileText
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import ChangeRequestModal from "@/components/ChangeRequestModal";
 
 interface TransactionRow {
   id: string;
@@ -106,6 +107,13 @@ function MainLedgerContent() {
   // User State
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isHqUser, setIsHqUser] = useState(false);
+  const [ledgerDeleteModal, setLedgerDeleteModal] = useState<{
+    isOpen: boolean;
+    ledger: any;
+  }>({
+    isOpen: false,
+    ledger: null,
+  });
 
   // Controls
   const [selectedBranch, setSelectedBranch] = useState(() => {
@@ -708,7 +716,22 @@ function MainLedgerContent() {
     handleTabSwitch('entry');
   };
 
-  const handleDeleteLedger = async (id: string, date: string) => {
+  const handleDeleteLedger = async (ledger: any) => {
+    const id = ledger?.id;
+    const date = ledger?.ledger_date || '';
+    if (!id) return;
+
+    const effectiveRole = String(
+      currentUser?.role ||
+      (typeof window !== 'undefined' ? localStorage.getItem('user_role') : '') ||
+      ''
+    ).toUpperCase().trim();
+
+    if (effectiveRole === 'TELLER') {
+      setLedgerDeleteModal({ isOpen: true, ledger });
+      return;
+    }
+
     if (!confirm(`Are you sure you want to completely DELETE the ledger for ${date}? This action cannot be undone.`)) return;
     try {
       const res = await fetch(`/api/ledger/daily?id=${id}`, { method: 'DELETE', headers: getAuthHeaders() });
@@ -2205,7 +2228,7 @@ function MainLedgerContent() {
                               Edit Data
                             </Button>
                             <Button 
-                              onClick={() => handleDeleteLedger(ledger.id, ledger.ledger_date)}
+                              onClick={() => handleDeleteLedger(ledger)}
                               variant="outline"
                               size="sm"
                               className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-600 hover:text-white"
@@ -2423,6 +2446,21 @@ function MainLedgerContent() {
           </div>
         </div>
       )}
+
+      {/* Teller Maker-Checker Modal for Daily Ledger Deletion */}
+      <ChangeRequestModal
+        isOpen={ledgerDeleteModal.isOpen}
+        onClose={() => setLedgerDeleteModal({ isOpen: false, ledger: null })}
+        entityType="DAILY_LEDGER"
+        actionType="DELETE"
+        entityId={ledgerDeleteModal.ledger?.id || ''}
+        referenceNo={ledgerDeleteModal.ledger?.ledger_date || 'LEDGER'}
+        branchId={ledgerDeleteModal.ledger?.branch_id || selectedBranch || 'HQ'}
+        currentData={ledgerDeleteModal.ledger || {}}
+        onSubmitted={() => {
+          fetchMatrix();
+        }}
+      />
     </div>
   );
 }

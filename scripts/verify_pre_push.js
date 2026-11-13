@@ -286,6 +286,46 @@ async function runVerification() {
     } else {
       logPass('All Customer/Pawning/Stock APIs enforce strict (branch_id, NIC/bill_no) isolation');
     }
+
+    // 4. Policy & Cross-Sync Guards (Customer Delete Block + 4-Part Cross-Sync + Daily Ledger Sync)
+    const crossSyncLib = fs.readFileSync(path.join(rootDir, 'frontend/src/lib/cross-sync.ts'), 'utf8');
+    const crLib = fs.readFileSync(path.join(rootDir, 'frontend/src/lib/change-requests.ts'), 'utf8');
+    const crApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/change-requests/route.ts'), 'utf8');
+    const clIdApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/clients/[id]/route.ts'), 'utf8');
+    const scIdApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/stock-customers/[id]/route.ts'), 'utf8');
+    const pwIdApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/pawns/[id]/route.ts'), 'utf8');
+    const stApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/stock/route.ts'), 'utf8');
+    const stDelApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/stock/delete/route.ts'), 'utf8');
+    const stResApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/stock/restore/route.ts'), 'utf8');
+    const dmApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/stock/daily-matrix/item/route.ts'), 'utf8');
+    const ldApi = fs.readFileSync(path.join(rootDir, 'frontend/src/app/api/ledger/daily/route.ts'), 'utf8');
+    const clPage = fs.readFileSync(path.join(rootDir, 'frontend/src/app/clients/page.tsx'), 'utf8');
+    const ldPage = fs.readFileSync(path.join(rootDir, 'frontend/src/app/accounting/ledger/page.tsx'), 'utf8');
+    const apPage = fs.readFileSync(path.join(rootDir, 'frontend/src/app/operations/approvals/page.tsx'), 'utf8');
+
+    const policyAndSyncChecks = [
+      { ok: crossSyncLib.includes('CUSTOMER_DELETE_BLOCK_MESSAGE') && crossSyncLib.includes('syncDailyLedgerForBillChange'), name: 'cross-sync library exports' },
+      { ok: clIdApi.includes('CUSTOMER_DELETE_BLOCK_MESSAGE') && clIdApi.includes('status: 403'), name: 'clients/[id] DELETE 403 block' },
+      { ok: scIdApi.includes('CUSTOMER_DELETE_BLOCK_MESSAGE') && scIdApi.includes('status: 403'), name: 'stock-customers/[id] DELETE 403 block' },
+      { ok: crApi.includes('CUSTOMER_DELETE_BLOCK_MESSAGE') && crApi.includes('status: 403'), name: 'change-requests POST CLIENT DELETE 403 block' },
+      { ok: crLib.includes('CUSTOMER_DELETE_BLOCK_MESSAGE') && crLib.includes('syncPawnAndStockUpdate') && crLib.includes('syncPawnAndStockDelete') && crLib.includes('syncPawnAndStockRestore'), name: 'change-requests applyApprovedChange cross-sync' },
+      { ok: pwIdApi.includes('syncPawnAndStockUpdate') && pwIdApi.includes('syncPawnAndStockDelete') && pwIdApi.includes('syncClientAcrossModules'), name: 'pawns/[id] cross-sync' },
+      { ok: stApi.includes('syncPawnAndStockUpdate'), name: 'stock PUT cross-sync' },
+      { ok: stDelApi.includes('syncPawnAndStockDelete'), name: 'stock/delete cross-sync' },
+      { ok: stResApi.includes('syncPawnAndStockRestore'), name: 'stock/restore cross-sync' },
+      { ok: dmApi.includes('syncPawnAndStockUpdate') && dmApi.includes('syncPawnAndStockDelete') && dmApi.includes('applyLedgerTotalsDelta'), name: 'stock/daily-matrix/item cross-sync' },
+      { ok: clIdApi.includes('syncClientAcrossModules') && clRoute.includes('syncClientAcrossModules') && scIdApi.includes('syncStockCustomerToClients'), name: 'customer bidirectional cross-sync' },
+      { ok: ldApi.includes("'TELLER'") && ldApi.includes('403') && ldPage.includes('DAILY_LEDGER'), name: 'ledger TELLER delete ChangeRequest guard' },
+      { ok: !/fetch\(\s*`\/api\/(?:clients|stock-customers)\/\$\{[^}]+\}`\s*,\s*\{\s*method:\s*['"]DELETE['"]/m.test(clPage), name: 'clients UI has zero DELETE fetch calls' },
+      { ok: apPage.includes('Blocked Policy'), name: 'approvals UI blocks CLIENT DELETE approval' },
+    ];
+    const failedSync = policyAndSyncChecks.filter(c => !c.ok);
+    if (failedSync.length > 0) {
+      logFail(`REGRESSION: Missing Customer Delete Block or Cross-Sync guard in: ${failedSync.map(f => f.name).join(', ')}`);
+      failureCount++;
+    } else {
+      logPass('All 4-Part Cross-Sync, Customer Delete Block (403) & Daily Ledger sync guards verified');
+    }
   } catch (ruleErr) {
     logFail(`Rule verification exception: ${ruleErr.message}`);
     failureCount++;

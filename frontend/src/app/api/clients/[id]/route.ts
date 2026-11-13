@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { normalizeBranchId } from '@/lib/branch-mapping';
 import { invalidateClientsCache } from '../route';
+import {
+  CUSTOMER_DELETE_BLOCK_MESSAGE,
+  syncClientAcrossModules,
+} from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +52,7 @@ export async function PATCH(request: Request, context: any) {
     const { id } = await context.params;
     const { data: existingClient } = await adminSupabase
       .from('clients')
-      .select('id, branch_id')
+      .select('id, branch_id, national_id, first_name, last_name, phone, address')
       .eq('id', id)
       .maybeSingle();
 
@@ -118,7 +122,18 @@ export async function PATCH(request: Request, context: any) {
       .single();
 
     if (!error && data) {
-      invalidateClientsCache();
+      await syncClientAcrossModules({
+        clientId: id,
+        branchId: existingBranch || data.branch_id,
+        oldNationalId: existingClient.national_id,
+        newNationalId: data.national_id || updatePayload.national_id,
+        firstName: data.first_name || updatePayload.first_name,
+        lastName: data.last_name || updatePayload.last_name,
+        phone: data.phone || updatePayload.phone,
+        address: data.address || updatePayload.address,
+        oldPhone: existingClient.phone,
+        oldName: existingClient.first_name,
+      });
       return NextResponse.json(data);
     }
 
@@ -141,7 +156,18 @@ export async function PATCH(request: Request, context: any) {
       .single();
 
     if (camelErr) throw error || camelErr;
-    invalidateClientsCache();
+    await syncClientAcrossModules({
+      clientId: id,
+      branchId: existingBranch || camelData?.branchId,
+      oldNationalId: existingClient.national_id,
+      newNationalId: camelData?.nationalId || updatePayload.national_id,
+      firstName: camelData?.firstName || updatePayload.first_name,
+      lastName: camelData?.lastName || updatePayload.last_name,
+      phone: camelData?.phone || updatePayload.phone,
+      address: camelData?.address || updatePayload.address,
+      oldPhone: existingClient.phone,
+      oldName: existingClient.first_name,
+    });
     return NextResponse.json(camelData);
   } catch (error: any) {
     console.error("API PATCH Error:", error);
@@ -149,47 +175,13 @@ export async function PATCH(request: Request, context: any) {
   }
 }
 
-export async function DELETE(request: Request, context: any) {
+export async function DELETE(request: Request) {
   try {
     const session = await getAuthenticatedUser(request);
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    if (session.role === 'TELLER' || session.role === 'AUDITOR') {
-      return NextResponse.json({ 
-        error: 'Direct customer deletion is strictly prohibited for this role. Please submit a Change Request Ticket.' 
-      }, { status: 403 });
-    }
-
-    const { id } = await context.params;
-    const { data: existingClient } = await adminSupabase
-      .from('clients')
-      .select('id, branch_id')
-      .eq('id', id)
-      .maybeSingle();
-    if (!existingClient) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
-    }
-
-    const sessionBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
-    const isGlobalRole = session.role === 'ADMIN' || sessionBranch === 'HQ';
-    const existingBranch = existingClient.branch_id ? normalizeBranchId(existingClient.branch_id) : '';
-    if (!isGlobalRole && sessionBranch && existingBranch && existingBranch !== sessionBranch) {
-      return NextResponse.json(
-        { error: `Forbidden: Cannot delete client belonging to branch ${existingBranch}.` },
-        { status: 403 }
-      );
-    }
-
-    const { error } = await adminSupabase
-      .from('clients')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
-    invalidateClientsCache();
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ error: CUSTOMER_DELETE_BLOCK_MESSAGE }, { status: 403 });
   } catch (error: any) {
     console.error("API DELETE Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

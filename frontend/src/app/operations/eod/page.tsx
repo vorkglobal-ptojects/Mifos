@@ -611,7 +611,7 @@ function EndOfDayContent() {
   // Maker-Checker Change Request Modal State
   const [stockChangeModal, setStockChangeModal] = useState<{
     isOpen: boolean;
-    entityType: 'STOCK' | 'INTEREST';
+    entityType: 'STOCK' | 'INTEREST' | 'CLIENT';
     actionType: 'UPDATE' | 'DELETE' | 'RESTORE' | 'VOID_INTEREST';
     entityId: string;
     referenceNo: string;
@@ -1942,9 +1942,14 @@ function EndOfDayContent() {
 
       toast.success(isEdit ? "Stock item updated successfully!" : "Stock item added successfully!");
       closeAddModal();
-      
-      // Reload
-      await loadStockData();
+
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
+
+      // Reload both stock items and customer bill associations
+      await Promise.all([loadStockData(), loadCustomerData(true)]);
     } catch (err: any) {
       console.error("[DEBUG] Error saving stock item:", err);
       toast.error("Error saving stock item: " + err.message);
@@ -1958,6 +1963,12 @@ function EndOfDayContent() {
     const cleanNorm = stripBranchPrefix(billNo).toLowerCase().replace(/[\s\-_/]+/g, '');
     const targetBranch = branchStr ? normalizeBranchId(branchStr) : null;
 
+    const isExactBillMatch = (c: any) => {
+      if (!c.bill_numbers) return false;
+      const rawBills = c.bill_numbers.split(",").map((b: string) => b.trim().toLowerCase());
+      return rawBills.includes(cleanBill);
+    };
+
     const isBillMatch = (c: any) => {
       if (!c.bill_numbers) return false;
       const rawBills = c.bill_numbers.split(",").map((b: string) => b.trim().toLowerCase());
@@ -1966,41 +1977,39 @@ function EndOfDayContent() {
       return rawBills.includes(cleanBill) || normBills.includes(cleanNorm);
     };
 
-    if (targetBranch) {
-      // 1. Strict Priority: Exact match on target branch
-      const matchExact = (c: any) => {
-        if (!isBillMatch(c)) return false;
+    if (targetBranch && targetBranch !== 'ALL') {
+      const isBranchMatch = (c: any) => {
         const rawBr = c.branch_id || c.branch || '';
         if (!rawBr) return false;
         return normalizeBranchId(rawBr) === targetBranch;
       };
 
-      const foundNew = stockCustomers.find(matchExact);
-      if (foundNew) return foundNew;
+      // 1. Strict Priority: Exact bill + exact branch match in stock_customers, then normalized
+      const exactNew = stockCustomers.find((c: any) => isBranchMatch(c) && isExactBillMatch(c))
+        || stockCustomers.find((c: any) => isBranchMatch(c) && isBillMatch(c));
+      if (exactNew) return exactNew;
 
-      const foundOld = oldStockCustomers.find(matchExact);
-      if (foundOld) return foundOld;
+      const exactOld = oldStockCustomers.find((c: any) => isBranchMatch(c) && isExactBillMatch(c))
+        || oldStockCustomers.find((c: any) => isBranchMatch(c) && isBillMatch(c));
+      if (exactOld) return exactOld;
 
-      // 2. Fallback: Only match genuinely unassigned legacy record (never normalize empty string to HQ!)
-      const matchUnassigned = (c: any) => {
-        if (!isBillMatch(c)) return false;
-        return !(c.branch_id || c.branch);
-      };
+      // 2. Legacy unassigned fallback ONLY for Old Data views or branch-less historical items
+      if (targetBranch === 'OLD' || stockFilter === 'OldData') {
+        const unassignedOld = oldStockCustomers.find((c: any) => !(c.branch_id || c.branch) && isBillMatch(c));
+        if (unassignedOld) return unassignedOld;
 
-      const unassignedNew = stockCustomers.find(matchUnassigned);
-      if (unassignedNew) return unassignedNew;
-
-      const unassignedOld = oldStockCustomers.find(matchUnassigned);
-      if (unassignedOld) return unassignedOld;
+        const unassignedNew = stockCustomers.find((c: any) => !(c.branch_id || c.branch) && isBillMatch(c));
+        if (unassignedNew) return unassignedNew;
+      }
 
       return null;
     }
 
     // When no target branch is specified (e.g. ALL view without item context)
-    const foundInNew = stockCustomers.find(isBillMatch);
+    const foundInNew = stockCustomers.find(isExactBillMatch) || stockCustomers.find(isBillMatch);
     if (foundInNew) return foundInNew;
 
-    return oldStockCustomers.find(isBillMatch);
+    return oldStockCustomers.find(isExactBillMatch) || oldStockCustomers.find(isBillMatch);
   };
 
   const handleAddBillPrefix = (prefix: string) => {
@@ -2087,6 +2096,33 @@ function EndOfDayContent() {
       : (selectedStockItemForCustomerView?.branch_id || selectedBranchForCustomerView || (selectedBranch !== 'ALL' ? selectedBranch : '') || currentUser?.branchId || 'HQ');
     const targetBranch = normalizeBranchId(resolvedBranchRaw);
 
+    // Maker-Checker: Tellers cannot directly edit existing customer profiles
+    if (isEdit && currentUser?.role === 'TELLER') {
+      setShowAddCustomerModal(false);
+      setShowBillCustomerModal(false);
+      setStockChangeModal({
+        isOpen: true,
+        entityType: 'CLIENT',
+        actionType: 'UPDATE',
+        entityId: selectedCustomer.id,
+        referenceNo: custNic.trim() || selectedCustomer.nic || custName.trim() || 'CUSTOMER',
+        branchId: targetBranch,
+        currentData: {
+          ...selectedCustomer,
+          first_name: selectedCustomer.name,
+          national_id: selectedCustomer.nic,
+          phone: selectedCustomer.tp,
+        },
+        initialProposedData: {
+          first_name: custName.trim(),
+          national_id: custNic.trim(),
+          phone: custTp.trim(),
+          address: custAddress.trim(),
+        },
+      });
+      return;
+    }
+
     const payload = {
       ...(isEdit ? { id: selectedCustomer.id } : {}),
       name: custName.trim(),
@@ -2121,6 +2157,10 @@ function EndOfDayContent() {
       toast.success(isEdit ? "Customer profile updated successfully!" : "Customer profile saved successfully!");
       setShowAddCustomerModal(false);
       setShowBillCustomerModal(false);
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
       await loadCustomerData(true);
     } catch (err: any) {
       console.error("Error saving customer profile:", err);
@@ -2305,7 +2345,12 @@ function EndOfDayContent() {
       setSelectedItemForRestore(null);
       setRestoreInterest("");
       setRestoreNotes("");
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
       loadStockData();
+      loadCustomerData(true);
     } catch (err: any) {
       toast.error("Error restoring stock item: " + err.message);
     } finally {
@@ -2363,11 +2408,17 @@ function EndOfDayContent() {
       // Optimistically update state immediately
       setStockItems(prev => prev.filter(i => i.id !== item.id && i.bill_no !== item.bill_no));
       setOldStockItems(prev => prev.filter(i => i.id !== item.id && i.bill_no !== item.bill_no));
-      
+
+      try {
+        localStorage.removeItem('local_stock_customers');
+        localStorage.removeItem('local_stock_customers_timestamp');
+      } catch {}
+
       if (isOld) {
         loadOldStockData();
       } else {
         loadStockData();
+        loadCustomerData(true);
       }
     } catch (err: any) {
       toast.error("Error deleting stock item: " + err.message);
@@ -5370,7 +5421,12 @@ function EndOfDayContent() {
         currentData={stockChangeModal.currentData}
         initialProposedData={stockChangeModal.initialProposedData}
         onSubmitted={() => {
+          try {
+            localStorage.removeItem('local_stock_customers');
+            localStorage.removeItem('local_stock_customers_timestamp');
+          } catch {}
           loadStockData();
+          loadCustomerData(true);
         }}
       />
 

@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
-import { normalizeBranchId, formatBranchScopedBillNo, stripBranchPrefix, getBranchSearchTerms, extractNumericBillNo, isSameNumericBill, generateUniqueOrderTag } from '@/lib/branch-mapping';
-import { invalidateBranchInventoryCache } from '@/lib/redis';
+import { normalizeBranchId, formatBranchScopedBillNo, stripBranchPrefix, getBranchSearchTerms, extractNumericBillNo, isSameNumericBill } from '@/lib/branch-mapping';
+import {
+  syncClientAcrossModules,
+  syncPawnAndStockUpdate,
+  syncPawnAndStockDelete,
+} from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,7 +161,7 @@ export async function PATCH(request: Request, context: any) {
     }
     const { id } = await context.params;
     const body = await request.json();
-    const { clientId, description, appraisedValue, disbursedAmount, billNo, weight, weightGrams, weightMg, itemType, items, clientPhone, clientAddress } = body;
+    const { clientId, clientName, description, appraisedValue, disbursedAmount, billNo, weight, weightGrams, weightMg, itemType, periodMonths, clientPhone, clientAddress } = body;
 
     // Fetch existing pawn to check branch authorization
     const { data: existingPawn, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('id', id).single();
@@ -165,10 +169,14 @@ export async function PATCH(request: Request, context: any) {
       return NextResponse.json({ error: 'Pawn ticket not found' }, { status: 404 });
     }
 
+    const sessionBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+    const isGlobalRole = session.role === 'ADMIN' || sessionBranch === 'HQ';
+    const pawnBranch = normalizeBranchId(existingPawn.branch_id || 'HQ');
+    if (!isGlobalRole && sessionBranch && pawnBranch !== sessionBranch) {
+      return NextResponse.json({ error: 'Forbidden. Cannot modify pawns belonging to another branch.' }, { status: 403 });
+    }
+
     if (session && session.role === 'TELLER') {
-      if (normalizeBranchId(existingPawn.branch_id) !== normalizeBranchId(session.branchId)) {
-        return NextResponse.json({ error: 'Forbidden. Tellers cannot modify pawns belonging to another branch.' }, { status: 403 });
-      }
       const existingTotWeight = (Number(existingPawn.weight_grams) || 0) + ((Number(existingPawn.weight_mg) || 0) / 1000);
       const isAttemptingFinancialChange = 
         (appraisedValue !== undefined && parseFloat(appraisedValue) !== existingPawn.appraised_value) ||
@@ -176,7 +184,7 @@ export async function PATCH(request: Request, context: any) {
         (billNo !== undefined && stripBranchPrefix(billNo.trim()) !== stripBranchPrefix(existingPawn.bill_no)) ||
         (weight !== undefined && Math.abs(parseFloat(weight) - existingTotWeight) > 0.0005) ||
         (weightGrams !== undefined && parseFloat(weightGrams) !== existingPawn.weight_grams) ||
-        (body.periodMonths !== undefined && parseInt(body.periodMonths, 10) !== (existingPawn.period_months || 3));
+        (periodMonths !== undefined && parseInt(periodMonths, 10) !== (existingPawn.period_months || 3));
 
       if (isAttemptingFinancialChange) {
         return NextResponse.json({
@@ -185,45 +193,55 @@ export async function PATCH(request: Request, context: any) {
       }
     }
 
-    // Resolve valid Client UUID
-    let targetClientId = clientId;
-    if (clientId && !isUUID(clientId)) {
-      let existingClients = null;
-      const { data: idExisting } = await adminSupabase
+    // Resolve valid Client UUID (scoped strictly to pawnBranch) & sync client updates if provided
+    let targetClientId = clientId || existingPawn.client_id;
+    let resolvedClientRow: any = null;
+    if (targetClientId && isUUID(targetClientId)) {
+      const { data: cById } = await adminSupabase
         .from('clients')
-        .select('id, phone, address')
-        .eq('id', clientId)
+        .select('*')
+        .eq('id', targetClientId)
+        .maybeSingle();
+      resolvedClientRow = cById;
+    } else if (targetClientId) {
+      const { data: cByNic } = await adminSupabase
+        .from('clients')
+        .select('*')
+        .in('branch_id', getBranchSearchTerms(pawnBranch))
+        .ilike('national_id', String(targetClientId).trim())
         .limit(1)
         .maybeSingle();
-        
-      if (idExisting) {
-        existingClients = [idExisting];
-      } else {
-        const { data: snakeExisting } = await adminSupabase
-          .from('clients')
-          .select('id, phone, address')
-          .eq('national_id', clientId)
-          .limit(1)
-          .maybeSingle();
-          
-        if (snakeExisting) {
-          existingClients = [snakeExisting];
-        }
+      if (cByNic) {
+        resolvedClientRow = cByNic;
+        targetClientId = cByNic.id;
       }
+    }
 
-      if (existingClients && existingClients.length > 0) {
-        targetClientId = existingClients[0].id;
-        
-        // Update client info if provided
-        if (clientPhone || clientAddress) {
-          const updateClient: any = {};
-          if (clientPhone && clientPhone !== existingClients[0].phone) updateClient.phone = clientPhone;
-          if (clientAddress && clientAddress !== existingClients[0].address) updateClient.address = clientAddress;
-          
-          if (Object.keys(updateClient).length > 0) {
-            await adminSupabase.from('clients').update(updateClient).eq('id', targetClientId);
-          }
-        }
+    if (resolvedClientRow && (clientPhone || clientAddress || clientName)) {
+      const updateClient: any = {};
+      if (clientName && String(clientName).trim() && String(clientName).trim() !== resolvedClientRow.first_name) {
+        updateClient.first_name = String(clientName).trim();
+      }
+      if (clientPhone && String(clientPhone).trim() !== (resolvedClientRow.phone || '')) {
+        updateClient.phone = String(clientPhone).trim();
+      }
+      if (clientAddress && String(clientAddress).trim() !== (resolvedClientRow.address || '')) {
+        updateClient.address = String(clientAddress).trim();
+      }
+      if (Object.keys(updateClient).length > 0) {
+        await adminSupabase.from('clients').update(updateClient).eq('id', resolvedClientRow.id);
+        await syncClientAcrossModules({
+          clientId: resolvedClientRow.id,
+          branchId: resolvedClientRow.branch_id || pawnBranch,
+          oldNationalId: resolvedClientRow.national_id,
+          newNationalId: resolvedClientRow.national_id,
+          firstName: updateClient.first_name || resolvedClientRow.first_name,
+          lastName: resolvedClientRow.last_name,
+          phone: updateClient.phone || resolvedClientRow.phone,
+          address: updateClient.address || resolvedClientRow.address,
+          oldPhone: resolvedClientRow.phone,
+          oldName: resolvedClientRow.first_name,
+        });
       }
     }
 
@@ -241,17 +259,8 @@ export async function PATCH(request: Request, context: any) {
       totWeight = g + (mg / 1000);
     }
 
-    const updateObj: any = {};
-    if (targetClientId && isUUID(targetClientId)) updateObj.client_id = targetClientId;
-    if (description) updateObj.description = description;
-    if (appraisedValue !== undefined) updateObj.appraised_value = parseFloat(appraisedValue) || 0;
-    if (disbursedAmount !== undefined) updateObj.disbursed_amount = parseFloat(disbursedAmount) || 0;
-    if (g > 0 || mg > 0 || totWeight > 0) {
-      updateObj.weight_grams = g;
-      updateObj.weight_mg = mg;
-    }
-    if (body.periodMonths !== undefined) {
-      updateObj.period_months = parseInt(body.periodMonths, 10) || 3;
+    if (targetClientId && isUUID(targetClientId) && targetClientId !== existingPawn.client_id) {
+      await adminSupabase.from('pawns').update({ client_id: targetClientId }).eq('id', id);
     }
 
     if (billNo && String(billNo).trim() !== '' && String(billNo).trim() !== (existingPawn.bill_no || '').trim()) {
@@ -301,114 +310,38 @@ export async function PATCH(request: Request, context: any) {
           }
         }
       }
-      updateObj.bill_no = formatBranchScopedBillNo(String(billNo).trim(), existingPawn.branch_id);
     }
 
-    if (body.unique_tag !== undefined || body.uniqueTag !== undefined) {
-      const providedTag = String(body.unique_tag || body.uniqueTag || '').trim();
-      if (/^RC-[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9.]+$/i.test(providedTag)) {
-        updateObj.unique_tag = providedTag.toUpperCase();
-      }
+    const syncUpdates: Record<string, any> = {};
+    if (billNo && String(billNo).trim()) syncUpdates.bill_no = String(billNo).trim();
+    if (description) syncUpdates.description = description;
+    if (itemType) syncUpdates.item_type = itemType;
+    if (appraisedValue !== undefined) syncUpdates.appraised_value = parseFloat(appraisedValue) || 0;
+    if (disbursedAmount !== undefined) syncUpdates.disbursed_amount = parseFloat(disbursedAmount) || 0;
+    if (g > 0 || mg > 0 || totWeight > 0) {
+      syncUpdates.weight_grams = totWeight > 0 ? totWeight : g + mg / 1000;
+      syncUpdates.weight_mg = mg > 0 ? mg : Math.round(totWeight * 1000);
     }
-    if (!updateObj.unique_tag && (updateObj.bill_no || updateObj.client_id)) {
-      const effClientId = targetClientId || existingPawn.client_id;
-      const effBill = updateObj.bill_no || existingPawn.bill_no;
-      const effBranch = existingPawn.branch_id;
-      let clientNic = '';
-      if (effClientId && isUUID(effClientId)) {
-        const { data: cRow } = await adminSupabase
-          .from('clients')
-          .select('national_id')
-          .eq('id', effClientId)
-          .maybeSingle();
-        clientNic = cRow?.national_id || '';
-      } else if (clientId && !isUUID(clientId)) {
-        clientNic = String(clientId);
-      }
-      updateObj.unique_tag = generateUniqueOrderTag(effBranch, clientNic, effBill);
-    }
+    if (periodMonths !== undefined) syncUpdates.period_months = parseInt(periodMonths, 10) || 3;
 
-    const { data, error } = await adminSupabase.from('pawns').update(updateObj).eq('id', id).select().single();
-
-    if (error) throw error;
-
-    const oldBillNo = existingPawn.bill_no || (existingPawn.description ? existingPawn.description.match(/^([A-Za-z0-9]+\s+\d+)/)?.[1]?.trim() : null) || id.substring(0, 8);
-    if (oldBillNo) {
-      const stockUpdate: any = {};
-      if (appraisedValue !== undefined || disbursedAmount !== undefined) {
-        stockUpdate.price = parseFloat(disbursedAmount) || parseFloat(appraisedValue) || 0;
-      }
-      if (totWeight > 0) stockUpdate.weight = totWeight;
-      if (itemType) stockUpdate.item_type = itemType;
-      const cleanTargetBill = stripBranchPrefix(billNo ? billNo.trim() : oldBillNo);
-      if (billNo && billNo.trim() !== oldBillNo) {
-        stockUpdate.bill_no = cleanTargetBill;
-      }
-      
-      if (Object.keys(stockUpdate).length > 0) {
-        const cleanOldBill = stripBranchPrefix(oldBillNo);
-        const hex8 = id.substring(0, 8).toUpperCase();
-        const rec6 = `REC-${id.substring(0, 6).toLowerCase()}`;
-        const { data: existingStockRows } = await adminSupabase
-          .from('stock_items')
-          .select('id, bill_no')
-          .eq('branch_id', existingPawn.branch_id)
-          .or(`bill_no.eq.${oldBillNo},bill_no.eq.${cleanOldBill},bill_no.eq.${cleanTargetBill},bill_no.eq.${hex8},bill_no.ilike.${rec6}`);
-        const existingStock = existingStockRows && existingStockRows.length > 0 ? existingStockRows[0] : null;
-        if (existingStockRows && existingStockRows.length > 1) {
-          const extraIds = existingStockRows.slice(1).map((r: any) => r.id);
-          await adminSupabase.from('stock_items').delete().in('id', extraIds);
-        }
-
-        if (existingStock) {
-          await adminSupabase.from('stock_items').update(stockUpdate).eq('id', existingStock.id);
-        } else {
-          // If pawn was missing in stock_items, auto-create it now
-          await adminSupabase.from('stock_items').insert([{
-            id: crypto.randomUUID(),
-            bill_no: cleanTargetBill,
-            branch_id: existingPawn.branch_id,
-            item_type: stockUpdate.item_type || 'CH',
-            weight: stockUpdate.weight || totWeight || 0,
-            price: stockUpdate.price || parseFloat(disbursedAmount) || parseFloat(appraisedValue) || 0,
-            status: 'Active',
-            date: new Date().toISOString().split('T')[0]
-          }]);
-        }
-        try {
-          await invalidateBranchInventoryCache(existingPawn.branch_id);
-        } catch (cErr) {
-          console.warn('[Cache Invalidation Warning]:', cErr);
-        }
-      }
-    }
-
-    // Update or Insert pawn_items if weight or items are provided
-    const { data: existingItems } = await adminSupabase.from('pawn_items').select('*').eq('pawn_id', id);
-    if (existingItems && existingItems.length > 0) {
-      await adminSupabase.from('pawn_items').update({
-        weight_grams: g,
-        weight_mg: mg,
-        appraised_value: parseFloat(appraisedValue) || 0,
-        description: description || existingItems[0].description
-      }).eq('id', existingItems[0].id);
-    } else {
-      await adminSupabase.from('pawn_items').insert([{
-        pawn_id: id,
-        item_type: itemType || 'CH',
-        description: description || 'Collateral Article',
-        weight_grams: g,
-        weight_mg: mg,
-        appraised_value: parseFloat(appraisedValue) || 0
-      }]);
-    }
+    const { pawn: updatedPawn } = await syncPawnAndStockUpdate({
+      source: 'PAWN',
+      pawnId: id,
+      branchId: pawnBranch,
+      updates: syncUpdates,
+      allowLockedLedger: session.role === 'ADMIN',
+      actorSession: session,
+      reason: 'Direct pawn PATCH update',
+    });
 
     return NextResponse.json({
-       ...data,
-       weight: totWeight
+      ...(updatedPawn || existingPawn),
+      weight: totWeight
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const msg = error?.message || 'Failed to update pawn ticket';
+    const status = msg.includes('LOCKED') ? 403 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }
 
@@ -426,34 +359,32 @@ export async function DELETE(request: Request, context: any) {
       }, { status: 403 });
     }
 
-    // Fetch pawn details first to verify branch authorization and description / bill_no
     const { data: pawn, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('id', id).single();
     if (fetchErr || !pawn) {
       return NextResponse.json({ error: 'Pawn ticket not found' }, { status: 404 });
     }
 
-    const { error } = await adminSupabase.from('pawns').delete().eq('id', id);
-    if (error) throw error;
-
-    // Also delete matching stock_items strictly within the pawn's branch
-    const targetBillNo = pawn.bill_no || (pawn.description ? pawn.description.match(/^([A-Za-z0-9]+\s+\d+)/)?.[1]?.trim() : null);
-    if (targetBillNo) {
-      const cleanStockBill = stripBranchPrefix(targetBillNo);
-      const branchTerms = getBranchSearchTerms(pawn.branch_id);
-      await adminSupabase
-        .from('stock_items')
-        .delete()
-        .in('branch_id', branchTerms)
-        .or(`bill_no.eq."${targetBillNo}",bill_no.eq."${cleanStockBill}"`);
-      try {
-        await invalidateBranchInventoryCache(pawn.branch_id);
-      } catch (cErr) {
-        console.warn('[Cache Invalidation Warning]:', cErr);
-      }
+    const sessionBranch = session.branchId ? normalizeBranchId(session.branchId) : '';
+    const isGlobalRole = session.role === 'ADMIN' || sessionBranch === 'HQ';
+    const pawnBranch = normalizeBranchId(pawn.branch_id || 'HQ');
+    if (!isGlobalRole && sessionBranch && pawnBranch !== sessionBranch) {
+      return NextResponse.json({ error: 'Forbidden. Cannot delete pawn belonging to another branch.' }, { status: 403 });
     }
+
+    const targetBillNo = pawn.bill_no || (pawn.description ? pawn.description.match(/^([A-Za-z0-9]+\s+\d+)/)?.[1]?.trim() : '');
+    await syncPawnAndStockDelete({
+      branchId: pawnBranch,
+      pawnId: id,
+      billNo: targetBillNo,
+      allowLockedLedger: session.role === 'ADMIN',
+      actorSession: session,
+      reason: 'Direct pawn ticket deletion',
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const msg = error?.message || 'Failed to delete pawn ticket';
+    const status = msg.includes('LOCKED') ? 403 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

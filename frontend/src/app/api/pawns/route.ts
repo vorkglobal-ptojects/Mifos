@@ -6,6 +6,7 @@ import { normalizeBranchId, getBranchSearchTerms, isNationalId, normalizeNationa
 import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { invalidateClientsCache } from '@/app/api/clients/route';
 import { getSriLankaDate } from '@/lib/date-utils';
+import { syncClientAcrossModules } from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -828,6 +829,19 @@ export async function POST(request: Request) {
         }
       }
     }
+
+    // Synchronize customer bill list and details across modules
+    await syncClientAcrossModules({
+      clientId: targetClientId,
+      branchId: targetBranchId,
+      oldNationalId: fullClientObj?.national_id,
+      newNationalId: fullClientObj?.national_id,
+      firstName: fullClientObj?.first_name || clientName || customerName,
+      lastName: fullClientObj?.last_name || '.',
+      phone: clientPhone || fullClientObj?.phone || undefined,
+      address: clientAddress || fullClientObj?.address || undefined,
+      addBillNo: baseBill,
+    });
 
     // Invalidate affected branch inventory Redis cache
     try {

@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { recordAuditLog } from '@/lib/audit-logger';
-import { invalidateBranchInventoryCache } from '@/lib/redis';
 import { getSriLankaDate } from '@/lib/date-utils';
-import { getBranchSearchTerms, stripBranchPrefix } from '@/lib/branch-mapping';
+import { syncPawnAndStockRestore } from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,47 +46,24 @@ export async function POST(req: Request) {
     const previousNotes = item.withdrawal_notes || '';
     const updatedNotes = previousNotes ? `${previousNotes}\n${restoreHistoryLine}` : restoreHistoryLine;
 
-    // 3. Update stock_items back to Active status
-    const { data: updatedItem, error: updateErr } = await adminSupabase
+    // 3. Synchronized Restore across stock_items, pawns (clearing redeemed_*), daily_ledgers & caches
+    await syncPawnAndStockRestore({
+      branchId: item.branch_id,
+      stockId: id,
+      billNo: item.bill_no,
+      allowLockedLedger: session.role === 'ADMIN',
+      actorSession: session,
+      reason: restoreHistoryLine,
+    });
+
+    const { data: updatedItem } = await adminSupabase
       .from('stock_items')
-      .update({
-        status: 'Active',
-        withdrawal_date: null,
-        withdrawal_reason: null,
-        withdrawal_notes: updatedNotes
-      })
+      .update({ withdrawal_notes: updatedNotes })
       .eq('id', id)
       .select()
       .single();
 
-    if (updateErr) {
-      throw new Error("Failed to restore stock item: " + updateErr.message);
-    }
-
-    // 4. Update matching Pawn Ticket in 'pawns' table strictly within the stock item's branch
-    try {
-      if (item.bill_no) {
-        const rawBill = item.bill_no.trim();
-        const cleanBill = stripBranchPrefix(rawBill);
-        let pawnUpdateQuery = adminSupabase
-          .from('pawns')
-          .update({ status: 'ACTIVE' })
-          .or(`bill_no.eq."${rawBill}",bill_no.eq."${cleanBill}"`);
-
-        if (item.branch_id) {
-          pawnUpdateQuery = pawnUpdateQuery.in('branch_id', getBranchSearchTerms(item.branch_id));
-        }
-
-        const { error: pawnErr } = await pawnUpdateQuery;
-        if (pawnErr) {
-          console.warn("Matching pawn ticket status update warning:", pawnErr.message);
-        }
-      }
-    } catch (pawnErr) {
-      console.warn("Matching pawn ticket status update notice:", pawnErr);
-    }
-
-    // 5. Record Audit Log
+    // 4. Record Audit Log
     if (session) {
       await recordAuditLog(session, {
         action: 'STOCK_RESTORE_TO_SAFE',
@@ -100,13 +76,6 @@ export async function POST(req: Request) {
           notes: cleanNotes
         }
       });
-    }
-
-    // Invalidate Redis inventory cache
-    try {
-      await invalidateBranchInventoryCache(item.branch_id || 'ALL');
-    } catch (cErr) {
-      console.warn('[Cache Invalidation Warning]:', cErr);
     }
 
     return NextResponse.json({

@@ -955,12 +955,26 @@ export default function ApprovalsPage() {
                             </Button>
                             <Button
                               size="sm"
-                              disabled={isTicketActionLoading || isOwnChangeTicket(t)}
-                              title={isOwnChangeTicket(t) ? 'Maker-Checker: You cannot approve your own ticket' : 'Approve ticket'}
+                              disabled={
+                                isTicketActionLoading ||
+                                isOwnChangeTicket(t) ||
+                                (String(t.entity_type || '').toUpperCase() === 'CLIENT' && String(t.action_type || '').toUpperCase() === 'DELETE')
+                              }
+                              title={
+                                String(t.entity_type || '').toUpperCase() === 'CLIENT' && String(t.action_type || '').toUpperCase() === 'DELETE'
+                                  ? 'Policy Block: Customer records cannot be deleted'
+                                  : isOwnChangeTicket(t)
+                                  ? 'Maker-Checker: You cannot approve your own ticket'
+                                  : 'Approve ticket'
+                              }
                               onClick={() => handleApproveTicket(t, 'Approved by Branch Manager')}
                               className="h-8 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs cursor-pointer shadow-xs"
                             >
-                              {isOwnChangeTicket(t) ? 'Own Request' : 'Approve'}
+                              {String(t.entity_type || '').toUpperCase() === 'CLIENT' && String(t.action_type || '').toUpperCase() === 'DELETE'
+                                ? 'Blocked Policy'
+                                : isOwnChangeTicket(t)
+                                ? 'Own Request'
+                                : 'Approve'}
                             </Button>
                             <Button
                               size="sm"
@@ -2275,8 +2289,20 @@ export default function ApprovalsPage() {
                         <XCircle className="w-4 h-4 mr-1.5 shrink-0" /> Reject Ticket
                       </Button>
                       <Button
-                        disabled={isTicketActionLoading || isOwnChangeTicket(selectedTicket)}
-                        title={isOwnChangeTicket(selectedTicket) ? 'Maker-Checker: You cannot approve your own ticket' : 'Approve & apply changes'}
+                        disabled={
+                          isTicketActionLoading ||
+                          isOwnChangeTicket(selectedTicket) ||
+                          (String(selectedTicket.entity_type || '').toUpperCase() === 'CLIENT' &&
+                            String(selectedTicket.action_type || '').toUpperCase() === 'DELETE')
+                        }
+                        title={
+                          String(selectedTicket.entity_type || '').toUpperCase() === 'CLIENT' &&
+                          String(selectedTicket.action_type || '').toUpperCase() === 'DELETE'
+                            ? 'Policy Block: Customer records cannot be deleted'
+                            : isOwnChangeTicket(selectedTicket)
+                            ? 'Maker-Checker: You cannot approve your own ticket'
+                            : 'Approve & apply changes'
+                        }
                         onClick={() =>
                           handleApproveTicket(
                             selectedTicket,
@@ -2292,7 +2318,10 @@ export default function ApprovalsPage() {
                           <CheckCircle2 className="w-4 h-4 mr-1.5 shrink-0" />
                         )}
                         <span className="truncate">
-                          {isOwnChangeTicket(selectedTicket)
+                          {String(selectedTicket.entity_type || '').toUpperCase() === 'CLIENT' &&
+                          String(selectedTicket.action_type || '').toUpperCase() === 'DELETE'
+                            ? 'Blocked Policy (Cannot Delete Customer)'
+                            : isOwnChangeTicket(selectedTicket)
                             ? 'Cannot Approve Own Ticket'
                             : hasProposedEdits
                             ? 'Approve & Apply Edited Changes'

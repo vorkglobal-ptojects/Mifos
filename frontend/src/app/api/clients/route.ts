@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAuthenticatedUser, adminSupabase } from '@/lib/auth-server';
 import { normalizeBranchId, getBranchSearchTerms, isNationalId, normalizeNationalId, formatBranchScopedId, stripBranchPrefix } from '@/lib/branch-mapping';
+import { syncClientAcrossModules } from '@/lib/cross-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -324,7 +325,18 @@ export async function POST(request: Request) {
         .single();
 
       if (!updateErr && updatedClient) {
-        invalidateClientsCache();
+        await syncClientAcrossModules({
+          clientId: updatedClient.id,
+          branchId: effectiveBranchId,
+          oldNationalId: existingClient.national_id || existingClient.nationalId,
+          newNationalId: updatedClient.national_id || effectiveNic,
+          firstName: updatedClient.first_name || finalFirst,
+          lastName: updatedClient.last_name || finalLast,
+          phone: updatedClient.phone || finalPhone,
+          address: updatedClient.address || finalAddress,
+          oldPhone: existingClient.phone,
+          oldName: existingClient.first_name || existingClient.firstName,
+        });
         return NextResponse.json(updatedClient, { status: 200 });
       }
 
@@ -348,7 +360,18 @@ export async function POST(request: Request) {
         .select()
         .single();
 
-      invalidateClientsCache();
+      await syncClientAcrossModules({
+        clientId: existingClient.id,
+        branchId: effectiveBranchId,
+        oldNationalId: existingClient.national_id || existingClient.nationalId,
+        newNationalId: effectiveNic,
+        firstName: finalFirst,
+        lastName: finalLast,
+        phone: finalPhone,
+        address: finalAddress,
+        oldPhone: existingClient.phone,
+        oldName: existingClient.first_name || existingClient.firstName,
+      });
       return NextResponse.json(camelUpdatedClient || updatedClient || existingClient, { status: 200 });
     }
 
@@ -377,7 +400,16 @@ export async function POST(request: Request) {
       .single();
 
     if (!snakeErr && snakeData) {
-      invalidateClientsCache();
+      await syncClientAcrossModules({
+        clientId: snakeData.id,
+        branchId: effectiveBranchId,
+        oldNationalId: effectiveNic,
+        newNationalId: effectiveNic,
+        firstName: firstName,
+        lastName: lastName || '.',
+        phone: phone || undefined,
+        address: address || undefined,
+      });
       return NextResponse.json(snakeData, { status: 201 });
     }
 
@@ -404,7 +436,16 @@ export async function POST(request: Request) {
       .single();
 
     if (!camelErr && camelData) {
-      invalidateClientsCache();
+      await syncClientAcrossModules({
+        clientId: camelData.id || clientId,
+        branchId: effectiveBranchId,
+        oldNationalId: effectiveNic,
+        newNationalId: effectiveNic,
+        firstName: firstName,
+        lastName: lastName || '.',
+        phone: phone || undefined,
+        address: address || undefined,
+      });
       return NextResponse.json(camelData, { status: 201 });
     }
 
