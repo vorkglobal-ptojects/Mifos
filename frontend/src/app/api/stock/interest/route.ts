@@ -127,16 +127,6 @@ export async function POST(req: Request) {
         error: `Forbidden. You can only record stock interest for branch (${userBranch}).`
       }, { status: 403 });
     }
-
-    // Guard against re-inserting stale/purged historical interest for 1R 223 / 1R 238 in BRL
-    const cleanBill = bill_no.trim().toUpperCase();
-    if ((cleanBill === '1R 223' || cleanBill === '1R 238' || cleanBill === '1R - 223' || cleanBill === '1R - 238') && cleanBranch === 'BRL') {
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Ignored purged interest entry for bill ' + cleanBill,
-        data: null 
-      });
-    }
     const id = 'si_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const payload: any = {
       id: id,
