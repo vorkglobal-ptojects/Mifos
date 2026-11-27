@@ -628,7 +628,19 @@ function EndOfDayContent() {
       try {
         const parsed = JSON.parse(local);
         if (Array.isArray(parsed)) {
-          localRecords = parsed;
+          // Filter out explicitly purged bills (e.g. 1R 223, 1R 238 in BRL) so stale client cache never resurrects them
+          localRecords = parsed.filter(item => {
+            const bNo = (item?.bill_no || '').trim().toUpperCase();
+            const bBranch = normalizeBranchId(item?.branch || '');
+            if ((bNo === '1R 223' || bNo === '1R 238' || bNo === '1R - 223' || bNo === '1R - 238') && bBranch === 'BRL') {
+              return false;
+            }
+            return true;
+          });
+          // Update client localStorage to purge them permanently from this browser
+          if (localRecords.length !== parsed.length) {
+            localStorage.setItem('local_stock_interests', JSON.stringify(localRecords));
+          }
         }
       } catch (e) {}
     }
