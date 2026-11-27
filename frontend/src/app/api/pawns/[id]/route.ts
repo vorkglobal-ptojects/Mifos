@@ -341,7 +341,7 @@ export async function PATCH(request: Request, context: any) {
     const targetBillForDamage = String(syncUpdates.bill_no || existingPawn.bill_no || '').trim();
     if (targetBillForDamage && isDamaged && damagePhoto) {
       try {
-        await adminSupabase.from('rejected_evaluations').insert([{
+        const dmgPayloads: any[] = [{
           air_weight: syncUpdates.weight_grams || existingPawn.weight_grams || 0,
           water_weight: 0,
           specific_gravity: 0,
@@ -351,7 +351,22 @@ export async function PATCH(request: Request, context: any) {
           status: `BILL:${targetBillForDamage}:DAMAGED`,
           air_weight_photo_url: damagePhoto,
           water_weight_photo_url: null,
-        }]);
+        }];
+        const cleanB = stripBranchPrefix(targetBillForDamage).trim();
+        if (cleanB && cleanB !== targetBillForDamage) {
+          dmgPayloads.push({
+            air_weight: syncUpdates.weight_grams || existingPawn.weight_grams || 0,
+            water_weight: 0,
+            specific_gravity: 0,
+            estimated_karat: damageNotes ? `DAMAGED: ${damageNotes.slice(0, 50)}` : 'DAMAGED',
+            asking_amount: syncUpdates.disbursed_amount || existingPawn.disbursed_amount || 0,
+            true_value: syncUpdates.appraised_value || existingPawn.appraised_value || 0,
+            status: `BILL:${cleanB}:DAMAGED`,
+            air_weight_photo_url: damagePhoto,
+            water_weight_photo_url: null,
+          });
+        }
+        await adminSupabase.from('rejected_evaluations').insert(dmgPayloads);
       } catch (damageErr) {
         console.warn("Could not insert damage photo for updated bill:", damageErr);
       }

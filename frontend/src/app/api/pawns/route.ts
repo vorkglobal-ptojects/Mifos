@@ -662,10 +662,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // Record Damaged Item Photo linked to the bill number
+    // Record Damaged Item Photo linked to the bill number (store under both scoped and clean bill targets)
     if (targetBill && isDamaged && damagePhoto) {
       try {
-        await adminSupabase.from('rejected_evaluations').insert([{
+        const damagePayloads: any[] = [{
           air_weight: finalWeightGrams > 0 ? finalWeightGrams : (finalWeightMg > 0 ? finalWeightMg / 1000 : 0),
           water_weight: 0,
           specific_gravity: 0,
@@ -675,7 +675,23 @@ export async function POST(request: Request) {
           status: `BILL:${targetBill}:DAMAGED`,
           air_weight_photo_url: damagePhoto,
           water_weight_photo_url: null,
-        }]);
+        }];
+
+        const cleanB = stripBranchPrefix(targetBill).trim();
+        if (cleanB && cleanB !== targetBill) {
+          damagePayloads.push({
+            air_weight: finalWeightGrams > 0 ? finalWeightGrams : (finalWeightMg > 0 ? finalWeightMg / 1000 : 0),
+            water_weight: 0,
+            specific_gravity: 0,
+            estimated_karat: damageNotes ? `DAMAGED: ${damageNotes.slice(0, 50)}` : 'DAMAGED',
+            asking_amount: finalDisbursed,
+            true_value: finalAppraised,
+            status: `BILL:${cleanB}:DAMAGED`,
+            air_weight_photo_url: damagePhoto,
+            water_weight_photo_url: null,
+          });
+        }
+        await adminSupabase.from('rejected_evaluations').insert(damagePayloads);
       } catch (damageErr) {
         console.warn("Could not insert damage photo for bill:", damageErr);
       }

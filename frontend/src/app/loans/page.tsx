@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { 
   Plus, Search, FileText, Package, TrendingUp, AlertTriangle,
-  Pencil, Trash2, RefreshCcw, Printer, Filter, UserCheck, Calculator, Coins, Scale, Download, Send, Smartphone, Bluetooth, Camera, MapPin, MoreVertical, ShieldCheck, Check, Lock, Tag, Copy
+  Pencil, Trash2, RefreshCcw, Printer, Filter, UserCheck, Calculator, Coins, Scale, Download, Send, Smartphone, Bluetooth, Camera, MapPin, MoreVertical, ShieldCheck, Check, Lock, Tag, Copy, Upload
 } from "lucide-react"
 import { WebBluetoothTransport } from "@/lib/bluetooth/WebBluetoothTransport";
 import { EscPosAdapter } from "@/lib/bluetooth/EscPosAdapter";
@@ -302,6 +302,25 @@ export default function PawnesPage() {
   const [damageNotes, setDamageNotes] = useState<string>('');
   const [damagePhoto, setDamagePhoto] = useState<string | null>(null);
   const [showDamageCapture, setShowDamageCapture] = useState<boolean>(false);
+  const damageFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDamageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const toastId = toast.loading('Processing damaged product photo...');
+      compressImage(file, 1280, 960, 0.82).then((compressed) => {
+        if (compressed) {
+          setDamagePhoto(compressed);
+          toast.success('Damaged product photo attached!', { id: toastId });
+        } else {
+          toast.error('Could not process image', { id: toastId });
+        }
+      }).catch(err => {
+        toast.error('Image compression failed', { id: toastId });
+      });
+      e.target.value = '';
+    }
+  };
 
   const handleAddItem = () => {
     setItemsTouched(true);
@@ -2781,6 +2800,15 @@ export default function PawnesPage() {
                           )}
                         </div>
 
+                        {/* Hidden direct file input for instant file picker selection */}
+                        <input
+                          ref={damageFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleDamageFileUpload}
+                        />
+
                         {damagePhoto ? (
                           <div className="relative rounded-xl overflow-hidden border border-rose-300 bg-black/90 p-1 flex items-center justify-between">
                             <div className="flex items-center gap-2">
@@ -2811,6 +2839,15 @@ export default function PawnesPage() {
                               <Button
                                 type="button"
                                 size="sm"
+                                variant="outline"
+                                onClick={() => damageFileInputRef.current?.click()}
+                                className="h-7 px-2.5 text-[10px] font-black text-white border-white/30 hover:bg-white/20 rounded-lg gap-1"
+                              >
+                                <Upload className="w-3 h-3" /> File
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
                                 variant="destructive"
                                 onClick={() => setDamagePhoto(null)}
                                 className="h-7 px-2 text-[10px] font-black rounded-lg"
@@ -2824,16 +2861,26 @@ export default function PawnesPage() {
                             <div className="flex items-center gap-2 text-rose-700">
                               <Camera className="w-5 h-5 shrink-0" />
                               <span className="text-xs font-bold text-left">
-                                Please capture a live webcam photo or upload an image file of the damaged item.
+                                Capture live webcam snap or upload a photo of the damaged product.
                               </span>
                             </div>
-                            <Button
-                              type="button"
-                              onClick={() => setShowDamageCapture(true)}
-                              className="h-8 px-4 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow shrink-0 gap-1.5"
-                            >
-                              <Camera className="w-3.5 h-3.5" /> Take Snap
-                            </Button>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                type="button"
+                                onClick={() => setShowDamageCapture(true)}
+                                className="h-8 px-3.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow gap-1.5"
+                              >
+                                <Camera className="w-3.5 h-3.5" /> Take Snap
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => damageFileInputRef.current?.click()}
+                                className="h-8 px-3 border-rose-300 text-rose-700 hover:bg-rose-100 font-black text-xs rounded-xl shadow-sm gap-1.5 bg-white"
+                              >
+                                <Upload className="w-3.5 h-3.5" /> Upload File
+                              </Button>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -2884,17 +2931,33 @@ export default function PawnesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Damaged Item Snap Camera / Upload Modal */}
+      {/* Damaged Item Snap Camera / Upload Modal (Overlay with z-[99999] so it always shows above the Pawn dialog) */}
       {showDamageCapture && (
-        <WebcamCapture
-          initialImage={damagePhoto}
-          onCapture={(img) => {
-            setDamagePhoto(img);
-            setShowDamageCapture(false);
-            toast.success("Damaged item snap captured!");
-          }}
-          onClose={() => setShowDamageCapture(false)}
-        />
+        <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-4 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800 text-white">
+              <span className="text-xs font-black uppercase tracking-wider flex items-center gap-2 text-rose-400">
+                <Camera className="w-4 h-4" /> Snap Damaged Item Photo
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDamageCapture(false)}
+                className="text-slate-400 hover:text-white px-2 py-1 rounded-lg text-xs font-bold"
+              >
+                ✕ Close
+              </button>
+            </div>
+            <WebcamCapture
+              initialImage={damagePhoto}
+              onCapture={(img) => {
+                setDamagePhoto(img);
+                setShowDamageCapture(false);
+                toast.success("Damaged item snap captured!");
+              }}
+              onClose={() => setShowDamageCapture(false)}
+            />
+          </div>
+        </div>
       )}
 
       {/* Summary Stats */}
