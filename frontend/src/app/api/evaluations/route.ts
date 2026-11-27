@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
     if (isSingleBillQuery) {
       const cleanBill = billNo!.trim();
-      query = query.or(`status.eq.BILL:${cleanBill},status.eq.${cleanBill}`);
+      query = query.or(`status.eq.BILL:${cleanBill},status.eq.${cleanBill},status.eq.BILL:${cleanBill}:DAMAGED`);
     } else if (status) {
       query = query.eq('status', status);
     }

@@ -161,7 +161,7 @@ export async function PATCH(request: Request, context: any) {
     }
     const { id } = await context.params;
     const body = await request.json();
-    const { clientId, clientName, description, appraisedValue, disbursedAmount, billNo, weight, weightGrams, weightMg, itemType, periodMonths, clientPhone, clientAddress } = body;
+    const { clientId, clientName, description, appraisedValue, disbursedAmount, billNo, weight, weightGrams, weightMg, itemType, periodMonths, clientPhone, clientAddress, isDamaged, damageNotes, damagePhoto } = body;
 
     // Fetch existing pawn to check branch authorization
     const { data: existingPawn, error: fetchErr } = await adminSupabase.from('pawns').select('*').eq('id', id).single();
@@ -314,7 +314,20 @@ export async function PATCH(request: Request, context: any) {
 
     const syncUpdates: Record<string, any> = {};
     if (billNo && String(billNo).trim()) syncUpdates.bill_no = String(billNo).trim();
-    if (description) syncUpdates.description = description;
+    if (description) {
+      let finalDesc = description;
+      if (isDamaged && !finalDesc.includes('[DAMAGED')) {
+        const damageRemark = damageNotes && String(damageNotes).trim() ? `: ${String(damageNotes).trim()}` : '';
+        finalDesc = `${finalDesc} [DAMAGED${damageRemark}]`;
+      }
+      syncUpdates.description = finalDesc;
+    } else if (isDamaged) {
+      const curDesc = existingPawn.description || '';
+      if (!curDesc.includes('[DAMAGED')) {
+        const damageRemark = damageNotes && String(damageNotes).trim() ? `: ${String(damageNotes).trim()}` : '';
+        syncUpdates.description = `${curDesc} [DAMAGED${damageRemark}]`.trim();
+      }
+    }
     if (itemType) syncUpdates.item_type = itemType;
     if (appraisedValue !== undefined) syncUpdates.appraised_value = parseFloat(appraisedValue) || 0;
     if (disbursedAmount !== undefined) syncUpdates.disbursed_amount = parseFloat(disbursedAmount) || 0;
@@ -323,6 +336,26 @@ export async function PATCH(request: Request, context: any) {
       syncUpdates.weight_mg = mg > 0 ? mg : Math.round(totWeight * 1000);
     }
     if (periodMonths !== undefined) syncUpdates.period_months = parseInt(periodMonths, 10) || 3;
+
+    // Record Damaged Item Photo if provided
+    const targetBillForDamage = String(syncUpdates.bill_no || existingPawn.bill_no || '').trim();
+    if (targetBillForDamage && isDamaged && damagePhoto) {
+      try {
+        await adminSupabase.from('rejected_evaluations').insert([{
+          air_weight: syncUpdates.weight_grams || existingPawn.weight_grams || 0,
+          water_weight: 0,
+          specific_gravity: 0,
+          estimated_karat: damageNotes ? `DAMAGED: ${damageNotes.slice(0, 50)}` : 'DAMAGED',
+          asking_amount: syncUpdates.disbursed_amount || existingPawn.disbursed_amount || 0,
+          true_value: syncUpdates.appraised_value || existingPawn.appraised_value || 0,
+          status: `BILL:${targetBillForDamage}:DAMAGED`,
+          air_weight_photo_url: damagePhoto,
+          water_weight_photo_url: null,
+        }]);
+      } catch (damageErr) {
+        console.warn("Could not insert damage photo for updated bill:", damageErr);
+      }
+    }
 
     const { pawn: updatedPawn } = await syncPawnAndStockUpdate({
       source: 'PAWN',

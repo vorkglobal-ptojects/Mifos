@@ -26,6 +26,7 @@ import {
 import { ItemEvaluationModal } from "@/components/ItemEvaluationModal"
 import { CustomerSelectionModal } from "@/components/CustomerSelectionModal"
 import ChangeRequestModal from "@/components/ChangeRequestModal"
+import { WebcamCapture } from "@/components/WebcamCapture"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
@@ -155,6 +156,8 @@ export default function PawnesPage() {
     waterPhoto?: string | null;
     airWeight?: number | string | null;
     waterWeight?: number | string | null;
+    damagePhoto?: string | null;
+    damageNotes?: string | null;
     kycFront?: string | null;
     kycBack?: string | null;
     kycSignature?: string | null;
@@ -164,6 +167,8 @@ export default function PawnesPage() {
     customerName: '',
     airPhoto: null,
     waterPhoto: null,
+    damagePhoto: null,
+    damageNotes: null,
     kycFront: null,
     kycBack: null,
     kycSignature: null,
@@ -174,21 +179,39 @@ export default function PawnesPage() {
     let water = pawn.water_weight_photo_url || null;
     let aw = pawn.evaluation_air_weight || pawn.weight_mg || null;
     let ww = pawn.evaluation_water_weight || null;
+    let dmgPhoto = pawn.damage_photo_url || null;
+    let dmgNotes = pawn.damage_notes || null;
 
     const cleanBill = getBillNo(pawn);
-    if (!air && !water && cleanBill) {
+    if (cleanBill) {
       try {
         const res = await fetch(`/api/evaluations?billNo=${encodeURIComponent(cleanBill)}`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.evaluations && json.evaluations.length > 0) {
-          const ev = json.evaluations[0];
-          air = ev.air_weight_photo_url;
-          water = ev.water_weight_photo_url;
-          aw = ev.air_weight;
-          ww = ev.water_weight;
+          const ev = json.evaluations.find((e: any) => !e.status?.includes(':DAMAGED')) || json.evaluations[0];
+          if (!air) air = ev.air_weight_photo_url;
+          if (!water) water = ev.water_weight_photo_url;
+          if (!aw) aw = ev.air_weight;
+          if (!ww) ww = ev.water_weight;
+
+          const dmgEv = json.evaluations.find((e: any) => e.status?.includes(':DAMAGED'));
+          if (dmgEv) {
+            dmgPhoto = dmgEv.air_weight_photo_url || dmgEv.water_weight_photo_url || null;
+            if (dmgEv.estimated_karat?.startsWith('DAMAGED:')) {
+              dmgNotes = dmgEv.estimated_karat.replace('DAMAGED:', '').trim();
+            }
+          }
         }
       } catch (err) {
         console.warn('Could not fetch weight photos:', err);
+      }
+    }
+
+    // Check description for damage remarks if not extracted from evaluation
+    if (!dmgNotes && pawn.description && pawn.description.includes('[DAMAGED')) {
+      const match = pawn.description.match(/\[DAMAGED(?::\s*([^\]]+))?\]/);
+      if (match && match[1]) {
+        dmgNotes = match[1].trim();
       }
     }
 
@@ -229,6 +252,8 @@ export default function PawnesPage() {
       waterPhoto: water,
       airWeight: aw,
       waterWeight: ww,
+      damagePhoto: dmgPhoto,
+      damageNotes: dmgNotes,
       kycFront,
       kycBack,
       kycSignature,
@@ -271,6 +296,12 @@ export default function PawnesPage() {
     { itemType: 'CH', purity: '22K', description: '', customType: '', weightMg: '', appraisedValue: '' }
   ]);
   const [itemsTouched, setItemsTouched] = useState(false);
+
+  // Damaged Item State & Photo Snap
+  const [isDamaged, setIsDamaged] = useState<boolean>(false);
+  const [damageNotes, setDamageNotes] = useState<string>('');
+  const [damagePhoto, setDamagePhoto] = useState<string | null>(null);
+  const [showDamageCapture, setShowDamageCapture] = useState<boolean>(false);
 
   const handleAddItem = () => {
     setItemsTouched(true);
@@ -837,6 +868,7 @@ export default function PawnesPage() {
     setClientPhone(''); setClientAddress('');
     setItemsList([{ itemType: 'CH', purity: '22K', description: '', customType: '', weightMg: '', appraisedValue: '' }]);
     setItemsTouched(false);
+    setIsDamaged(false); setDamageNotes(''); setDamagePhoto(null); setShowDamageCapture(false);
     setEditingPawn(null); setResolvedName(''); setShowSuggestions(false);
     setShowInlineReg(false); setInlineNic(''); setInlineName(''); setInlinePhone(''); setInlineAddress('');
     setShowKycStep(false); setNewClientId(''); setKycFront(null); setKycBack(null); setKycSign(null);
@@ -1157,12 +1189,32 @@ export default function PawnesPage() {
 
     setAppraisal(String(pawn.disbursed_amount || pawn.appraised_value || ''));
     setAmount(String(pawn.disbursed_amount || ''));
+
+    // Populate damaged item state if editing pawn
+    const isPawnDamaged = Boolean(desc.includes('[DAMAGED') || pawn.is_damaged);
+    setIsDamaged(isPawnDamaged);
+    if (isPawnDamaged) {
+      const match = desc.match(/\[DAMAGED(?::\s*([^\]]+))?\]/);
+      setDamageNotes(match && match[1] ? match[1].trim() : '');
+    } else {
+      setDamageNotes('');
+    }
+    setDamagePhoto(pawn.damage_photo_url || null);
+    setShowDamageCapture(false);
+
     setIsOpen(true);
   };
 
   const handleSave = async () => {
     if (!clientId || !amount) {
       toast.error('Missing required fields', { description: 'Please select a Customer and enter Disbursed Amount.' });
+      return;
+    }
+
+    if (isDamaged && !damagePhoto) {
+      toast.error('Photo of damaged product is required', {
+        description: 'You indicated that the item is damaged. Please snap or upload a photo of the damaged product before saving.'
+      });
       return;
     }
 
@@ -1302,7 +1354,10 @@ export default function PawnesPage() {
           waterWeightPhoto: evaluationData?.waterWeightPhoto || null,
           waterWeight: evaluationData?.waterWeight || null,
           specificGravity: evaluationData?.specificGravity || null,
-          estimatedKarat: evaluationData?.estimatedKarat || null
+          estimatedKarat: evaluationData?.estimatedKarat || null,
+          isDamaged,
+          damageNotes: isDamaged ? damageNotes : '',
+          damagePhoto: isDamaged ? damagePhoto : null
         }),
       });
 
@@ -2653,6 +2708,139 @@ export default function PawnesPage() {
                   })}
                 </div>
 
+                {/* Item Damage Condition & Photo Snap Section */}
+                <div className={`p-3.5 rounded-2xl border transition-all ${isDamaged ? 'bg-rose-50/70 border-rose-200 shadow-sm' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`p-1.5 rounded-lg ${isDamaged ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
+                          Is Item Damaged?
+                        </Label>
+                        <p className="text-[10px] text-slate-500 font-medium">
+                          {isDamaged ? 'Damage photo required for record & audit' : 'Mark if the collateral has damages, scratches, or breaks'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Toggle Buttons: No / Yes */}
+                    <div className="flex items-center p-0.5 bg-slate-200/80 rounded-xl shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsDamaged(false);
+                          setDamagePhoto(null);
+                          setDamageNotes('');
+                        }}
+                        className={`px-3 py-1 text-xs font-black rounded-lg transition-all ${
+                          !isDamaged ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        No
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsDamaged(true)}
+                        className={`px-3 py-1 text-xs font-black rounded-lg transition-all ${
+                          isDamaged ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-500 hover:text-rose-700'
+                        }`}
+                      >
+                        Yes
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Damaged Item Details & Photo Capture */}
+                  {isDamaged && (
+                    <div className="mt-3.5 pt-3.5 border-t border-rose-200/80 space-y-3">
+                      <div className="grid gap-1.5">
+                        <Label className="text-[10px] font-black uppercase tracking-wider text-rose-800">
+                          Damage Notes / Remarks (Optional)
+                        </Label>
+                        <Input
+                          value={damageNotes}
+                          onChange={e => setDamageNotes(e.target.value)}
+                          placeholder="e.g. Broken hook / clasp, deep bend on side, stone missing..."
+                          className="h-8 bg-white border-rose-200 text-xs font-medium placeholder:text-rose-300"
+                        />
+                      </div>
+
+                      {/* Snap of the Damaged Product */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[10px] font-black uppercase tracking-wider text-rose-900 flex items-center gap-1.5">
+                            <Camera className="w-3.5 h-3.5 text-rose-600" />
+                            Snap of Damaged Product <span className="text-rose-600 font-black">*Required</span>
+                          </Label>
+                          {damagePhoto && (
+                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                              <Check className="w-2.5 h-2.5" /> Photo Captured
+                            </span>
+                          )}
+                        </div>
+
+                        {damagePhoto ? (
+                          <div className="relative rounded-xl overflow-hidden border border-rose-300 bg-black/90 p-1 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={damagePhoto}
+                                alt="Damaged product snap"
+                                className="w-16 h-14 object-cover rounded-lg border border-slate-700 cursor-zoom-in"
+                                onClick={() => {
+                                  const w = window.open("");
+                                  w?.document.write(`<img src="${damagePhoto}" style="max-width:100%;height:auto;margin:auto;display:block;"/>`);
+                                }}
+                              />
+                              <div className="text-left">
+                                <p className="text-[11px] font-black text-white">Damaged Product Snap</p>
+                                <p className="text-[10px] text-slate-300">Click to view full photo</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 pr-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => setShowDamageCapture(true)}
+                                className="h-7 px-2.5 text-[10px] font-black bg-white/20 hover:bg-white/30 text-white rounded-lg"
+                              >
+                                Retake
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setDamagePhoto(null)}
+                                className="h-7 px-2 text-[10px] font-black rounded-lg"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl border border-dashed border-rose-300 bg-rose-50/50 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-2 text-rose-700">
+                              <Camera className="w-5 h-5 shrink-0" />
+                              <span className="text-xs font-bold text-left">
+                                Please capture a live webcam photo or upload an image file of the damaged item.
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              onClick={() => setShowDamageCapture(true)}
+                              className="h-8 px-4 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl shadow shrink-0 gap-1.5"
+                            >
+                              <Camera className="w-3.5 h-3.5" /> Take Snap
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Aggregate Summary */}
                 <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs flex-wrap gap-1">
                   <div className="flex items-center gap-2 text-amber-900 font-bold">
@@ -2695,6 +2883,19 @@ export default function PawnesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Damaged Item Snap Camera / Upload Modal */}
+      {showDamageCapture && (
+        <WebcamCapture
+          initialImage={damagePhoto}
+          onCapture={(img) => {
+            setDamagePhoto(img);
+            setShowDamageCapture(false);
+            toast.success("Damaged item snap captured!");
+          }}
+          onClose={() => setShowDamageCapture(false)}
+        />
+      )}
 
       {/* Summary Stats */}
       <div className="grid gap-6 md:grid-cols-3">
@@ -3578,7 +3779,48 @@ export default function PawnesPage() {
               )}
             </div>
 
-            {/* Customer Identity & KYC Photos Section */}
+              {/* Damaged Item Photo Section */}
+              {viewPhotoModal.damagePhoto && (
+                <div className="pt-4 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-black uppercase tracking-wider text-rose-700 flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                      Damaged Item Record & Snap
+                    </span>
+                    {viewPhotoModal.damageNotes && (
+                      <span className="text-xs font-bold text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
+                        Note: {viewPhotoModal.damageNotes}
+                      </span>
+                    )}
+                  </div>
+                  <div className="bg-rose-50/60 rounded-2xl p-4 border border-rose-200 flex flex-col items-center max-w-md mx-auto">
+                    <div className="w-full flex items-center justify-between mb-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-rose-900 flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span> Damaged Product Snap
+                      </span>
+                      <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">
+                        Defect / Break Evidence
+                      </span>
+                    </div>
+                    <div className="w-full aspect-[4/3] bg-black/95 rounded-xl overflow-hidden shadow-inner flex items-center justify-center border border-rose-300">
+                      <img 
+                        src={viewPhotoModal.damagePhoto} 
+                        alt="Damaged item product snap" 
+                        className="w-full h-full object-contain cursor-zoom-in"
+                        onClick={() => {
+                          const w = window.open("");
+                          w?.document.write(`<img src="${viewPhotoModal.damagePhoto}" style="max-width:100%;height:auto;margin:auto;display:block;"/>`);
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-rose-700 font-medium mt-2 text-center">
+                      Click image to inspect in full resolution
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Customer Identity & KYC Photos Section */}
             {(viewPhotoModal.kycFront || viewPhotoModal.kycBack || viewPhotoModal.kycSignature) && (
               <div className="pt-4 border-t border-slate-200">
                 <div className="flex items-center justify-between mb-3">

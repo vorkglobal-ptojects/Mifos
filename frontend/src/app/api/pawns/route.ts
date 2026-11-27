@@ -313,7 +313,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { clientId, clientName, customerName, phone: clientPhone, address: clientAddress, description, appraisedValue, trueValue, disbursedAmount, branchId, createdByUserId, billNo, weight, weightGrams, weightMg, interestRate, periodMonths, itemType, items, date, airWeightPhoto, waterWeightPhoto, waterWeight, specificGravity, estimatedKarat, unique_tag, uniqueTag } = body;
+    const { clientId, clientName, customerName, phone: clientPhone, address: clientAddress, description, appraisedValue, trueValue, disbursedAmount, branchId, createdByUserId, billNo, weight, weightGrams, weightMg, interestRate, periodMonths, itemType, items, date, airWeightPhoto, waterWeightPhoto, waterWeight, specificGravity, estimatedKarat, unique_tag, uniqueTag, isDamaged, damageNotes, damagePhoto } = body;
 
     if (!clientId || !disbursedAmount || !billNo || String(billNo).trim() === '') {
       return NextResponse.json({ error: 'Missing required fields: Customer, Disbursed Amount, and Bill Number (billNo)' }, { status: 400 });
@@ -607,11 +607,18 @@ export async function POST(request: Request) {
       ? rawProvidedTag.toUpperCase()
       : generateUniqueOrderTag(targetBranchId, effectiveNic, scopedBillNo || billNo);
 
+    // Format description with damage remark if marked damaged
+    let finalDescription = description || `${finalPeriodMonths}M Pawn Ticket`;
+    if (isDamaged && !finalDescription.includes('[DAMAGED')) {
+      const damageRemark = damageNotes && String(damageNotes).trim() ? `: ${String(damageNotes).trim()}` : '';
+      finalDescription = `${finalDescription} [DAMAGED${damageRemark}]`;
+    }
+
     // 2. Insert pawn ticket into DB
     const pawnPayload: any = {
       id: pawnId,
       client_id: targetClientId,
-      description: description || `${finalPeriodMonths}M Pawn Ticket`,
+      description: finalDescription,
       appraised_value: finalAppraised,
       disbursed_amount: finalDisbursed,
       branch_id: targetBranchId,
@@ -652,6 +659,25 @@ export async function POST(request: Request) {
         }]);
       } catch (evalErr) {
         console.warn("Could not insert evaluation photos for bill:", evalErr);
+      }
+    }
+
+    // Record Damaged Item Photo linked to the bill number
+    if (targetBill && isDamaged && damagePhoto) {
+      try {
+        await adminSupabase.from('rejected_evaluations').insert([{
+          air_weight: finalWeightGrams > 0 ? finalWeightGrams : (finalWeightMg > 0 ? finalWeightMg / 1000 : 0),
+          water_weight: 0,
+          specific_gravity: 0,
+          estimated_karat: damageNotes ? `DAMAGED: ${damageNotes.slice(0, 50)}` : 'DAMAGED',
+          asking_amount: finalDisbursed,
+          true_value: finalAppraised,
+          status: `BILL:${targetBill}:DAMAGED`,
+          air_weight_photo_url: damagePhoto,
+          water_weight_photo_url: null,
+        }]);
+      } catch (damageErr) {
+        console.warn("Could not insert damage photo for bill:", damageErr);
       }
     }
 
